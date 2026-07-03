@@ -18,7 +18,9 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: Implementation :: CPython",
 ]
-dependencies = []
+dependencies = [
+  "pydantic==2.13.4",
+]
 
 [project.urls]
 Documentation = "https://github.com/glunk-works/loop-engine#readme"
