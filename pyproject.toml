@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "loop-engine"
+version = "0.1.0"
+description = "A loop persona framework"
+requires-python = ">=3.12"
+license = "MIT"
+keywords = []
+authors = [
+  { name = "Jared Groves", email = "jgroves27@gmail.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+]
+dependencies = []
+
+[project.urls]
+Documentation = "https://github.com/glunk-works/loop-engine#readme"
+Issues = "https://github.com/glunk-works/loop-engine/issues"
+Source = "https://github.com/glunk-works/loop-engine"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/loop_engine"]
+
+[tool.hatch.envs.default]
+dependencies = [
+  "pytest==9.1.1",
+  "ruff==0.15.20",
+  "cyclonedx-bom==7.3.0",
+]
+
+[tool.hatch.envs.default.scripts]
+test = "pytest {args}"
+lint = "ruff check ."
+format = "ruff format ."
+sbom = "cyclonedx-py environment -o sbom.json"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+# S101: pytest's assert-based idiom is expected in test files.
+"tests/**" = ["S101"]

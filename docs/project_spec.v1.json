@@ -1,0 +1,20 @@
+{
+  "spec_version": 1,
+  "problem_statement": "Developments cycles take too long and produce inconsistent, potentially insecure results.",
+  "purpose_and_goals": "Create multiple personas capable of interacting to produce secure, high quality code, fit for purpose",
+  "target_users": "Myself to start",
+  "in_scope": "Initial pipeline development",
+  "out_of_scope": "TBD",
+  "functional_requirements": "A working end to end pipeline that produces the expected result.",
+  "integration_context": "TBD",
+  "acceptance_criteria": "A working end to end pipeline that produces the expected result.",
+  "priority_ranking": "high",
+  "timeline_and_cost_estimates": "quick and as low as possible",
+  "risks_and_assumptions": "risks are that the loops will run out of control and run up costs.  Unconstrained requirements produces garbage results",
+  "security_and_risk_considerations": "exposed credentials, data loss, attack vector, delivery of insecure platforms/products",
+  "regulatory_and_compliance_constraints": "N/A",
+  "supply_chain_security_expectations": "maintained SBOM for tracability according to industry best practices.",
+  "cost_sensitivity": "N/A",
+  "open_questions_for_architect": "TBD",
+  "revision_history": []
+}
