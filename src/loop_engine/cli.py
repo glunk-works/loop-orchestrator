@@ -48,5 +48,24 @@ def run(
     run_loop(remaining_loop, initial_state, llm_client)
 
 
+@app.command(name="cost-summary")
+def cost_summary(run_id: Annotated[str, typer.Option("--run-id")]) -> None:
+    run_dir = Path("state") / run_id
+    total_tokens = 0
+    total_cost = 0.0
+
+    typer.echo(f"{'Stage':<40}{'Tokens':>10}{'Cost (USD)':>14}")
+    for snapshot_path in sorted(run_dir.glob("*.json")):
+        state = State.model_validate_json(snapshot_path.read_text())
+        if not state.stage_history:
+            continue
+        record = state.stage_history[-1]
+        total_tokens += record.tokens_used
+        total_cost += record.cost_usd
+        typer.echo(f"{record.stage_name:<40}{record.tokens_used:>10}{record.cost_usd:>14.4f}")
+
+    typer.echo(f"{'TOTAL':<40}{total_tokens:>10}{total_cost:>14.4f}")
+
+
 if __name__ == "__main__":
     app()
