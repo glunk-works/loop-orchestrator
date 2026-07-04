@@ -1,0 +1,84 @@
+name: Bug Report
+description: Report a problem with loop-engine
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the sections below as completely as possible.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+      placeholder: Tell us what you saw.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: |
+        Minimal steps to reproduce the issue. Include the exact `loop-engine` CLI invocation or Python snippet if applicable.
+      placeholder: |
+        1. Run `loop-engine run --loop default --input ...`
+        2. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output / traceback
+      description: |
+        Paste any error output, stack traces, or relevant `state/<run_id>/*.json` snippets. This will be rendered as code automatically.
+      render: shell
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      placeholder: e.g. 3.12.4
+    validations:
+      required: true
+
+  - type: input
+    id: loop-engine-version
+    attributes:
+      label: loop-engine version / commit
+      placeholder: e.g. 0.1.0 or a commit SHA
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I confirmed no API key, token, or other credential value appears anywhere in this report
+          required: true
+        - label: I searched existing issues and this hasn't already been reported
+          required: true
