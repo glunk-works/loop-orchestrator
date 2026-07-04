@@ -1,0 +1,46 @@
+import json
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import pytest
+
+from loop_engine.core.state import State
+from loop_engine.personas.agile_sprint_breakdown.persona import AgileSprintBreakdownPersona
+
+TWO_SPRINT_RESPONSE = """### FILEPATH: /sprints/01_foo/sprint_plan.md
+
+Sprint one content.
+
+---
+
+### FILEPATH: /sprints/02_bar/sprint_plan.md
+
+Sprint two content.
+"""
+
+
+def _state(artifacts: dict[str, str]) -> State:
+    return State(schema_version=1, run_id="run-1", stage_history=[], artifacts=artifacts)
+
+
+def test_agile_sprint_breakdown_persona_raises_key_error_when_architecture_missing() -> None:
+    mock_llm_client = MagicMock()
+
+    with pytest.raises(KeyError):
+        AgileSprintBreakdownPersona().run(_state({}), mock_llm_client)
+
+
+def test_agile_sprint_breakdown_persona_parses_two_sprint_blocks() -> None:
+    mock_llm_client = MagicMock()
+    mock_llm_client.call.return_value = SimpleNamespace(text=TWO_SPRINT_RESPONSE)
+
+    result_state = AgileSprintBreakdownPersona().run(
+        _state({"architecture_definition": "# Architecture\n..."}), mock_llm_client
+    )
+
+    sprint_plans = json.loads(result_state.artifacts["sprint_plans"])
+    assert len(sprint_plans) == 2
+    assert sprint_plans[0]["path"] == "/sprints/01_foo/sprint_plan.md"
+    assert "Sprint one content." in sprint_plans[0]["content"]
+    assert sprint_plans[1]["path"] == "/sprints/02_bar/sprint_plan.md"
+    assert "Sprint two content." in sprint_plans[1]["content"]
