@@ -1,0 +1,52 @@
+name: Feature Request
+description: Suggest an idea or enhancement for loop-engine
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement! Please fill out the sections below.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the gap or pain point this feature would address.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would you like to see happen? Be as specific as possible.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any alternative approaches or workarounds you've considered.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area of loop-engine this affects
+      options:
+        - core (engine/state)
+        - personas
+        - loops
+        - tools (llm/state_io)
+        - cli
+        - ci/cd & tooling
+        - other/unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Links, mockups, related issues, etc.
