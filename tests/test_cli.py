@@ -65,6 +65,40 @@ def test_cli_resume_from_skips_already_completed_stages(tmp_path, monkeypatch) -
     assert called_loop == DEFAULT_LOOP[1:]
 
 
+def test_cli_cost_summary_prints_per_stage_rows_and_total(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    run_dir = tmp_path / "state" / "run-1"
+    run_dir.mkdir(parents=True)
+
+    stage_names = ["PMPersona", "ArchitecturePersona", "AgileSprintBreakdownPersona"]
+    tokens = [20, 80, 15]
+    for index, stage_name in enumerate(stage_names):
+        state = State(
+            schema_version=1,
+            run_id="run-1",
+            stage_history=[
+                {
+                    "stage_name": name,
+                    "tokens_used": t,
+                    "cost_usd": 0.0,
+                    "completed_at": "2026-07-02T00:00:00Z",
+                }
+                for name, t in zip(stage_names[: index + 1], tokens[: index + 1], strict=True)
+            ],
+            artifacts={},
+        )
+        (run_dir / f"{index:02d}_{stage_name}.json").write_text(state.model_dump_json())
+
+    result = runner.invoke(app, ["cost-summary", "--run-id", "run-1"])
+
+    assert result.exit_code == 0
+    output = _plain_output(result)
+    for stage_name in stage_names:
+        assert stage_name in output
+    assert "TOTAL" in output
+    assert str(sum(tokens)) in output
+
+
 def test_cli_defines_no_api_key_option() -> None:
     click_app = typer.main.get_command(app)
     run_command = click_app.commands["run"]
