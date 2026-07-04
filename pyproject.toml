@@ -22,7 +22,11 @@ dependencies = [
   "pydantic==2.13.4",
   "anthropic==0.116.0",
   "keyring==25.7.0",
+  "typer==0.26.8",
 ]
+
+[project.scripts]
+loop-engine = "loop_engine.cli:app"
 
 [project.urls]
 Documentation = "https://github.com/glunk-works/loop-engine#readme"
