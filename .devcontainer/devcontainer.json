@@ -7,17 +7,33 @@
   },
   "workspaceFolder": "/workspace",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "mounts": [
+    "source=${localEnv:GPG_HOST_DIR},target=/home/app/.gnupg-host,type=bind,consistency=cached,readonly"
+  ],
   "remoteUser": "app",
-  "postCreateCommand": "git config --global --add safe.directory /workspace && hatch env create",
+  "postCreateCommand": "git config --global --add safe.directory /workspace && mkdir -p ~/.ssh && echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' >> ~/.ssh/known_hosts && chmod 700 ~/.ssh && chmod 600 ~/.ssh/known_hosts && hatch env create",
+  "postStartCommand": "sh /workspace/.devcontainer/gpg-forward.sh",
   "customizations": {
     "vscode": {
       "extensions": [
         "ms-python.python",
         "charliermarsh.ruff",
-        "GitHub.vscode-pull-request-github"
+        "GitHub.vscode-pull-request-github",
+        "tamasfe.even-better-toml",
+        "anthropic.claude-code"
       ],
       "settings": {
-        "python.defaultInterpreterPath": "/usr/local/bin/python"
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.testing.pytestEnabled": true,
+        "python.testing.pytestArgs": ["tests"],
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff",
+          "editor.formatOnSave": true,
+          "editor.codeActionsOnSave": {
+            "source.fixAll.ruff": "explicit",
+            "source.organizeImports.ruff": "explicit"
+          }
+        }
       }
     }
   }
