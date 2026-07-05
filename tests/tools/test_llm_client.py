@@ -59,3 +59,39 @@ def test_budget_exceeded_raises_and_skips_underlying_call(monkeypatch) -> None:
         client.call("a very long prompt that estimates well over budget", model="claude-sonnet-5")
 
     mock_create.assert_not_called()
+
+
+def test_ci_env_fallback_used_when_both_gate_variables_set(monkeypatch) -> None:
+    mock_get_password = MagicMock(return_value="keyring-key-should-not-be-used")
+    monkeypatch.setattr("keyring.get_password", mock_get_password)
+    monkeypatch.setenv("LOOP_ENGINE_ALLOW_ENV_CREDENTIAL", "1")
+    monkeypatch.setenv("LOOP_ENGINE_CI_API_KEY", "env-fallback-key")
+
+    client = LLMClient(budget_tokens=1000)
+
+    assert client._api_key == "env-fallback-key"
+    mock_get_password.assert_not_called()
+
+
+def test_ci_env_fallback_ignored_without_opt_in_flag(monkeypatch) -> None:
+    mock_get_password = MagicMock(return_value="keyring-key")
+    monkeypatch.setattr("keyring.get_password", mock_get_password)
+    monkeypatch.delenv("LOOP_ENGINE_ALLOW_ENV_CREDENTIAL", raising=False)
+    monkeypatch.setenv("LOOP_ENGINE_CI_API_KEY", "env-fallback-key")
+
+    client = LLMClient(budget_tokens=1000)
+
+    assert client._api_key == "keyring-key"
+    mock_get_password.assert_called_once()
+
+
+def test_ci_env_fallback_ignored_when_opt_in_flag_not_exact_match(monkeypatch) -> None:
+    mock_get_password = MagicMock(return_value="keyring-key")
+    monkeypatch.setattr("keyring.get_password", mock_get_password)
+    monkeypatch.setenv("LOOP_ENGINE_ALLOW_ENV_CREDENTIAL", "true")
+    monkeypatch.setenv("LOOP_ENGINE_CI_API_KEY", "env-fallback-key")
+
+    client = LLMClient(budget_tokens=1000)
+
+    assert client._api_key == "keyring-key"
+    mock_get_password.assert_called_once()

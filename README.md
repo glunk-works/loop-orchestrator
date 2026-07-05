@@ -13,6 +13,7 @@ Before loop-engine, this pattern (`pm-agent-loop`) was hardcoded as a single, no
 - Python >= 3.12
 - [Hatch](https://hatch.pypa.io/) for environment/script management
 - An Anthropic API key, stored in your OS keyring (see [Setup](#setup))
+- Docker (optional) — only if you want the dev/prod containers instead of a local checkout; see [Running in a container](#running-in-a-container)
 
 ## Installation
 
@@ -73,6 +74,46 @@ llm_client = LLMClient(budget_tokens=100_000)
 final_state = run_loop(DEFAULT_LOOP, initial_state, llm_client)
 ```
 
+## Running in a container
+
+A shared multi-stage `Dockerfile` (repo root) defines a `dev` stage (full contributor toolchain: `hatch`, `ruff`, `git`, `gh`) and a `prod` stage (minimal runtime only). Both are local-only — there's no registry publish step; build and run them yourself with plain `docker build`/`docker run`, or open the repo in VS Code with the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers), which uses `.devcontainer/devcontainer.json` (targets the `dev` stage automatically).
+
+```bash
+docker build --target dev -t loop-engine:dev .
+docker build --target prod -t loop-engine:prod .
+```
+
+### Credentials in a container
+
+A bare Linux container has no OS-native keyring backend, so the prod/dev images install [`keyrings.cryptfile`](https://pypi.org/project/keyrings.cryptfile/), an encrypted file-based `keyring` backend. `client.py`'s contract doesn't change — `keyring.get_password(...)` just resolves against whichever backend is configured.
+
+1. Create the encrypted keyring file once (outside the container, or inside a `dev` container shell):
+   ```bash
+   pip install keyrings.cryptfile
+   python -c "import keyring; keyring.set_password('loop-engine', 'anthropic_api_key', 'sk-ant-...')"
+   ```
+2. Run the prod image, mounting the encrypted file and its passphrase in as files — never as environment variables:
+   ```bash
+   docker run --rm \
+     -v /path/to/encrypted_pass.cfg:/home/app/.local/share/python_keyring/cryptfile_pass.cfg:ro \
+     -v $(pwd)/state:/workspace/state \
+     loop-engine:prod run --input requirements.md --budget 100000
+   ```
+   The `state/` volume mount is required for `--resume-from` to work across separate `docker run` invocations — without it, each container starts with an empty `state/` directory.
+
+### CI/automation credential fallback
+
+For a CI job that needs to run loop-engine for real (not just the mocked test suite) and can't practically mount a pre-encrypted keyring file, `client.py` also checks a **double-gated** env var pair before falling back to keyring:
+
+```bash
+docker run --rm \
+  -e LOOP_ENGINE_ALLOW_ENV_CREDENTIAL=1 \
+  -e LOOP_ENGINE_CI_API_KEY=sk-ant-... \
+  loop-engine:prod run --input requirements.md --budget 100000
+```
+
+**Both variables must be set together** — this is intentionally not a single `API_KEY`-style env var, so a leftover value in a shell can't silently bypass keyring. Use this only in CI/automation contexts; everywhere else, use the encrypted keyring file above.
+
 ## How it works
 
 ```
@@ -105,7 +146,7 @@ Every sprint's changes must satisfy [`sprints/GLOBAL_DEFINITION_OF_DONE.md`](spr
 
 ## Security
 
-- The LLM API key is retrieved exclusively via `keyring` from `tools/llm/client.py` — no other module imports `keyring` (statically enforced).
+- The LLM API key is retrieved exclusively via `keyring` from `tools/llm/client.py` — no other module imports `keyring` (statically enforced). One documented, double-gated exception for CI/automation contexts — see [CI/automation credential fallback](#ciautomation-credential-fallback).
 - `tools/state_io/` is the only module permitted to write to `state/`, `docs/`, or `sprints/`; `run_id` and artifact paths are validated against path traversal before any filesystem call.
 - `core/` imports no concrete persona module, only `personas/base.py` — personas can't bypass the engine's validation/budget/persistence guarantees.
 - `State.model_config = ConfigDict(extra="forbid")` — no field exists that could hold a raw credential, and a compromised/buggy persona can't smuggle one through.
@@ -126,6 +167,8 @@ src/loop_engine/
 tests/              # mirrors src/loop_engine/ layout, plus tests/integration/
 sprints/            # the sprint-by-sprint build plan and its Definition of Done
 docs/               # architecture definition and project spec
+Dockerfile          # multi-stage: dev (contributor toolchain) + prod (minimal runtime)
+.devcontainer/      # VS Code Dev Containers config, targets the Dockerfile's dev stage
 ```
 
 ## License

@@ -6,7 +6,7 @@
 
 | # | Decision |
 |---|---|
-| 1 | Deployment model: **local-only**. No cloud, no AWS, no IaC/OpenTofu. |
+| 1 | Deployment model: **local-only, container-optional**. No cloud, no AWS, no IaC/OpenTofu. A dev container and a prod container image (both built locally via a shared multi-stage `Dockerfile`) are supported as of 2026-07, superseding the original "no containers" stance — but the containers are still run locally, not deployed to a cloud runtime; that half of the original decision stands. |
 | 2 | Execution model: **standalone Python CLI/library**, own LLM client — not a Claude Code skill. |
 | 3 | Scope target: the **loop-engine framework** (pluggable core/personas/loops/tools), not a hardcoded 4-stage script. |
 | 4 | Secrets handling: **OS keyring** — no plaintext secret ever touches disk. |
@@ -53,7 +53,7 @@ loop-engine is a single local Python process, invoked either via CLI (`loop-engi
 - **LLM client:** a thin wrapper in `tools/llm/` around the Anthropic SDK (or equivalent), the **only** module permitted to read the API key from the OS keyring.
 - **State persistence:** `tools/state_io/` — Pydantic `.model_dump_json()` writes to `state/<run_id>/<NN_stage_name>.json`.
 - **Packaging/tooling:** `hatch` for environment and script management (`hatch run test`, `hatch run ruff check .`, `hatch run ruff format .`), matching `pm-agent-loop` precedent so both tools share one contributor workflow.
-- **No cloud services, no containers, no IaC tooling** are part of this stack — deployment is `pip install` / local checkout only.
+- **No cloud services, no IaC tooling** are part of this stack. Containers are supported as an optional, local-only packaging/dev-environment path (2026-07): a shared multi-stage `Dockerfile` (repo root) with `dev` and `prod` build stages, plus `.devcontainer/devcontainer.json` targeting the `dev` stage for VS Code. Deployment remains `pip install` / local checkout / `docker run` — no registry publish step, no cloud runtime.
 
 ## 3. IAM & Workload Identity (Strict Least Privilege)
 
@@ -67,6 +67,8 @@ There is no cloud IAM in this architecture; least privilege is enforced at the *
 ## 4. Security & Network Posture
 
 - **Secrets management:** LLM API key(s) stored exclusively in the OS-native credential store (Windows Credential Manager / macOS Keychain / Secret Service on Linux) via the `keyring` library. No `.env` file, no plaintext config value, no CLI flag may ever carry the raw key. `tools/llm/client.py` retrieves it once per process at first use.
+  - **Container credential path (2026-07):** a bare Linux container has no OS-native keyring backend. The primary path is an encrypted file-based `keyring` backend (`keyrings.cryptfile`) inside the container, with both the encrypted credential file and its decryption passphrase bind-mounted in at run time as files — the "no env var/CLI flag ever carries the raw key" rule holds unchanged for this path, and `client.py`'s contract (`keyring.get_password(...)`) is untouched.
+  - **Narrow CI/automation exception:** `client.py` also checks a **double-gated** env var pair (`LOOP_ENGINE_ALLOW_ENV_CREDENTIAL=1` *and* `LOOP_ENGINE_CI_API_KEY`) before falling back to `keyring`. Both variables must be set together, deliberately, so a stray env var can't silently bypass keyring in an interactive session. This is the one documented exception to "no env var may ever carry the raw key," scoped to CI/automation contexts where mounting a pre-encrypted keyring file is impractical.
 - **Encryption in transit:** all LLM API calls use TLS (enforced by the underlying SDK/HTTP client defaults — do not disable certificate verification).
 - **Encryption at rest:** `state/<run_id>/*.json` files are plaintext on the local filesystem, consistent with "local personal tool" threat model. They must never contain the API key or any other credential (enforced by the Pydantic `State` schema simply having no field capable of holding one). The `state/` directory must be `.gitignore`d.
 - **Network isolation:** none required — this is a single outbound-only local process with no listening socket and no inter-process network surface.

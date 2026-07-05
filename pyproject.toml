@@ -42,6 +42,7 @@ dependencies = [
   "pytest==9.1.1",
   "ruff==0.15.20",
   "cyclonedx-bom==7.3.0",
+  "cryptography==49.0.0",
 ]
 
 [tool.hatch.envs.default.scripts]
@@ -59,3 +60,5 @@ select = ["E", "F", "I", "B", "S"]
 [tool.ruff.lint.per-file-ignores]
 # S101: pytest's assert-based idiom is expected in test files.
 "tests/**" = ["S101"]
+# S106/S107: fixture passphrases in tests, not real secrets.
+"containers/keyring_backend/test_cryptfile_backend.py" = ["S101", "S106", "S107"]
