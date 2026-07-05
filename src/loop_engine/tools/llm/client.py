@@ -1,9 +1,22 @@
+import os
+
 import anthropic
 import keyring
 from pydantic import BaseModel
 
 _KEYRING_SERVICE = "loop-engine"
 _KEYRING_USERNAME = "anthropic_api_key"
+
+# Narrowly-scoped, double-gated escape hatch for CI/automation contexts where
+# a container has no OS-native keyring backend and injecting a pre-encrypted
+# keyring file is impractical. Both variables must be set together — a
+# leftover LOOP_ENGINE_CI_API_KEY in an interactive shell can't silently
+# bypass keyring on its own. Everywhere else (interactive use, the prod
+# container's primary path), the encrypted file-based keyring backend is
+# used instead; this fallback changes nothing about that path.
+_CI_OPT_IN_ENV_VAR = "LOOP_ENGINE_ALLOW_ENV_CREDENTIAL"
+_CI_OPT_IN_VALUE = "1"
+_CI_API_KEY_ENV_VAR = "LOOP_ENGINE_CI_API_KEY"
 
 
 class MissingCredentialError(Exception):
@@ -25,9 +38,17 @@ def _estimate_tokens(prompt: str) -> int:
     return max(1, len(prompt) // 4)
 
 
+def _resolve_api_key() -> str | None:
+    if os.environ.get(_CI_OPT_IN_ENV_VAR) == _CI_OPT_IN_VALUE:
+        env_api_key = os.environ.get(_CI_API_KEY_ENV_VAR)
+        if env_api_key is not None:
+            return env_api_key
+    return keyring.get_password(_KEYRING_SERVICE, _KEYRING_USERNAME)
+
+
 class LLMClient:
     def __init__(self, budget_tokens: int) -> None:
-        api_key = keyring.get_password(_KEYRING_SERVICE, _KEYRING_USERNAME)
+        api_key = _resolve_api_key()
         if api_key is None:
             raise MissingCredentialError(
                 f"No API key found in keyring for service={_KEYRING_SERVICE!r}, "

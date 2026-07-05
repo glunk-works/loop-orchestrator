@@ -358,6 +358,54 @@
       "version": "2026.6.17"
     },
     {
+      "bom-ref": "cffi==2.0.0",
+      "description": "Foreign Function Interface for Python calling C code.",
+      "externalReferences": [
+        {
+          "comment": "from packaging metadata Project-URL: Documentation",
+          "type": "documentation",
+          "url": "https://cffi.readthedocs.io/"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: Issue Tracker",
+          "type": "issue-tracker",
+          "url": "https://github.com/python-cffi/cffi/issues"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: Source Code",
+          "type": "other",
+          "url": "https://github.com/python-cffi/cffi"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: Downloads",
+          "type": "other",
+          "url": "https://github.com/python-cffi/cffi/releases"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: Contact",
+          "type": "other",
+          "url": "https://groups.google.com/forum/#!forum/python-cffi"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: Changelog",
+          "type": "release-notes",
+          "url": "https://cffi.readthedocs.io/en/latest/whatsnew.html"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "acknowledgement": "declared",
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "cffi",
+      "purl": "pkg:pypi/cffi@2.0.0",
+      "type": "library",
+      "version": "2.0.0"
+    },
+    {
       "bom-ref": "chardet==5.2.0",
       "description": "Universal encoding detector for Python 3",
       "externalReferences": [
@@ -455,6 +503,47 @@
       "purl": "pkg:pypi/colorama@0.4.6",
       "type": "library",
       "version": "0.4.6"
+    },
+    {
+      "bom-ref": "cryptography==49.0.0",
+      "description": "cryptography is a package which provides cryptographic recipes and primitives to Python developers.",
+      "externalReferences": [
+        {
+          "comment": "from packaging metadata Project-URL: documentation",
+          "type": "documentation",
+          "url": "https://cryptography.io/"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: issues",
+          "type": "issue-tracker",
+          "url": "https://github.com/pyca/cryptography/issues"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: source",
+          "type": "other",
+          "url": "https://github.com/pyca/cryptography/"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: changelog",
+          "type": "release-notes",
+          "url": "https://cryptography.io/en/latest/changelog/"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: homepage",
+          "type": "website",
+          "url": "https://github.com/pyca/cryptography"
+        }
+      ],
+      "licenses": [
+        {
+          "acknowledgement": "declared",
+          "expression": "Apache-2.0 OR BSD-3-Clause"
+        }
+      ],
+      "name": "cryptography",
+      "purl": "pkg:pypi/cryptography@49.0.0",
+      "type": "library",
+      "version": "49.0.0"
     },
     {
       "bom-ref": "cyclonedx-bom==7.3.0",
@@ -1667,6 +1756,29 @@
       "version": "2.1.0"
     },
     {
+      "bom-ref": "pycparser==3.0",
+      "description": "C parser in Python",
+      "externalReferences": [
+        {
+          "comment": "from packaging metadata Project-URL: Homepage",
+          "type": "website",
+          "url": "https://github.com/eliben/pycparser"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "acknowledgement": "declared",
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "pycparser",
+      "purl": "pkg:pypi/pycparser@3.0",
+      "type": "library",
+      "version": "3.0"
+    },
+    {
       "bom-ref": "pydantic==2.13.4",
       "description": "Data validation using Python type hints",
       "externalReferences": [
@@ -2682,6 +2794,12 @@
       "ref": "certifi==2026.6.17"
     },
     {
+      "dependsOn": [
+        "pycparser==3.0"
+      ],
+      "ref": "cffi==2.0.0"
+    },
+    {
       "ref": "chardet==5.2.0"
     },
     {
@@ -2689,6 +2807,13 @@
     },
     {
       "ref": "colorama==0.4.6"
+    },
+    {
+      "dependsOn": [
+        "cffi==2.0.0",
+        "typing_extensions==4.16.0"
+      ],
+      "ref": "cryptography==49.0.0"
     },
     {
       "dependsOn": [
@@ -2930,6 +3055,9 @@
       "ref": "py-serializable==2.1.0"
     },
     {
+      "ref": "pycparser==3.0"
+    },
+    {
       "dependsOn": [
         "annotated-types==0.7.0",
         "pydantic_core==2.46.4",
@@ -3067,7 +3195,7 @@
     }
   ],
   "metadata": {
-    "timestamp": "2026-07-04T12:46:17.711803+00:00",
+    "timestamp": "2026-07-05T18:11:26.489572+00:00",
     "tools": {
       "components": [
         {
@@ -3171,7 +3299,7 @@
       ]
     }
   },
-  "serialNumber": "urn:uuid:473f1ac3-4997-4e59-8452-40a8995d588f",
+  "serialNumber": "urn:uuid:d0bc9a5e-28ed-4b08-8e95-55bd78fe4ea9",
   "version": 1,
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",
