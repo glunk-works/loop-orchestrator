@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "loop-engine"
 version = "0.1.0"
 description = "A loop persona framework"
+readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 keywords = []

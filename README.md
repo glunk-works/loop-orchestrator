@@ -1,0 +1,133 @@
+# loop-engine
+
+A reusable framework for running a named, ordered sequence of decoupled AI "persona" stages against a single, explicit, versioned state object — instead of copy-pasting prompts between manual steps.
+
+The default loop reproduces a **PM → Architecture → Agile Sprint Breakdown → Coder/IaC** pipeline: each stage reads the prior stage's output from shared `State`, calls an LLM, and writes its own output back, with a snapshot persisted to disk after every stage.
+
+## Why
+
+Before loop-engine, this pattern (`pm-agent-loop`) was hardcoded as a single, non-reusable CLI tightly coupled to one persona pair and one output shape. loop-engine generalizes it: personas are pluggable modules, loops are plain Python lists composing them, and every stage transition is validated, budget-checked, and written to disk as an inspectable artifact.
+
+## Requirements
+
+- Python >= 3.12
+- [Hatch](https://hatch.pypa.io/) for environment/script management
+- An Anthropic API key, stored in your OS keyring (see [Setup](#setup))
+
+## Installation
+
+```bash
+git clone https://github.com/glunk-works/loop-engine.git
+cd loop-engine
+hatch run python -c "import loop_engine"  # sanity check
+```
+
+## Setup
+
+loop-engine never accepts the API key as a CLI flag or environment variable — it is retrieved exclusively from the OS-native credential store (Windows Credential Manager / macOS Keychain / Secret Service on Linux) via [`keyring`](https://pypi.org/project/keyring/):
+
+```bash
+hatch run python -c "import keyring; keyring.set_password('loop-engine', 'anthropic_api_key', 'sk-ant-...')"
+```
+
+`src/loop_engine/tools/llm/client.py` is the only module in the codebase permitted to import `keyring` — enforced by a static test (`tests/tools/test_keyring_boundary.py`).
+
+## Usage
+
+### Run the default loop
+
+```bash
+hatch run loop-engine run --input path/to/requirements.md --budget 100000
+```
+
+| Option | Description | Default |
+|---|---|---|
+| `--loop` | Named loop to run | `default` |
+| `--input` | Path to the seed content (e.g. a requirements doc) for the initial `State` | none |
+| `--budget` | Hard cap on cumulative LLM tokens for the run | `100000` |
+| `--resume-from` | Path to a prior `State` snapshot; resumes after the last completed stage instead of starting over | none |
+
+Every stage's `State` snapshot is written to `state/<run_id>/<NN>_<StageName>.json` as it completes — the run is resumable and fully inspectable, not a black box.
+
+### Resume an interrupted or budget-aborted run
+
+```bash
+hatch run loop-engine run --resume-from state/<run_id>/01_ArchitecturePersona.json
+```
+
+### View per-stage cost/token usage
+
+```bash
+hatch run loop-engine cost-summary --run-id <run_id>
+```
+
+### Library usage
+
+The full programmatic surface is available without the CLI:
+
+```python
+from loop_engine import DEFAULT_LOOP, LLMClient, State, run_loop
+
+initial_state = State(schema_version=1, run_id="my-run", stage_history=[], artifacts={})
+llm_client = LLMClient(budget_tokens=100_000)
+final_state = run_loop(DEFAULT_LOOP, initial_state, llm_client)
+```
+
+## How it works
+
+```
+loops/default  ──▶ [PM] ──▶ [Architecture] ──▶ [Agile Sprint Breakdown] ──▶ [Coder/IaC]
+                     │            │                      │                      │
+                     ▼            ▼                      ▼                      ▼
+              after each persona: State snapshot written to state/<run_id>/
+```
+
+- **`core/state.py`** — `State`, a Pydantic v2 model (`schema_version`, `run_id`, `stage_history`, `artifacts`) with `extra="forbid"`, so no field can silently smuggle a credential through.
+- **`core/engine.py`** — `run_loop()`: a plain `for persona in loop` sequential loop. Before each stage: checks cumulative LLM usage against the budget and aborts (persisting the last valid snapshot) if it's already exhausted. After each stage: revalidates the persona's returned `State`, appends a `StageRecord` (stage name, tokens used, cost), persists a snapshot, and emits a structured JSON cost-log line.
+- **`personas/base.py`** — `BasePersona`, an ABC with one abstract method: `run(self, state: State, llm_client: LLMClient) -> State`. Personas receive the LLM client via injection — they cannot construct their own or touch credentials directly.
+- **`personas/{pm,architecture,agile_sprint_breakdown,coder_iac}/`** — the four default personas. Each embeds its prompt as a module-level `PROMPT_TEMPLATE` constant, consumes the prior stage's artifact (raising `KeyError` if missing), and writes its own artifact back to `State`. `PMPersona` additionally runs a critic revision loop (ported from `pm-agent-loop`), re-prompting the LLM to resolve blank/contradictory/vague fields before finalizing the project spec.
+- **`loops/default/loop.py`** — `DEFAULT_LOOP`, an ordered `list[BasePersona]`. No YAML/JSON loop-definition format — loops are just Python.
+- **`tools/llm/client.py`** — `LLMClient`, a thin wrapper around the Anthropic SDK. Retrieves the API key from `keyring` exactly once per instance and enforces a hard per-run token budget, raising `BudgetExceededError` *before* the underlying API call if a request would exceed it.
+- **`tools/state_io/writer.py`** — the sole writer of `State` snapshots (`state/`) and produced artifacts (`docs/`, `sprints/`, `src/`). Validates `run_id`/artifact paths against path traversal before any filesystem call.
+- **`tools/logging_config.py`** — structured per-stage cost logging.
+- **`cli.py`** — the Typer entrypoint (`run`, `cost-summary`). A thin wrapper; all logic lives in the library layer.
+
+## Development
+
+```bash
+hatch run test                        # pytest
+hatch run lint                        # ruff check (incl. bandit-equivalent S rules)
+hatch run format                      # ruff format
+hatch run sbom                        # regenerate sbom.json (CycloneDX)
+```
+
+Every sprint's changes must satisfy [`sprints/GLOBAL_DEFINITION_OF_DONE.md`](sprints/GLOBAL_DEFINITION_OF_DONE.md) — tests pass, lint/format clean, `gitleaks` finds nothing, dependencies are pinned to versions with no known critical/high CVE, and `sbom.json` is current. CI (`.github/workflows/ci.yml`) enforces all of this on every PR: `lint` → `format-check` → `test` → `secrets-scan` → `sbom`.
+
+## Security
+
+- The LLM API key is retrieved exclusively via `keyring` from `tools/llm/client.py` — no other module imports `keyring` (statically enforced).
+- `tools/state_io/` is the only module permitted to write to `state/`, `docs/`, or `sprints/`; `run_id` and artifact paths are validated against path traversal before any filesystem call.
+- `core/` imports no concrete persona module, only `personas/base.py` — personas can't bypass the engine's validation/budget/persistence guarantees.
+- `State.model_config = ConfigDict(extra="forbid")` — no field exists that could hold a raw credential, and a compromised/buggy persona can't smuggle one through.
+- Per-run token budget is enforced centrally and aborts the run *before* an over-budget call executes, not after.
+
+See [`docs/architecture_definition.md`](docs/architecture_definition.md) for the full architecture and threat-model writeup.
+
+## Project layout
+
+```
+src/loop_engine/
+├── core/           # State model, run_loop engine
+├── personas/       # BasePersona ABC + pm/architecture/agile_sprint_breakdown/coder_iac
+├── loops/          # DEFAULT_LOOP composition
+├── tools/          # llm client, state_io writer, logging config
+└── cli.py          # Typer entrypoint
+
+tests/              # mirrors src/loop_engine/ layout, plus tests/integration/
+sprints/            # the sprint-by-sprint build plan and its Definition of Done
+docs/               # architecture definition and project spec
+```
+
+## License
+
+MIT
