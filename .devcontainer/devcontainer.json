@@ -6,6 +6,7 @@
     "target": "dev"
   },
   "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
   "remoteUser": "app",
   "postCreateCommand": "git config --global --add safe.directory /workspace && hatch env create",
   "customizations": {
