@@ -26,7 +26,7 @@ RUN mkdir -p /home/app/.config/python_keyring \
 FROM base AS dev
 
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y git curl gnupg \
+    && apt-get install --no-install-recommends -y git curl gnupg openssh-client socat procps \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
         -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] \
