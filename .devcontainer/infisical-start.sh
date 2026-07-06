@@ -5,20 +5,16 @@
 # seed-secrets.sh). INFISICAL_CLIENT_ID/SECRET are forwarded from the host
 # via devcontainer.json's containerEnv, the same ${localEnv:...} pattern
 # gpg-forward.sh already relies on for GPG_HOST_DIR.
+#
+# The project itself is identified by /workspace/.infisical.json
+# (workspaceId + defaultEnvironment) rather than a value hardcoded here —
+# that file contains no secret, is Infisical's own project-linking
+# convention (created via `infisical init`), and is read automatically by
+# `infisical run`/`login` without needing a --projectId flag.
 set -eu
 
 if [ -z "${INFISICAL_CLIENT_ID:-}" ] || [ -z "${INFISICAL_CLIENT_SECRET:-}" ]; then
     echo "infisical-start: INFISICAL_CLIENT_ID/SECRET not set, skipping Infisical provisioning" >&2
-    exit 0
-fi
-
-# Not a secret — Infisical project IDs are opaque identifiers, not
-# credentials. Fill in from the Infisical dashboard for the "loop-engine"
-# project before this script will do anything.
-INFISICAL_PROJECT_ID="REPLACE_WITH_LOOP_ENGINE_INFISICAL_PROJECT_ID"
-
-if [ "${INFISICAL_PROJECT_ID}" = "REPLACE_WITH_LOOP_ENGINE_INFISICAL_PROJECT_ID" ]; then
-    echo "infisical-start: INFISICAL_PROJECT_ID placeholder not filled in, skipping Infisical provisioning" >&2
     exit 0
 fi
 
@@ -28,7 +24,10 @@ INFISICAL_TOKEN=$(infisical login --method=universal-auth \
     --silent --plain)
 export INFISICAL_TOKEN
 
-infisical run --projectId="${INFISICAL_PROJECT_ID}" --env=dev \
+# --env is passed explicitly (rather than relying solely on
+# .infisical.json's defaultEnvironment) so this script always seeds from
+# "dev" even if a developer changes that default locally for other reasons.
+infisical run --env=dev \
     -- sh /workspace/.devcontainer/seed-secrets.sh
 
 unset INFISICAL_TOKEN
