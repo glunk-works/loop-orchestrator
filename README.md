@@ -83,23 +83,42 @@ docker build --target dev -t loop-engine:dev .
 docker build --target prod -t loop-engine:prod .
 ```
 
+### GPG commit signing from the host
+
+The devcontainer bind-mounts a GPG agent socket file from the host (`${localEnv:GPG_HOST_DIR}` in `.devcontainer/devcontainer.json`) so commit-signing passphrase prompts appear in the host's own pinentry/Kleopatra, never inside the container. Set `GPG_HOST_DIR` to the directory containing your host GPG agent's socket in your host shell profile before opening/rebuilding the devcontainer; `.devcontainer/gpg-forward.sh` relays it in on every container start and no-ops with a warning if it isn't mounted.
+
 ### Credentials in a container
 
-A bare Linux container has no OS-native keyring backend, so the prod/dev images install [`keyrings.cryptfile`](https://pypi.org/project/keyrings.cryptfile/), an encrypted file-based `keyring` backend. `client.py`'s contract doesn't change — `keyring.get_password(...)` just resolves against whichever backend is configured.
+A bare Linux container has no OS-native keyring backend, so the prod/dev images ship a custom encrypted-file `keyring` backend (`containers/keyring_backend/cryptfile_backend.py`, wired in via `keyring`'s own backend-discovery config — not the PyPI `keyrings.cryptfile` package). `client.py`'s contract doesn't change — `keyring.get_password(...)` just resolves against whichever backend is configured. The backend reads two *file paths*, never secret values, from env vars: `LOOP_ENGINE_KEYRING_FILE` (the encrypted blob, default `/run/secrets/keyring_data.enc`) and `LOOP_ENGINE_KEYRING_PASSPHRASE_FILE` (the decryption passphrase, default `/run/secrets/keyring_passphrase`).
 
 1. Create the encrypted keyring file once (outside the container, or inside a `dev` container shell):
    ```bash
-   pip install keyrings.cryptfile
    python -c "import keyring; keyring.set_password('loop-engine', 'anthropic_api_key', 'sk-ant-...')"
    ```
 2. Run the prod image, mounting the encrypted file and its passphrase in as files — never as environment variables:
    ```bash
    docker run --rm \
-     -v /path/to/encrypted_pass.cfg:/home/app/.local/share/python_keyring/cryptfile_pass.cfg:ro \
+     -v /path/to/keyring_data.enc:/run/secrets/keyring_data.enc:ro \
+     -v /path/to/keyring_passphrase:/run/secrets/keyring_passphrase:ro \
      -v $(pwd)/state:/workspace/state \
      loop-engine:prod run --input requirements.md --budget 100000
    ```
    The `state/` volume mount is required for `--resume-from` to work across separate `docker run` invocations — without it, each container starts with an empty `state/` directory.
+
+#### Dev container: Infisical provisioning
+
+The devcontainer provisions credentials from [Infisical](https://infisical.com) (project `loop-engine`, environment `dev`) instead of the manual step above, via a Universal Auth machine identity — one shared identity for the dev environment, never a per-secret static credential in the repo.
+
+- The project itself is identified by `.infisical.json` (committed at the repo root — it holds only the project ID and default environment, never a credential; created via `infisical init`). Fill in its `workspaceId` for the real `loop-engine` project before this does anything.
+- Before opening/rebuilding the devcontainer, set `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` in your **host** shell profile (same idea as the existing `GPG_HOST_DIR` requirement for [GPG commit signing](#gpg-commit-signing-from-the-host)) — get these from whoever administers the Infisical project; they're distributed out of band, never via Slack/email/repo.
+- On every container start, `.devcontainer/infisical-start.sh` authenticates via `infisical login --method=universal-auth`, then runs `.devcontainer/seed-secrets.sh` inside `infisical run` — which injects `ANTHROPIC_API_KEY`, `GITHUB_PERSONAL_ACCESS_TOKEN`, and `LOOP_ENGINE_KEYRING_PASSPHRASE` as env vars into that one child process only, never to disk. That script seeds the Anthropic key into the keyring backend above via the unchanged `keyring.set_password(...)` call, authenticates `gh` via `gh auth login --with-token`, and writes only the passphrase file to disk (at `/home/app/.infisical/keyring_passphrase` — the one secret that must persist, since `client.py` reads it continuously at runtime). There is no persistent Infisical daemon and no dotenv file with secret values left on disk.
+- This is a dev-container-only bootstrap convenience — the prod image's credential path above (mounted `/run/secrets/...` files) is unchanged and does not depend on Infisical.
+
+### GitHub MCP server
+
+The devcontainer is configured (`.mcp.json`, committed at the repo root) to connect Claude Code / Cursor to GitHub's hosted remote MCP server (`https://api.githubcopilot.com/mcp`) using a bearer-token `GITHUB_PERSONAL_ACCESS_TOKEN`. GitHub's own docs list OAuth (browser login) as their top-recommended auth method for this server; this repo uses a PAT instead so the devcontainer can authenticate non-interactively and repeatably at container start with no browser involved — a deliberate tradeoff, not an oversight.
+
+The token is sourced from Infisical the same way as the Anthropic key above: `gh auth login --with-token` seeds it into `gh`'s own credential store once per container start, and `.bashrc` derives `GITHUB_PERSONAL_ACCESS_TOKEN` fresh via `gh auth token` for any shell Claude Code/Cursor launches from — no separate copy of the token is ever written to disk. Use a fine-grained PAT scoped to just the repositories and permissions the MCP toolset needs (contents, pull requests, issues), not a broad classic PAT.
 
 ### CI/automation credential fallback
 
