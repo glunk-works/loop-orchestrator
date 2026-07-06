@@ -21,6 +21,7 @@ def _response(input_tokens: int, output_tokens: int, text: str) -> SimpleNamespa
     return SimpleNamespace(
         usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
         content=[SimpleNamespace(text=text)],
+        stop_reason="end_turn",
     )
 
 
@@ -40,7 +41,7 @@ def test_completed_run_never_writes_the_api_key_to_disk(tmp_path, monkeypatch) -
         _response(10, 10, json.dumps(_clean_pm_answers())),  # PM
         _response(10, 10, "# Architecture Definition\n..."),  # Architecture
         _response(10, 10, SPRINT_BLOCKS_RESPONSE),  # Agile Sprint Breakdown
-        _response(10, 10, "Created src/foo.py."),  # Coder/IaC
+        _response(10, 10, "Sprint 1 implemented: created src/foo.py."),  # Coder/IaC
     ]
     monkeypatch.setattr("anthropic.Anthropic", lambda **kwargs: mock_transport)
 
@@ -53,8 +54,13 @@ def test_completed_run_never_writes_the_api_key_to_disk(tmp_path, monkeypatch) -
 
     state_dir = tmp_path / "state"
     snapshot_files = list(state_dir.rglob("*.json"))
-    assert len(snapshot_files) == 4
+    # Four accepted-stage snapshots plus the terminal completed snapshot.
+    assert len(snapshot_files) == 5
 
     for snapshot_path in snapshot_files:
         content = snapshot_path.read_text()
         assert FAKE_API_KEY not in content
+
+    # The API key must not leak into produced artifacts either.
+    for artifact_path in (tmp_path / "sprints").rglob("*.md"):
+        assert FAKE_API_KEY not in artifact_path.read_text()

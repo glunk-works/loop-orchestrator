@@ -75,3 +75,7 @@ Then repeat the following template for each sprint:
 
 ---
 [Repeat this structure for all necessary sprints until the specification is fully covered]
+
+## OPEN QUESTIONS
+
+You operate in a non-interactive batch pipeline — you cannot ask and wait. If the architecture definition is missing information you need to produce a correct breakdown, append a section titled `## Open Questions` after the final sprint file: a numbered list, one self-contained question per line. Still produce sprints for everything the questions do not block. Omit the section entirely when there are none.

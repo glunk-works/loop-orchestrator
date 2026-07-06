@@ -12,6 +12,7 @@ def test_pyproject_declares_hatch_scripts() -> None:
     assert scripts["lint"] == "ruff check ."
     assert scripts["format"] == "ruff format ."
     assert scripts["sbom"] == "cyclonedx-py environment -o sbom.json"
+    assert scripts["audit"].startswith("pip-audit --skip-editable")
 
 
 def test_pyproject_declares_ruff_security_rules() -> None:
@@ -45,6 +46,7 @@ def test_dependabot_config_defines_daily_pip_updates() -> None:
 
 def test_ci_workflow_defines_required_jobs_in_order() -> None:
     text = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
-    jobs = ["lint:", "format-check:", "test:", "secrets-scan:", "sbom:"]
+    jobs = ["lint:", "format-check:", "test:", "secrets-scan:", "dependency-audit:", "sbom:"]
     positions = [text.index(job) for job in jobs]
     assert positions == sorted(positions)
+    assert "hatch run audit" in text

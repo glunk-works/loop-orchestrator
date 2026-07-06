@@ -83,6 +83,39 @@
       "version": "2.20.0"
     },
     {
+      "bom-ref": "SecretStorage==3.5.0",
+      "description": "Python bindings to FreeDesktop.org Secret Service API",
+      "externalReferences": [
+        {
+          "comment": "from packaging metadata Project-URL: Documentation",
+          "type": "documentation",
+          "url": "https://secretstorage.readthedocs.io/en/latest/"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: Issue Tracker",
+          "type": "issue-tracker",
+          "url": "https://github.com/mitya57/secretstorage/issues/"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: Homepage",
+          "type": "website",
+          "url": "https://github.com/mitya57/secretstorage"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "acknowledgement": "declared",
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "SecretStorage",
+      "purl": "pkg:pypi/secretstorage@3.5.0",
+      "type": "library",
+      "version": "3.5.0"
+    },
+    {
       "bom-ref": "annotated-doc==0.0.4",
       "description": "Document parameters, class attributes, return types, and variables inline, with Annotated.",
       "externalReferences": [
@@ -444,7 +477,7 @@
       "version": "5.2.0"
     },
     {
-      "bom-ref": "charset-normalizer==3.4.7",
+      "bom-ref": "charset-normalizer==3.4.8",
       "description": "The Real First Universal Charset Detector. Open, modern and actively maintained alternative to Chardet.",
       "externalReferences": [
         {
@@ -477,32 +510,9 @@
         }
       ],
       "name": "charset-normalizer",
-      "purl": "pkg:pypi/charset-normalizer@3.4.7",
+      "purl": "pkg:pypi/charset-normalizer@3.4.8",
       "type": "library",
-      "version": "3.4.7"
-    },
-    {
-      "bom-ref": "colorama==0.4.6",
-      "description": "Cross-platform colored terminal text.",
-      "externalReferences": [
-        {
-          "comment": "from packaging metadata Project-URL: Homepage",
-          "type": "website",
-          "url": "https://github.com/tartley/colorama"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "acknowledgement": "declared",
-            "name": "License :: OSI Approved :: BSD License"
-          }
-        }
-      ],
-      "name": "colorama",
-      "purl": "pkg:pypi/colorama@0.4.6",
-      "type": "library",
-      "version": "0.4.6"
+      "version": "3.4.8"
     },
     {
       "bom-ref": "cryptography==49.0.0",
@@ -744,7 +754,7 @@
       "version": "0.18.0"
     },
     {
-      "bom-ref": "filelock==3.29.4",
+      "bom-ref": "filelock==3.29.5",
       "description": "A platform independent file lock.",
       "externalReferences": [
         {
@@ -777,9 +787,9 @@
         }
       ],
       "name": "filelock",
-      "purl": "pkg:pypi/filelock@3.29.4",
+      "purl": "pkg:pypi/filelock@3.29.5",
       "type": "library",
-      "version": "3.29.4"
+      "version": "3.29.5"
     },
     {
       "bom-ref": "fqdn==1.5.1",
@@ -1068,6 +1078,34 @@
       "version": "4.5.0"
     },
     {
+      "bom-ref": "jeepney==0.9.0",
+      "description": "Low-level, pure Python DBus protocol wrapper.",
+      "externalReferences": [
+        {
+          "comment": "from packaging metadata Project-URL: Documentation",
+          "type": "documentation",
+          "url": "https://jeepney.readthedocs.io/en/latest/"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: Source",
+          "type": "other",
+          "url": "https://gitlab.com/takluyver/jeepney"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "acknowledgement": "declared",
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "jeepney",
+      "purl": "pkg:pypi/jeepney@0.9.0",
+      "type": "library",
+      "version": "0.9.0"
+    },
+    {
       "bom-ref": "jiter==0.16.0",
       "description": "Fast iterable JSON parser.",
       "externalReferences": [
@@ -1301,7 +1339,7 @@
         {
           "comment": "PackageSource: Local",
           "type": "distribution",
-          "url": "file:///C:/Users/SR116/projects/personal/loop-engine"
+          "url": "file:///workspace"
         },
         {
           "comment": "from packaging metadata Project-URL: Documentation",
@@ -1536,7 +1574,7 @@
       "version": "26.2"
     },
     {
-      "bom-ref": "pip==26.1.1",
+      "bom-ref": "pip==26.1.2",
       "description": "The PyPA recommended tool for installing Python packages.",
       "externalReferences": [
         {
@@ -1569,9 +1607,9 @@
         }
       ],
       "name": "pip",
-      "purl": "pkg:pypi/pip@26.1.1",
+      "purl": "pkg:pypi/pip@26.1.2",
       "type": "library",
-      "version": "26.1.1"
+      "version": "26.1.2"
     },
     {
       "bom-ref": "pip-api==0.0.34",
@@ -1978,29 +2016,6 @@
       "purl": "pkg:pypi/python-dateutil@2.9.0.post0",
       "type": "library",
       "version": "2.9.0.post0"
-    },
-    {
-      "bom-ref": "pywin32-ctypes==0.2.3",
-      "description": "A (partial) reimplementation of pywin32 using ctypes/cffi",
-      "externalReferences": [
-        {
-          "comment": "from packaging metadata: Home-page",
-          "type": "website",
-          "url": "https://github.com/enthought/pywin32-ctypes"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "acknowledgement": "declared",
-            "id": "BSD-3-Clause"
-          }
-        }
-      ],
-      "name": "pywin32-ctypes",
-      "purl": "pkg:pypi/pywin32-ctypes@0.2.3",
-      "type": "library",
-      "version": "0.2.3"
     },
     {
       "bom-ref": "referencing==0.37.0",
@@ -2730,7 +2745,7 @@
   "dependencies": [
     {
       "dependsOn": [
-        "filelock==3.29.4",
+        "filelock==3.29.5",
         "msgpack==1.2.1",
         "pytest==9.1.1",
         "requests==2.34.2",
@@ -2739,10 +2754,14 @@
       "ref": "CacheControl==0.14.4"
     },
     {
-      "dependsOn": [
-        "colorama==0.4.6"
-      ],
       "ref": "Pygments==2.20.0"
+    },
+    {
+      "dependsOn": [
+        "cryptography==49.0.0",
+        "jeepney==0.9.0"
+      ],
+      "ref": "SecretStorage==3.5.0"
     },
     {
       "ref": "annotated-doc==0.0.4"
@@ -2803,10 +2822,7 @@
       "ref": "chardet==5.2.0"
     },
     {
-      "ref": "charset-normalizer==3.4.7"
-    },
-    {
-      "ref": "colorama==0.4.6"
+      "ref": "charset-normalizer==3.4.8"
     },
     {
       "dependsOn": [
@@ -2852,7 +2868,7 @@
       "ref": "docstring_parser==0.18.0"
     },
     {
-      "ref": "filelock==3.29.4"
+      "ref": "filelock==3.29.5"
     },
     {
       "ref": "fqdn==1.5.1"
@@ -2917,6 +2933,12 @@
       "ref": "jaraco.functools==4.5.0"
     },
     {
+      "dependsOn": [
+        "pytest==9.1.1"
+      ],
+      "ref": "jeepney==0.9.0"
+    },
+    {
       "ref": "jiter==0.16.0"
     },
     {
@@ -2948,11 +2970,12 @@
     },
     {
       "dependsOn": [
+        "SecretStorage==3.5.0",
         "jaraco.classes==3.4.0",
         "jaraco.context==6.1.2",
         "jaraco.functools==4.5.0",
-        "pytest==9.1.1",
-        "pywin32-ctypes==0.2.3"
+        "jeepney==0.9.0",
+        "pytest==9.1.1"
       ],
       "ref": "keyring==25.7.0"
     },
@@ -3007,7 +3030,7 @@
     },
     {
       "dependsOn": [
-        "pip==26.1.1"
+        "pip==26.1.2"
       ],
       "ref": "pip-api==0.0.34"
     },
@@ -3020,7 +3043,7 @@
       "ref": "pip-requirements-parser==32.0.1"
     },
     {
-      "ref": "pip==26.1.1"
+      "ref": "pip==26.1.2"
     },
     {
       "dependsOn": [
@@ -3080,7 +3103,6 @@
       "dependsOn": [
         "Pygments==2.20.0",
         "attrs==26.1.0",
-        "colorama==0.4.6",
         "iniconfig==2.3.0",
         "packaging==26.2",
         "pluggy==1.6.0",
@@ -3096,9 +3118,6 @@
       "ref": "python-dateutil==2.9.0.post0"
     },
     {
-      "ref": "pywin32-ctypes==0.2.3"
-    },
-    {
       "dependsOn": [
         "attrs==26.1.0",
         "rpds-py==2026.6.3",
@@ -3110,7 +3129,7 @@
       "dependsOn": [
         "certifi==2026.6.17",
         "chardet==5.2.0",
-        "charset-normalizer==3.4.7",
+        "charset-normalizer==3.4.8",
         "idna==3.18",
         "urllib3==2.7.0"
       ],
@@ -3166,7 +3185,6 @@
     {
       "dependsOn": [
         "annotated-doc==0.0.4",
-        "colorama==0.4.6",
         "rich==15.0.0",
         "shellingham==1.5.4"
       ],
@@ -3195,7 +3213,7 @@
     }
   ],
   "metadata": {
-    "timestamp": "2026-07-05T18:11:26.489572+00:00",
+    "timestamp": "2026-07-06T18:20:45.220547+00:00",
     "tools": {
       "components": [
         {
@@ -3299,7 +3317,7 @@
       ]
     }
   },
-  "serialNumber": "urn:uuid:d0bc9a5e-28ed-4b08-8e95-55bd78fe4ea9",
+  "serialNumber": "urn:uuid:eb2ca7b6-236e-49d1-96cb-1ebe29dbd454",
   "version": 1,
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",

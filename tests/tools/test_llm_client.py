@@ -7,13 +7,20 @@ from loop_engine.tools.llm.client import (
     BudgetExceededError,
     LLMClient,
     MissingCredentialError,
+    TruncatedResponseError,
 )
 
 
-def _mock_response(input_tokens: int, output_tokens: int, text: str = "hello") -> SimpleNamespace:
+def _mock_response(
+    input_tokens: int,
+    output_tokens: int,
+    text: str = "hello",
+    stop_reason: str = "end_turn",
+) -> SimpleNamespace:
     return SimpleNamespace(
         usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
         content=[SimpleNamespace(text=text)],
+        stop_reason=stop_reason,
     )
 
 
@@ -59,6 +66,31 @@ def test_budget_exceeded_raises_and_skips_underlying_call(monkeypatch) -> None:
         client.call("a very long prompt that estimates well over budget", model="claude-sonnet-5")
 
     mock_create.assert_not_called()
+
+
+def test_truncated_response_raises_instead_of_returning_partial_text(monkeypatch) -> None:
+    monkeypatch.setattr("keyring.get_password", lambda *_args: "fake-api-key")
+
+    client = LLMClient(budget_tokens=10_000)
+    client._anthropic.messages.create = MagicMock(
+        return_value=_mock_response(50, 1024, text="half a docu", stop_reason="max_tokens")
+    )
+
+    with pytest.raises(TruncatedResponseError):
+        client.call("a prompt", model="claude-sonnet-5")
+
+    # The tokens were still spent and must still be accounted for.
+    assert client.tokens_used == 1074
+
+
+def test_remaining_reports_budget_left(monkeypatch) -> None:
+    monkeypatch.setattr("keyring.get_password", lambda *_args: "fake-api-key")
+
+    client = LLMClient(budget_tokens=10_000)
+    client._anthropic.messages.create = MagicMock(return_value=_mock_response(50, 25))
+    client.call("a prompt", model="claude-sonnet-5")
+
+    assert client.remaining() == 10_000 - 75
 
 
 def test_ci_env_fallback_used_when_both_gate_variables_set(monkeypatch) -> None:

@@ -27,6 +27,11 @@ class BudgetExceededError(Exception):
     pass
 
 
+class TruncatedResponseError(Exception):
+    """The model hit max_tokens: the response is silently incomplete and must
+    not be treated as a finished artifact by any downstream stage."""
+
+
 class LLMResponse(BaseModel):
     text: str
     tokens_used: int
@@ -59,13 +64,22 @@ class LLMClient:
         self.budget_tokens = budget_tokens
         self._tokens_used = 0
 
+    @property
+    def tokens_used(self) -> int:
+        return self._tokens_used
+
+    def remaining(self) -> int:
+        """Tokens left in the run budget. The single budget API: the engine
+        checks this rather than reaching into private counters, and this class
+        is the only place a budget decision is made."""
+        return self.budget_tokens - self._tokens_used
+
     def call(self, prompt: str, *, model: str, max_tokens: int = 1024, **kwargs) -> LLMResponse:
         estimated_tokens = _estimate_tokens(prompt) + max_tokens
-        if self._tokens_used + estimated_tokens > self.budget_tokens:
-            remaining = self.budget_tokens - self._tokens_used
+        if estimated_tokens > self.remaining():
             raise BudgetExceededError(
                 f"Estimated {estimated_tokens} tokens would exceed the "
-                f"{remaining} tokens remaining in the run budget."
+                f"{self.remaining()} tokens remaining in the run budget."
             )
 
         response = self._anthropic.messages.create(
@@ -77,5 +91,12 @@ class LLMClient:
 
         actual_tokens = response.usage.input_tokens + response.usage.output_tokens
         self._tokens_used += actual_tokens
+
+        if getattr(response, "stop_reason", None) == "max_tokens":
+            raise TruncatedResponseError(
+                f"Response hit the max_tokens={max_tokens} ceiling; the output is "
+                "incomplete and would corrupt downstream stages if used."
+            )
+
         text = "".join(block.text for block in response.content if hasattr(block, "text"))
         return LLMResponse(text=text, tokens_used=actual_tokens)

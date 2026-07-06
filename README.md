@@ -48,13 +48,32 @@ hatch run loop-engine run --input path/to/requirements.md --budget 100000
 | `--budget` | Hard cap on cumulative LLM tokens for the run | `100000` |
 | `--resume-from` | Path to a prior `State` snapshot; resumes after the last completed stage instead of starting over | none |
 
-Every stage's `State` snapshot is written to `state/<run_id>/<NN>_<StageName>.json` as it completes — the run is resumable and fully inspectable, not a black box.
+Every stage's `State` snapshot is written to `state/<run_id>/<NN>_<StageName>.json` as it completes, and a terminal snapshot records how every run ended (`completed`, `failed_stage`, `budget_exceeded`, `awaiting_issue`) — the run is resumable and fully inspectable, not a black box. Exit codes: `0` completed, `2` paused on a GitHub issue, `3` budget exceeded.
 
 ### Resume an interrupted or budget-aborted run
 
 ```bash
 hatch run loop-engine run --resume-from state/<run_id>/01_ArchitecturePersona.json
 ```
+
+### Answer a paused run's questions (GitHub issue round-trip)
+
+When the persona pipeline hits a question no automated layer can resolve, it files a GitHub issue (label `loop-engine/needs-human`), records the issue in the snapshot, and exits with status `awaiting_issue`. Reply on the issue with a fenced block — one `N: answer` line per question:
+
+````markdown
+```answers
+1: eu-west-1
+2: OIDC
+```
+````
+
+then resume; the PM persona folds your answers into the spec, classifies each answer's blast radius, and the run re-enters at the right stage:
+
+```bash
+hatch run loop-engine resume --from-issue <issue number>
+```
+
+Closing the issue without an answers comment aborts the run.
 
 ### View per-stage cost/token usage
 
@@ -136,21 +155,34 @@ docker run --rm \
 ## How it works
 
 ```
-loops/default  ──▶ [PM] ──▶ [Architecture] ──▶ [Agile Sprint Breakdown] ──▶ [Coder/IaC]
-                     │            │                      │                      │
-                     ▼            ▼                      ▼                      ▼
-              after each persona: State snapshot written to state/<run_id>/
+ human ⇄ GitHub Issue (filed by the engine; answers as ```answers comments)
+              ⇅
+             PM ──────────── owns project_spec; resolver of last automated resort
+              ⇅
+          Architect ───────── owns architecture_definition; resolves Coder questions
+              ⇅
+     Sprint Breakdown ─────── re-entered on "plan"-impact rework
+              ⇅
+            Coder ─────────── per-sprint inner loop; escalates, never guesses
+
+ forward path per stage: persona.run() → gate → ACCEPT (snapshot, next stage)
+                                              → REVISE (bounded, findings fed back)
+                                              → ESCALATE (resolver ladder → issue)
 ```
 
-- **`core/state.py`** — `State`, a Pydantic v2 model (`schema_version`, `run_id`, `stage_history`, `artifacts`) with `extra="forbid"`, so no field can silently smuggle a credential through.
-- **`core/engine.py`** — `run_loop()`: a plain `for persona in loop` sequential loop. Before each stage: checks cumulative LLM usage against the budget and aborts (persisting the last valid snapshot) if it's already exhausted. After each stage: revalidates the persona's returned `State`, appends a `StageRecord` (stage name, tokens used, cost), persists a snapshot, and emits a structured JSON cost-log line.
-- **`personas/base.py`** — `BasePersona`, an ABC with one abstract method: `run(self, state: State, llm_client: LLMClient) -> State`. Personas receive the LLM client via injection — they cannot construct their own or touch credentials directly.
-- **`personas/{pm,architecture,agile_sprint_breakdown,coder_iac}/`** — the four default personas. Each embeds its prompt as a module-level `PROMPT_TEMPLATE` constant, consumes the prior stage's artifact (raising `KeyError` if missing), and writes its own artifact back to `State`. `PMPersona` additionally runs a critic revision loop (ported from `pm-agent-loop`), re-prompting the LLM to resolve blank/contradictory/vague fields before finalizing the project spec.
-- **`loops/default/loop.py`** — `DEFAULT_LOOP`, an ordered `list[BasePersona]`. No YAML/JSON loop-definition format — loops are just Python.
-- **`tools/llm/client.py`** — `LLMClient`, a thin wrapper around the Anthropic SDK. Retrieves the API key from `keyring` exactly once per instance and enforces a hard per-run token budget, raising `BudgetExceededError` *before* the underlying API call if a request would exceed it.
+The user engages only with the PM role; the other personas coordinate through it. Each stage's output must pass a content **gate** before the run advances. Questions a persona cannot answer escalate up a resolver ladder (Coder → Architect → PM), and whatever no automated layer resolves is filed as a GitHub issue for the human. Every resolution carries a blast-radius classification that routes rework: `task` re-runs the asking stage, `plan` re-enters Sprint Breakdown, `architecture` re-enters the Architect. Hard caps on escalations and re-plans keep every feedback edge finite — hitting a cap escalates to the human instead of looping.
+
+- **`core/state.py`** — `State`, a Pydantic v2 model (`schema_version` 2: `run_id`, `status`, `questions`, `pending_issue`, `counters`, `stage_history`, `artifacts`) with `extra="forbid"`, so no field can silently smuggle a credential through. `RunStatus` makes termination explicit; v1 snapshots are migrated on load.
+- **`core/engine.py`** — `run_loop()`: per stage, a bounded propose → gate → accept/revise/escalate cycle. Gate findings feed revision re-prompts (identical findings twice stops paying and escalates); every exit path — success or any failure — persists a snapshot, so no paid work is lost to a traceback.
+- **`core/gates.py`** — `ArtifactGate`: presence/JSON-shape checks, question-shaped-output detection (a model that answers with a question never advances the pipeline), and `## Open Questions` extraction.
+- **`personas/base.py`** — `BasePersona`: abstract `run(state, llm_client, findings=None)`, declared `consumes`/`produces` artifact keys (pre-checked by the engine), and an overridable `resolve_questions()` hook for resolver duty. Personas receive the LLM client via injection — they cannot construct their own or touch credentials directly.
+- **`personas/{pm,architecture,agile_sprint_breakdown,coder_iac}/`** — the four default personas, with batch-mode prompts (explicit assumptions + `## Open Questions`, never "ask and wait"). `PMPersona` keeps its critic revision loop with no-progress detection and folds human issue answers back into the spec; `CoderIacPersona` implements one sprint per LLM call and stops at a sprint that raises questions. Sprint plans and implementation reports are written to `sprints/` as real files.
+- **`loops/default/loop.py`** — `DEFAULT_LOOP`, a `Loop` of `Stage`s wiring personas, gates, the resolver ladder, and blast-radius re-entry targets. No YAML/JSON loop-definition format — loops are just Python.
+- **`tools/llm/client.py`** — `LLMClient`, a thin wrapper around the Anthropic SDK. Retrieves the API key from `keyring` exactly once per instance, enforces a hard per-run token budget *before* each call (`BudgetExceededError`), and refuses to return silently truncated output (`TruncatedResponseError` on `stop_reason == "max_tokens"`).
+- **`tools/issue_io/`** — the sole GitHub caller (shells out to the already-authenticated `gh`; no token passes through the process). Files escalation issues and parses answer comments.
 - **`tools/state_io/writer.py`** — the sole writer of `State` snapshots (`state/`) and produced artifacts (`docs/`, `sprints/`, `src/`). Validates `run_id`/artifact paths against path traversal before any filesystem call.
 - **`tools/logging_config.py`** — structured per-stage cost logging.
-- **`cli.py`** — the Typer entrypoint (`run`, `cost-summary`). A thin wrapper; all logic lives in the library layer.
+- **`cli.py`** — the Typer entrypoint (`run`, `resume`, `cost-summary`). A thin wrapper; all logic lives in the library layer.
 
 ## Development
 
@@ -158,6 +190,7 @@ loops/default  ──▶ [PM] ──▶ [Architecture] ──▶ [Agile Sprint B
 hatch run test                        # pytest
 hatch run lint                        # ruff check (incl. bandit-equivalent S rules)
 hatch run format                      # ruff format
+hatch run audit                       # pip-audit: known-CVE scan of all pinned dependencies
 hatch run sbom                        # regenerate sbom.json (CycloneDX)
 ```
 

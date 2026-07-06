@@ -1,10 +1,20 @@
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from loop_engine.core.engine import InvalidStateTransitionError, run_loop
-from loop_engine.core.state import StageRecord, State
+from loop_engine.core.engine import (
+    MAX_ESCALATIONS_PER_STAGE,
+    InvalidStateTransitionError,
+    Loop,
+    MissingArtifactError,
+    Stage,
+    StageGateFailedError,
+    run_loop,
+)
+from loop_engine.core.gates import ArtifactGate
+from loop_engine.core.state import IssueRef, Question, RunStatus, StageRecord, State
 from loop_engine.personas.base import BasePersona
 
 
@@ -13,75 +23,304 @@ def _isolated_cwd(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
 
-def _initial_state(run_id: str = "run-1") -> State:
-    return State(schema_version=1, run_id=run_id, stage_history=[], artifacts={})
+@pytest.fixture(autouse=True)
+def _stub_issue_filer(monkeypatch):
+    filed: list[list[Question]] = []
+
+    def fake_file_issue(state, questions, snapshot_path):
+        filed.append(list(questions))
+        return IssueRef(number=42, url="https://github.com/example/repo/issues/42")
+
+    monkeypatch.setattr("loop_engine.core.engine.file_question_issue", fake_file_issue)
+    return filed
+
+
+def _initial_state(run_id: str = "run-1", artifacts: dict[str, str] | None = None) -> State:
+    return State(
+        schema_version=2,
+        run_id=run_id,
+        stage_history=[],
+        artifacts=artifacts if artifacts is not None else {},
+    )
+
+
+def _stub_llm_client(tokens_used: int = 0, budget_tokens: int = 10_000) -> SimpleNamespace:
+    client = SimpleNamespace(_tokens_used=tokens_used, budget_tokens=budget_tokens)
+    client.tokens_used = tokens_used
+    client.remaining = lambda: client.budget_tokens - client.tokens_used
+    return client
 
 
 class AppendArtifactPersona(BasePersona):
     def __init__(self, key: str) -> None:
         self._key = key
 
-    def run(self, state: State, llm_client) -> State:
+    def run(self, state: State, llm_client, findings=None) -> State:
         artifacts = {**state.artifacts, self._key: "done"}
         return state.model_copy(update={"artifacts": artifacts})
 
 
-class CorruptingPersona(BasePersona):
-    def run(self, state: State, llm_client) -> State:
-        record = StageRecord(
-            stage_name="corrupt", tokens_used=1, cost_usd=0.0, completed_at="2026-07-02T00:00:00Z"
-        )
-        state.stage_history.append(record)
-        state.stage_history[0].tokens_used = -5  # bypasses construction-time validation
-        return state
+def _stage(persona: BasePersona, key: str, **kwargs) -> Stage:
+    return Stage(persona=persona, gate=ArtifactGate(key), **kwargs)
 
 
-class NeverCalledPersona(BasePersona):
-    def run(self, state: State, llm_client) -> State:
-        raise AssertionError("this persona must never be invoked")
+def _simple_loop(keys: list[str]) -> Loop:
+    return Loop(stages=[_stage(AppendArtifactPersona(k), k) for k in keys])
 
 
-def _stub_llm_client(tokens_used: int = 0, budget_tokens: int = 10_000) -> SimpleNamespace:
-    return SimpleNamespace(_tokens_used=tokens_used, budget_tokens=budget_tokens)
-
-
-def test_run_loop_executes_personas_in_order_and_merges_state() -> None:
-    personas = [AppendArtifactPersona("a"), AppendArtifactPersona("b"), AppendArtifactPersona("c")]
-
-    final_state = run_loop(personas, _initial_state(), _stub_llm_client())
+def test_run_loop_executes_stages_in_order_and_merges_state() -> None:
+    final_state = run_loop(_simple_loop(["a", "b", "c"]), _initial_state(), _stub_llm_client())
 
     assert final_state.artifacts == {"a": "done", "b": "done", "c": "done"}
+    assert final_state.status is RunStatus.COMPLETED
+
+
+def test_run_loop_writes_snapshot_after_each_stage_and_a_terminal_snapshot() -> None:
+    run_loop(_simple_loop(["a", "b"]), _initial_state("run-2"), _stub_llm_client())
+
+    run_dir = Path("state") / "run-2"
+    names = sorted(p.name for p in run_dir.glob("*.json"))
+    assert names == [
+        "00_AppendArtifactPersona.json",
+        "01_AppendArtifactPersona.json",
+        "02_completed.json",
+    ]
+    final = State.model_validate_json((run_dir / "02_completed.json").read_text())
+    assert final.status is RunStatus.COMPLETED
 
 
 def test_run_loop_raises_invalid_state_transition_error_naming_persona() -> None:
-    with pytest.raises(InvalidStateTransitionError, match="CorruptingPersona"):
-        run_loop([CorruptingPersona()], _initial_state(), _stub_llm_client())
-
-
-def test_run_loop_writes_snapshot_after_each_stage() -> None:
-    personas = [AppendArtifactPersona("a"), AppendArtifactPersona("b"), AppendArtifactPersona("c")]
-
-    run_loop(personas, _initial_state("run-2"), _stub_llm_client())
-
-    expected_names = [
-        "00_AppendArtifactPersona",
-        "01_AppendArtifactPersona",
-        "02_AppendArtifactPersona",
-    ]
-    for name in expected_names:
-        assert (Path("state") / "run-2" / f"{name}.json").exists()
-
-
-def test_run_loop_aborts_before_second_stage_when_budget_already_exhausted() -> None:
-    from loop_engine.tools.llm.client import BudgetExceededError
-
-    class BudgetConsumingPersona(BasePersona):
-        def run(self, state: State, llm_client) -> State:
-            llm_client._tokens_used = llm_client.budget_tokens
+    class CorruptingPersona(BasePersona):
+        def run(self, state: State, llm_client, findings=None) -> State:
+            record = StageRecord(
+                stage_name="corrupt",
+                tokens_used=1,
+                cost_usd=0.0,
+                completed_at="2026-07-02T00:00:00Z",
+            )
+            state.stage_history.append(record)
+            state.stage_history[0].tokens_used = -5  # bypasses construction-time validation
             return state
 
-    personas = [BudgetConsumingPersona(), NeverCalledPersona()]
-    client = _stub_llm_client(tokens_used=0, budget_tokens=100)
+    loop = Loop(stages=[Stage(persona=CorruptingPersona(), gate=ArtifactGate("x"))])
+    with pytest.raises(InvalidStateTransitionError, match="CorruptingPersona"):
+        run_loop(loop, _initial_state(), _stub_llm_client())
 
-    with pytest.raises(BudgetExceededError):
-        run_loop(personas, _initial_state("run-3"), client)
+
+def test_run_loop_missing_consumed_artifact_fails_with_snapshot() -> None:
+    class NeedsInputPersona(AppendArtifactPersona):
+        consumes = ("nonexistent",)
+
+    loop = Loop(stages=[_stage(NeedsInputPersona("out"), "out")])
+    with pytest.raises(MissingArtifactError, match="nonexistent"):
+        run_loop(loop, _initial_state("run-3"), _stub_llm_client())
+
+    snapshot = Path("state") / "run-3" / "00_failed_stage.json"
+    assert snapshot.exists()
+
+
+def test_run_loop_budget_exhaustion_returns_budget_exceeded_with_snapshot() -> None:
+    class NeverCalledPersona(BasePersona):
+        def run(self, state: State, llm_client, findings=None) -> State:
+            raise AssertionError("this persona must never be invoked")
+
+    loop = Loop(stages=[Stage(persona=NeverCalledPersona(), gate=ArtifactGate("x"))])
+    client = _stub_llm_client(tokens_used=100, budget_tokens=100)
+
+    final = run_loop(loop, _initial_state("run-4"), client)
+
+    assert final.status is RunStatus.BUDGET_EXCEEDED
+    assert (Path("state") / "run-4" / "00_budget_exceeded.json").exists()
+
+
+def test_run_loop_revise_then_accept_passes_gate_findings_to_persona() -> None:
+    received_findings: list[list[str] | None] = []
+
+    class EventuallyValidPersona(BasePersona):
+        def __init__(self) -> None:
+            self.attempts = 0
+
+        def run(self, state: State, llm_client, findings=None) -> State:
+            received_findings.append(findings)
+            self.attempts += 1
+            value = "" if self.attempts == 1 else "real output"
+            return state.model_copy(update={"artifacts": {**state.artifacts, "doc": value}})
+
+    loop = Loop(stages=[Stage(persona=EventuallyValidPersona(), gate=ArtifactGate("doc"))])
+    final = run_loop(loop, _initial_state(), _stub_llm_client())
+
+    assert final.status is RunStatus.COMPLETED
+    assert received_findings[0] is None
+    assert any("missing or empty" in f for f in received_findings[1])
+
+
+def test_run_loop_no_progress_revision_escalates_instead_of_rerolling(
+    _stub_issue_filer,
+) -> None:
+    class AlwaysEmptyPersona(BasePersona):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def run(self, state: State, llm_client, findings=None) -> State:
+            self.calls += 1
+            return state.model_copy(update={"artifacts": {**state.artifacts, "doc": ""}})
+
+    persona = AlwaysEmptyPersona()
+    loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"), max_revisions=3)])
+
+    final = run_loop(loop, _initial_state("run-5"), _stub_llm_client())
+
+    # Two attempts produce identical findings; the third re-roll is not spent.
+    assert persona.calls == 2
+    assert final.status is RunStatus.AWAITING_ISSUE
+    assert final.pending_issue is not None
+    assert len(_stub_issue_filer) == 1
+
+
+def test_run_loop_gate_failure_with_changing_findings_raises_after_cap() -> None:
+    class AlternatingBadPersona(BasePersona):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def run(self, state: State, llm_client, findings=None) -> State:
+            self.calls += 1
+            # Alternate between two invalid shapes so findings keep changing.
+            value = "" if self.calls % 2 else "not json"
+            return state.model_copy(update={"artifacts": {**state.artifacts, "doc": value}})
+
+    loop = Loop(
+        stages=[
+            Stage(
+                persona=AlternatingBadPersona(),
+                gate=ArtifactGate("doc", parse_json="object"),
+                max_revisions=1,
+            )
+        ]
+    )
+    with pytest.raises(StageGateFailedError, match="AlternatingBadPersona"):
+        run_loop(loop, _initial_state("run-6"), _stub_llm_client())
+
+    assert (Path("state") / "run-6" / "00_failed_stage.json").exists()
+
+
+class QuestionAskingPersona(BasePersona):
+    """Emits an artifact with an Open Questions section on the first pass."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def run(self, state: State, llm_client, findings=None) -> State:
+        self.calls += 1
+        if findings:
+            doc = "# Doc\n\nAll ambiguities resolved."
+        else:
+            doc = "# Doc\n\ncontent\n\n## Open Questions\n\n1. Which region?"
+        return state.model_copy(update={"artifacts": {**state.artifacts, "doc": doc}})
+
+
+class AnsweringResolver(BasePersona):
+    def __init__(self, impact: str = "task") -> None:
+        self.impact = impact
+        self.seen: list[str] = []
+
+    def run(self, state: State, llm_client, findings=None) -> State:
+        return state
+
+    def resolve_questions(self, questions, state, llm_client):
+        self.seen.extend(q.text for q in questions)
+        return [
+            q.model_copy(
+                update={"resolution": "eu-west-1", "resolved_by": "resolver", "impact": self.impact}
+            )
+            for q in questions
+        ]
+
+
+def test_run_loop_escalation_resolved_by_ladder_reenters_with_findings() -> None:
+    persona = QuestionAskingPersona()
+    resolver = AnsweringResolver(impact="task")
+    loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"), resolvers=[resolver])])
+
+    final = run_loop(loop, _initial_state("run-7"), _stub_llm_client())
+
+    assert final.status is RunStatus.COMPLETED
+    assert persona.calls == 2
+    assert resolver.seen == ["Which region?"]
+    assert final.questions[0].resolution == "eu-west-1"
+
+
+def test_run_loop_unresolved_questions_file_issue_and_pause(_stub_issue_filer) -> None:
+    persona = QuestionAskingPersona()
+    loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"))])
+
+    final = run_loop(loop, _initial_state("run-8"), _stub_llm_client())
+
+    assert final.status is RunStatus.AWAITING_ISSUE
+    assert final.pending_issue == IssueRef(
+        number=42, url="https://github.com/example/repo/issues/42"
+    )
+    assert [q.text for q in _stub_issue_filer[0]] == ["Which region?"]
+    assert (Path("state") / "run-8" / "00_awaiting_issue.json").exists()
+
+
+def test_run_loop_plan_impact_reenters_earlier_stage() -> None:
+    executed: list[str] = []
+
+    class RecordingPersona(AppendArtifactPersona):
+        def run(self, state, llm_client, findings=None):
+            executed.append(f"{self._key}{':revised' if findings else ''}")
+            return super().run(state, llm_client, findings)
+
+    asker = QuestionAskingPersona()
+    resolver = AnsweringResolver(impact="plan")
+
+    loop = Loop(
+        stages=[
+            _stage(RecordingPersona("plan"), "plan"),
+            Stage(persona=asker, gate=ArtifactGate("doc"), resolvers=[resolver]),
+        ],
+        impact_reentry={"plan": 0},
+    )
+
+    final = run_loop(loop, _initial_state("run-9"), _stub_llm_client())
+
+    assert final.status is RunStatus.COMPLETED
+    # plan runs, asker escalates, plan re-runs with findings, asker re-runs.
+    assert executed == ["plan", "plan:revised"]
+    assert asker.calls == 2
+    assert final.counters.get("replans") == 1
+
+
+def test_run_loop_escalation_cap_files_issue_instead_of_cycling(_stub_issue_filer) -> None:
+    class AlwaysAskingPersona(BasePersona):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def run(self, state: State, llm_client, findings=None) -> State:
+            self.calls += 1
+            doc = f"# Doc\n\n## Open Questions\n\n1. Question number {self.calls}?"
+            return state.model_copy(update={"artifacts": {**state.artifacts, "doc": doc}})
+
+    persona = AlwaysAskingPersona()
+    resolver = AnsweringResolver(impact="task")
+    loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"), resolvers=[resolver])])
+
+    final = run_loop(loop, _initial_state("run-10"), _stub_llm_client())
+
+    assert final.status is RunStatus.AWAITING_ISSUE
+    assert persona.calls == MAX_ESCALATIONS_PER_STAGE + 1
+    assert len(_stub_issue_filer) == 1
+
+
+def test_run_loop_terminal_snapshot_exists_for_every_status(tmp_path) -> None:
+    # COMPLETED covered above; verify the awaiting-issue terminal snapshot
+    # round-trips with pending_issue and questions intact.
+    persona = QuestionAskingPersona()
+    loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"))])
+    run_loop(loop, _initial_state("run-11"), _stub_llm_client())
+
+    snapshot_path = Path("state") / "run-11" / "00_awaiting_issue.json"
+    snapshot = State.model_validate(json.loads(snapshot_path.read_text()))
+    assert snapshot.status is RunStatus.AWAITING_ISSUE
+    assert snapshot.pending_issue is not None
+    assert snapshot.questions and snapshot.questions[0].resolution is None

@@ -1,7 +1,12 @@
-from loop_engine.core.state import State
+from loop_engine.core.state import Question, State
 from loop_engine.personas.base import BasePersona
+from loop_engine.personas.resolution import apply_resolution_response, format_questions
 
 DEFAULT_MODEL = "claude-sonnet-5"
+# A full architecture definition is a multi-page document; the old 1024
+# default guaranteed silent truncation before the client learned to raise.
+MAX_TOKENS = 8192
+RESOLUTION_MAX_TOKENS = 2048
 
 # Embedded verbatim from prompts/02_architecture_definition_prompt.md.
 # tests/personas/test_prompt_parity.py guards against this drifting from
@@ -18,29 +23,29 @@ Your ultimate output will be directly consumed by a Developer/IaC persona (e.g.,
 AWS serverless infrastructure, and OpenTofu). Therefore, your architectural decisions must be
 concrete, deterministic, and securely designed by default.
 
+You operate in a non-interactive batch pipeline: there is no human in this conversation, and you
+get exactly one response. Never ask a question and wait — the pipeline records your open
+questions and routes them to the PM persona or a human out-of-band.
+
 ## Execution Directives
 
-Analyze: Carefully review the provided Project Specification Document.
+Analyze: Carefully review the provided Project Specification Document in full before writing.
 
-Resolve Ambiguity (The One-by-One Rule): You must not make assumptions about critical
-infrastructure, security boundaries, or compliance requirements. If there are ambiguities in the
-specification, you must ask clarifying questions.
+Resolve Ambiguity (Assumptions, Not Dialogue): For each ambiguity in the specification, make the
+most conservative, security-preserving assumption that lets the architecture proceed, and record
+it under the `## Assumptions` section of your output. Do NOT invent answers for ambiguities
+concerning critical infrastructure, security boundaries, or compliance requirements — those are
+escalation-worthy: list each one as a single, self-contained question under the
+`## Open Questions` section instead, numbered, one per line.
 
-CRITICAL: Ask exactly ONE question at a time.
-
-Wait for the user's response.
-
-Briefly state the architectural impact of their answer.
-
-Ask the next question only if ambiguities remain.
-
-Finalize: Once all ambiguities are resolved, generate the comprehensive Architecture Definition
-Document.
+Finalize: Generate the comprehensive Architecture Definition Document in the same response, built
+on the specification plus your recorded assumptions. If Open Questions exist, still produce the
+document for everything they do not block, and reference the question number wherever a decision
+depends on an answer.
 
 ## Output Requirements (Architecture Definition Document)
 
-When you are ready to produce the final architecture, use the following structure. Be prescriptive
-and authoritative.
+Produce the final architecture using the following structure. Be prescriptive and authoritative.
 
 1. System Context & Data Flow: High-level description of how the system operates, including data
 ingress, processing boundaries, and egress.
@@ -67,19 +72,71 @@ execution needs to be optimized for cost efficiency.
 8. IaC Handoff Directives: A bulleted list of strict requirements and constraints specifically
 formatted to instruct the downstream Developer/IaC persona.
 
+After section 8, always include:
+
+## Assumptions
+
+Every assumption you made to resolve a specification ambiguity, one bullet each, with the
+rationale. Write "None." if the specification was fully unambiguous.
+
+## Open Questions
+
+A numbered list of questions only a human or the PM can answer (critical infrastructure, security
+boundaries, compliance). Omit this section entirely when there are none — an empty Open Questions
+section is treated as an escalation.
+
 ## Initial Action
 
-Wait for the user to provide the initial Project Specification Document. Do not begin your
-analysis until it is provided.
+The Project Specification Document is included at the end of this prompt. Begin your analysis
+immediately; your single response must contain the complete output described above.
 """
+
+RESOLUTION_PROMPT_TEMPLATE = (
+    "You are the Architect persona in a multi-stage pipeline. A downstream "
+    "implementation persona escalated questions it could not resolve. Answer "
+    "each question ONLY if the architecture definition below explicitly "
+    "settles it; never speculate beyond the document.\n\n"
+    "For every answered question, also classify the blast radius of the "
+    'answer: "task" (the implementer just needed the detail), "plan" (the '
+    'sprint breakdown must change), or "architecture" (the architecture '
+    "definition itself must be revised).\n\n"
+    "Respond with ONLY a JSON object mapping each question id to either "
+    'null (cannot answer from the document) or {{"resolution": "<answer>", '
+    '"impact": "task" | "plan" | "architecture"}}. No commentary, no code '
+    "fences.\n\n"
+    "Questions:\n{questions}\n\nArchitecture Definition Document:\n\n{architecture}"
+)
 
 
 class ArchitecturePersona(BasePersona):
-    def run(self, state: State, llm_client) -> State:
+    consumes = ("project_spec",)
+    produces = ("architecture_definition",)
+
+    def run(self, state: State, llm_client, findings: list[str] | None = None) -> State:
         project_spec = state.artifacts["project_spec"]
 
         prompt = f"{PROMPT_TEMPLATE}\n\n---\n\nProject Specification Document:\n\n{project_spec}"
-        response = llm_client.call(prompt, model=DEFAULT_MODEL)
+        if findings:
+            feedback = "\n".join(f"- {finding}" for finding in findings)
+            prompt += (
+                "\n\n---\n\nRevision feedback on your previous attempt — "
+                f"address every item:\n{feedback}"
+            )
+
+        response = llm_client.call(prompt, model=DEFAULT_MODEL, max_tokens=MAX_TOKENS)
 
         artifacts = {**state.artifacts, "architecture_definition": response.text}
         return state.model_copy(update={"artifacts": artifacts})
+
+    def resolve_questions(
+        self, questions: list[Question], state: State, llm_client
+    ) -> list[Question]:
+        architecture = state.artifacts.get("architecture_definition", "")
+        if not architecture.strip():
+            return questions
+
+        prompt = RESOLUTION_PROMPT_TEMPLATE.format(
+            questions=format_questions(questions), architecture=architecture
+        )
+        response = llm_client.call(prompt, model=DEFAULT_MODEL, max_tokens=RESOLUTION_MAX_TOKENS)
+        return apply_resolution_response(response.text, questions, resolved_by="architect")
