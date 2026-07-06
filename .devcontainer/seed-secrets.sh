@@ -11,20 +11,21 @@
 # picked up on the next container start with no extra logic.
 set -eu
 
+# Written first, before anything touches the keyring: client.py's keyring
+# backend reads this file on every get_password()/set_password() call, so
+# the ANTHROPIC_API_KEY seed below would fail with a FileNotFoundError if
+# the passphrase file didn't exist yet.
+if [ -n "${LOOP_ENGINE_KEYRING_PASSPHRASE:-}" ]; then
+    mkdir -p /home/app/.infisical
+    chmod 700 /home/app/.infisical
+    printf '%s' "${LOOP_ENGINE_KEYRING_PASSPHRASE}" > /home/app/.infisical/keyring_passphrase
+    chmod 600 /home/app/.infisical/keyring_passphrase
+fi
+
 if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
     python -c "import os, keyring; keyring.set_password('loop-engine', 'anthropic_api_key', os.environ['ANTHROPIC_API_KEY'])"
 fi
 
 if [ -n "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ]; then
     echo "${GITHUB_PERSONAL_ACCESS_TOKEN}" | gh auth login --with-token
-fi
-
-# Unlike the two secrets above, this one must persist to disk: client.py's
-# keyring backend reads it on every get_password()/set_password() call for
-# the life of the process, not just once at seed time.
-if [ -n "${LOOP_ENGINE_KEYRING_PASSPHRASE:-}" ]; then
-    mkdir -p /home/app/.infisical
-    chmod 700 /home/app/.infisical
-    printf '%s' "${LOOP_ENGINE_KEYRING_PASSPHRASE}" > /home/app/.infisical/keyring_passphrase
-    chmod 600 /home/app/.infisical/keyring_passphrase
 fi

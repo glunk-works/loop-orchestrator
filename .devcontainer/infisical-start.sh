@@ -7,16 +7,21 @@
 # gpg-forward.sh already relies on for GPG_HOST_DIR.
 #
 # The project itself is identified by /workspace/.infisical.json
-# (workspaceId + defaultEnvironment) rather than a value hardcoded here —
-# that file contains no secret, is Infisical's own project-linking
-# convention (created via `infisical init`), and is read automatically by
-# `infisical run`/`login` without needing a --projectId flag.
+# (workspaceId + defaultEnvironment) — that file contains no secret and is
+# Infisical's own project-linking convention (created via `infisical init`).
+# Unlike interactive/browser login, `infisical run` under universal-auth
+# machine identity does NOT read workspaceId from .infisical.json on its
+# own (it errors with "Project ID is required when using machine identity"),
+# so it's passed explicitly via --projectId below.
 set -eu
 
 if [ -z "${INFISICAL_CLIENT_ID:-}" ] || [ -z "${INFISICAL_CLIENT_SECRET:-}" ]; then
     echo "infisical-start: INFISICAL_CLIENT_ID/SECRET not set, skipping Infisical provisioning" >&2
     exit 0
 fi
+
+INFISICAL_PROJECT_ID=$(python3 -c \
+    "import json; print(json.load(open('/workspace/.infisical.json'))['workspaceId'])")
 
 INFISICAL_TOKEN=$(infisical login --method=universal-auth \
     --client-id="${INFISICAL_CLIENT_ID}" \
@@ -27,7 +32,9 @@ export INFISICAL_TOKEN
 # --env is passed explicitly (rather than relying solely on
 # .infisical.json's defaultEnvironment) so this script always seeds from
 # "dev" even if a developer changes that default locally for other reasons.
-infisical run --env=dev \
+# --path points at where the loop-engine secrets actually live in the
+# project; the default path "/" holds none of them.
+infisical run --projectId="${INFISICAL_PROJECT_ID}" --env=dev --path=/loop-engine \
     -- sh /workspace/.devcontainer/seed-secrets.sh
 
 unset INFISICAL_TOKEN
