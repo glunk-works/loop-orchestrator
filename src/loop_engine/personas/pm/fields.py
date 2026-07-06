@@ -17,5 +17,7 @@ CHECKLIST_FIELDS: list[str] = [
     "regulatory_and_compliance_constraints",
     "supply_chain_security_expectations",
     "cost_sensitivity",
-    "open_questions_for_architect",
+    # open_questions_for_architect was retired in State schema v2: questions
+    # are first-class State.questions entries routed by the engine's
+    # escalation ladder, not free text trapped inside the spec.
 ]

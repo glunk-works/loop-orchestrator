@@ -1,11 +1,20 @@
 import pytest
 from pydantic import ValidationError
 
-from loop_engine.core.state import State
+from loop_engine.core.state import (
+    CURRENT_SCHEMA_VERSION,
+    RunStatus,
+    State,
+    migrate_state_payload,
+)
 
 VALID_PAYLOAD = {
-    "schema_version": 1,
+    "schema_version": 2,
     "run_id": "run-001",
+    "status": "running",
+    "questions": [],
+    "pending_issue": None,
+    "counters": {},
     "stage_history": [
         {
             "stage_name": "pm",
@@ -22,7 +31,7 @@ def test_state_round_trips_through_json_without_field_loss() -> None:
     state = State.model_validate(VALID_PAYLOAD)
     rehydrated = State.model_validate_json(state.model_dump_json())
     assert rehydrated == state
-    assert rehydrated.model_dump() == VALID_PAYLOAD
+    assert rehydrated.model_dump(mode="json") == VALID_PAYLOAD
 
 
 def test_state_rejects_missing_schema_version() -> None:
@@ -44,3 +53,41 @@ def test_state_rejects_unrecognized_top_level_field() -> None:
     payload = {**VALID_PAYLOAD, "api_key": "sk-should-not-exist"}
     with pytest.raises(ValidationError):
         State.model_validate(payload)
+
+
+def test_state_rejects_invalid_status_and_impact() -> None:
+    with pytest.raises(ValidationError):
+        State.model_validate({**VALID_PAYLOAD, "status": "definitely_fine"})
+    with pytest.raises(ValidationError):
+        State.model_validate(
+            {
+                **VALID_PAYLOAD,
+                "questions": [
+                    {
+                        "id": "q1",
+                        "origin_stage": "S",
+                        "text": "t",
+                        "impact": "cosmic",
+                    }
+                ],
+            }
+        )
+
+
+def test_migrate_v1_payload_fills_v2_defaults() -> None:
+    v1_payload = {
+        "schema_version": 1,
+        "run_id": "run-legacy",
+        "stage_history": [],
+        "artifacts": {"human_input": "x"},
+    }
+    state = State.model_validate(migrate_state_payload(v1_payload))
+    assert state.schema_version == CURRENT_SCHEMA_VERSION
+    assert state.status is RunStatus.RUNNING
+    assert state.questions == []
+    assert state.pending_issue is None
+
+
+def test_migrate_unknown_version_raises() -> None:
+    with pytest.raises(ValueError, match="Unsupported"):
+        migrate_state_payload({"schema_version": 99})

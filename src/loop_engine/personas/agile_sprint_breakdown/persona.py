@@ -1,10 +1,18 @@
 import json
+import logging
 import re
 
+from loop_engine.core.gates import extract_open_questions
 from loop_engine.core.state import State
 from loop_engine.personas.base import BasePersona
+from loop_engine.tools.state_io.writer import write_artifact
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "claude-sonnet-5"
+# A multi-sprint breakdown is several pages of structured markdown; the old
+# 1024 default guaranteed silent truncation.
+MAX_TOKENS = 8192
 
 _FILEPATH_HEADER_RE = re.compile(r"^### FILEPATH:\s*(\S+)\s*$", re.MULTILINE)
 
@@ -116,6 +124,14 @@ in addition to the Global Definition of Done]
 
 ---
 [Repeat this structure for all necessary sprints until the specification is fully covered]
+
+## OPEN QUESTIONS
+
+You operate in a non-interactive batch pipeline — you cannot ask and wait. If the architecture
+definition is missing information you need to produce a correct breakdown, append a section
+titled `## Open Questions` after the final sprint file: a numbered list, one self-contained
+question per line. Still produce sprints for everything the questions do not block. Omit the
+section entirely when there are none.
 """
 
 
@@ -127,20 +143,56 @@ def _parse_sprint_blocks(text: str) -> list[dict[str, str]]:
         start = match.end()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
         content = text[start:end].strip()
+        # Drop the "---" divider the output format places between sprint
+        # files; it belongs to the response framing, not the file content.
+        if content.endswith("\n---"):
+            content = content[: -len("\n---")].rstrip()
         blocks.append({"path": path, "content": content})
     return blocks
 
 
 class AgileSprintBreakdownPersona(BasePersona):
-    def run(self, state: State, llm_client) -> State:
+    consumes = ("architecture_definition",)
+    produces = ("sprint_plans",)
+
+    def run(self, state: State, llm_client, findings: list[str] | None = None) -> State:
         architecture_definition = state.artifacts["architecture_definition"]
 
         prompt = (
             f"{PROMPT_TEMPLATE}\n\n---\n\n"
             f"Architecture Definition Document:\n\n{architecture_definition}"
         )
-        response = llm_client.call(prompt, model=DEFAULT_MODEL)
+        if findings:
+            feedback = "\n".join(f"- {finding}" for finding in findings)
+            prompt += (
+                "\n\n---\n\nRevision feedback on your previous attempt — "
+                f"address every item:\n{feedback}"
+            )
+
+        response = llm_client.call(prompt, model=DEFAULT_MODEL, max_tokens=MAX_TOKENS)
         sprint_blocks = _parse_sprint_blocks(response.text)
 
+        # The gate only sees the parsed-blocks JSON artifact, so open
+        # questions must be captured from the raw response here.
+        existing_texts = {q.text for q in state.questions}
+        questions = [
+            *state.questions,
+            *[
+                q
+                for q in extract_open_questions(response.text, "AgileSprintBreakdownPersona")
+                if q.text not in existing_texts
+            ],
+        ]
+
+        # The sprint plans are real deliverables, not just pipeline state:
+        # write each one to its declared path. write_artifact validates the
+        # path stays under an allowed root with no traversal; a model-invented
+        # path that fails validation is skipped (and logged), never written.
+        for block in sprint_blocks:
+            try:
+                write_artifact(block["content"], block["path"].lstrip("/"))
+            except ValueError:
+                logger.warning("skipping sprint block with invalid path %r", block["path"])
+
         artifacts = {**state.artifacts, "sprint_plans": json.dumps(sprint_blocks)}
-        return state.model_copy(update={"artifacts": artifacts})
+        return state.model_copy(update={"artifacts": artifacts, "questions": questions})
