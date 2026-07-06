@@ -31,8 +31,12 @@ RUN apt-get update \
         -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] \
         https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
+    && curl -1sLf https://artifacts-cli.infisical.com/infisical.gpg \
+        | gpg --dearmor -o /usr/share/keyrings/infisical-archive-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/infisical-archive-keyring.gpg] \
+        https://artifacts-cli.infisical.com/deb stable main" > /etc/apt/sources.list.d/infisical.list \
     && apt-get update \
-    && apt-get install --no-install-recommends -y gh \
+    && apt-get install --no-install-recommends -y gh infisical=0.43.100 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
