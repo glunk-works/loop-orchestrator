@@ -43,6 +43,7 @@ dependencies = [
   "ruff==0.15.20",
   "cyclonedx-bom==7.3.0",
   "cryptography==49.0.0",
+  "pip-audit==2.10.1",
 ]
 
 [tool.hatch.envs.default.scripts]
@@ -50,6 +51,11 @@ test = "pytest {args}"
 lint = "ruff check ."
 format = "ruff format ."
 sbom = "cyclonedx-py environment -o sbom.json"
+# Scans the hatch env's installed packages — the same closure sbom covers.
+# --skip-editable excludes only loop-engine itself (a local dev-mode install
+# that isn't on PyPI and can't be audited); every third-party dependency is
+# still checked against the OSV/PyPI advisory databases.
+audit = "pip-audit --skip-editable {args}"
 
 [tool.ruff]
 line-length = 100
