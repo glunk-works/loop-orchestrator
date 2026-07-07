@@ -1,0 +1,38 @@
+### FILEPATH: /sprints/16_metered_budget_enforcement/sprint_plan.md
+
+**Sprint Goal:** Replace worst-case pre-flight budget pricing (full `max_tokens` at the output rate — a ~$0.96/call reserved floor at 64000 that aborts runs with most of the budget unspent) with metered enforcement: pre-flight rejects only calls whose input alone breaches the budget, and the client watches streamed usage during generation, killing the stream the moment cumulative cost reaches the cap.
+
+**Dependencies:** Sprint 15 (streaming_transport) — metering reads the live event stream.
+
+**Security Considerations:** The budget-owner boundary is unchanged: `LLMClient` remains the only place a budget decision is made, and `pricing.py` remains the sole source of $/token truth with `UnknownModelError` on unknown models (never silent $0 — that would disable the cap). No new keyring imports, no file I/O (`tests/tools/test_keyring_boundary.py`, `tests/tools/test_state_io_boundary.py`). No dependency changes; `sbom.json` untouched.
+
+**Risks & Blockers:** The contract change must be stated honestly everywhere the old one is stated: previously the budget could never be exceeded because a call never started unless its worst case fit; now the cap can be *reached mid-call*, the spend up to the cap is real and billed, and the aborted call's partial output is discarded (exactly like truncation, the partial must never propagate). Overshoot is bounded by one `message_delta` usage-event granularity. The engine needs no changes — `BudgetExceededError` mid-call already produces the orderly `BUDGET_EXCEEDED` snapshot and exit code 3. Stream-event mocks: SDK `message_start` events carry `message.usage` (input + cache tokens); `message_delta` events carry cumulative `usage.output_tokens` — synthetic `SimpleNamespace` events must mirror those exact attribute paths. `tests/integration/test_budget_abort.py`'s `--budget 1.50` literal exists only to clear the old worst-case floor; restore a realistic literal once the floor is gone.
+
+**Tasks:**
+
+- **Task 1: Input-side pricing helper replaces worst-case estimate**
+  - **Description:** In `src/loop_engine/tools/llm/pricing.py`, add `estimate_input_cost_usd(model: str, estimated_input_tokens: int) -> float` (input tokens at the uncached input rate; docstring: pre-flight gates only what is certain to be spent before any output exists — output spend is enforced live by the client's stream metering). Delete `estimate_cost_usd` and its tests; `cost_usd` is unchanged.
+  - **Target Files:** `src/loop_engine/tools/llm/pricing.py`, `tests/tools/test_pricing.py`
+  - **Acceptance Criteria:** Tests verify the new helper's arithmetic and that an unknown model still raises `UnknownModelError`. `estimate_cost_usd` appears nowhere in `src/` or `tests/`.
+
+- **Task 2: Pre-flight gates input cost only**
+  - **Description:** In `src/loop_engine/tools/llm/client.py` `_preflight()`, price via `pricing.estimate_input_cost_usd(model, estimated_input_tokens)` (drop the `max_tokens` argument from the signature and call sites). Keep the `count_tokens` guard-band refinement exactly as-is (heuristic first; refine with a free `count_tokens` round-trip when the estimate reaches `_COUNT_TOKENS_GUARD_BAND` of remaining; any refinement error falls back to the heuristic — never a new failure mode). Update the comments/docstrings that describe the old "abort before the breaching call" contract to the new one: pre-flight stops calls whose input alone must breach; output spend is metered live (Task 3).
+  - **Target Files:** `src/loop_engine/tools/llm/client.py`, `tests/tools/test_llm_client.py`
+  - **Acceptance Criteria:** Tests verify: a call whose estimated input cost exceeds the remaining budget raises `BudgetExceededError` with the transport never invoked; the guard-band `count_tokens` refinement and its failure fallback still behave as before (existing tests adjusted for the new arithmetic); a call with affordable input but huge `max_tokens` is no longer rejected pre-flight.
+
+- **Task 3: Mid-stream cost metering**
+  - **Description:** In `_request()`, iterate the stream's events before calling `get_final_message()`: on the `message_start` event, compute the call's fixed input-side cost from `event.message.usage` via `pricing.cost_usd(model, input_tokens, 0, cache_creation, cache_read)` (cache fields via `getattr(..., 0) or 0`); on each `message_delta` event, add `pricing.cost_usd(model, 0, event.usage.output_tokens)` (cumulative — do not sum deltas). When input-side cost + output-cost-so-far >= `self.remaining()`: `stream.close()`, debit the spend so far into `_cost_used`/`_tokens_used`/cache counters (using the last observed usage numbers), and raise `BudgetExceededError` naming the mid-stream abort. Otherwise fall through to `get_final_message()` and debit from the final usage exactly as today (no double-debit: the metering path debits only on abort). Events other than `message_start`/`message_delta` are ignored.
+  - **Target Files:** `src/loop_engine/tools/llm/client.py`, `tests/tools/test_llm_client.py`
+  - **Acceptance Criteria:** Extend Sprint 15's `_mock_stream_transport` so a mocked stream can yield synthetic `message_start`/`message_delta` events on iteration while still serving `get_final_message()`. Tests verify: a stream whose cumulative cost breaches mid-flight raises `BudgetExceededError` with `stream.close()` called, exactly one `messages.stream` transport call, `cost_used <= budget_usd` (within one event's granularity) and the spent tokens recorded; a non-breaching stream returns the normal `LLMResponse` with cost debited exactly once; `run_tool_loop` surfaces a mid-loop metering abort as `BudgetExceededError` (existing per-iteration ledger test still passes).
+
+- **Task 4: Restore realistic budget literals**
+  - **Description:** In `tests/integration/test_budget_abort.py`: set `--budget` to a literal sized for the new contract (e.g. `0.70`: each mocked stage response consumes 2 × 20k tokens = $0.36, so PM + Architecture exhaust it before stage 3 — no worst-case floor to clear anymore) and rewrite the arithmetic comment; drop the `count_tokens` stub if the input-only pre-flight no longer enters the guard band at that budget, or keep it with a corrected comment if it does. Verify `tests/integration/test_no_credential_leakage.py`'s `--budget 100.0` needs no change.
+  - **Target Files:** `tests/integration/test_budget_abort.py`, `tests/integration/test_no_credential_leakage.py`
+  - **Acceptance Criteria:** Budget-abort still proves: exactly 2 transport calls, exit code 3, both accepted-stage snapshots plus the `budget_exceeded` terminal snapshot. The comment's arithmetic matches the literal.
+
+- **Task 5 (Security/FinOps): Contract documentation sweep**
+  - **Description:** Update every statement of the old budget contract: `README.md` budget section and `--budget` help-table row; `docs/architecture_definition.md` FinOps bullets ("abort before the breaching call" → input-gated pre-flight + live metering, bounded overshoot of one usage event, aborted-call spend is billed and its partial output discarded); `CLAUDE.md` client bullet; `sprints/DEFERRED_VERIFICATION.md` smoke-test guidance (`--budget 2.00` for smoke #1 now that no per-call floor exists, with a note that real document generation at 64000-token ceilings costs real dollars).
+  - **Target Files:** `README.md`, `docs/architecture_definition.md`, `CLAUDE.md`, `sprints/DEFERRED_VERIFICATION.md`
+  - **Acceptance Criteria:** No document still claims the budget can never be touched mid-call or describes pre-flight as pricing `max_tokens`. `hatch run test`, `hatch run lint`, `hatch run format` pass.
+
+---

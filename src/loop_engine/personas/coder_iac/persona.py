@@ -97,8 +97,10 @@ def _apply_file_blocks(report: str) -> list[str]:
 
 DEFAULT_MODEL = "claude-sonnet-5"
 # One sprint's implementation report (full file contents included) is large;
-# the old 1024 default guaranteed silent truncation.
-MAX_TOKENS = 8192
+# the old 1024 default guaranteed silent truncation, and both 8192 and a
+# subsequent 16000 proved insufficient for a real document in practice
+# (TruncatedResponseError on real runs — see sprints/DEFERRED_VERIFICATION.md).
+MAX_TOKENS = 64000
 
 # Embedded verbatim from prompts/04_developer_iac_implementation_prompt.md.
 # tests/personas/test_prompt_parity.py guards against this drifting from

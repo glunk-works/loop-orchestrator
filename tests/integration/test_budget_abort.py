@@ -33,21 +33,26 @@ def test_budget_abort_persists_completed_snapshots_and_terminal_status(
     monkeypatch.setattr("keyring.get_password", lambda *args: "fake-api-key")
 
     # Each real call's own pre-flight estimate is priced at the rate table
-    # (~$0.06 for PM at max_tokens=4096, ~$0.13 for Architecture at 8192), so
-    # the budget must clear both calls' estimates while the *actual* mocked
-    # usage below (2 x 40k tokens = 2 x $0.36) still exhausts the budget
-    # before stage 3 is invoked.
+    # (~$0.06 for PM at max_tokens=4096, ~$0.96 for Architecture/Sprint
+    # Breakdown at 64000), so the budget must clear both calls' estimates
+    # while the *actual* mocked usage below (2 x 40k tokens = 2 x $0.36)
+    # still exhausts the budget before stage 3 is invoked.
     mock_transport = MagicMock()
     mock_transport.messages.create.side_effect = [
         _response(20_000, 20_000, json.dumps(_clean_pm_answers())),  # PM: stage 1
         _response(20_000, 20_000, "# Architecture Definition\n..."),  # Arch: stage 2
     ]
+    # Architecture's pre-flight estimate is now within the guard band of the
+    # remaining budget, so the client refines it with a real count_tokens
+    # round-trip — stub a plausible response rather than an unconfigured
+    # MagicMock (which would break arithmetic in estimate_cost_usd).
+    mock_transport.messages.count_tokens.return_value = SimpleNamespace(input_tokens=2_000)
     monkeypatch.setattr("anthropic.Anthropic", lambda **kwargs: mock_transport)
 
     input_path = tmp_path / "input.md"
     input_path.write_text("We need a habit tracker for busy parents.")
 
-    result = runner.invoke(app, ["run", "--input", str(input_path), "--budget", "0.70"])
+    result = runner.invoke(app, ["run", "--input", str(input_path), "--budget", "1.50"])
 
     # Budget exhaustion is an orderly pause, not a crash: dedicated exit code.
     assert result.exit_code == 3

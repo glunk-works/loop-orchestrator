@@ -234,7 +234,10 @@ class PMPersona(BasePersona):
             answers=answers_text,
             project_spec=state.artifacts.get("project_spec", "{}"),
         )
-        response = llm_client.call(prompt, model=DEFAULT_MODEL, max_tokens=RESOLUTION_MAX_TOKENS)
+        # Unlike resolve_questions' terse resolution mapping, spec_updates can
+        # rewrite full checklist field text (not just a short answer per
+        # question) — sized like extraction, not like resolution.
+        response = llm_client.call(prompt, model=DEFAULT_MODEL, max_tokens=EXTRACTION_MAX_TOKENS)
 
         try:
             data = json.loads(_strip_code_fence(response.text))

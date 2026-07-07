@@ -12,8 +12,10 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "claude-sonnet-5"
 # A multi-sprint breakdown is several pages of structured markdown; the old
-# 1024 default guaranteed silent truncation.
-MAX_TOKENS = 8192
+# 1024 default guaranteed silent truncation, and both 8192 and a subsequent
+# 16000 proved insufficient for a real document in practice
+# (TruncatedResponseError on real runs — see sprints/DEFERRED_VERIFICATION.md).
+MAX_TOKENS = 64000
 
 _FILEPATH_HEADER_RE = re.compile(r"^### FILEPATH:\s*(\S+)\s*$", re.MULTILINE)
 
