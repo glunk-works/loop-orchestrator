@@ -32,9 +32,11 @@ def test_budget_abort_persists_completed_snapshots_and_terminal_status(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("keyring.get_password", lambda *args: "fake-api-key")
 
-    # Each real call's own pre-flight estimate is ~len(prompt)/4 + max_tokens,
-    # so the budget must clear both calls' estimates while the *actual*
-    # mocked usage below still exhausts the budget before stage 3 is invoked.
+    # Each real call's own pre-flight estimate is priced at the rate table
+    # (~$0.06 for PM at max_tokens=4096, ~$0.13 for Architecture at 8192), so
+    # the budget must clear both calls' estimates while the *actual* mocked
+    # usage below (2 x 40k tokens = 2 x $0.36) still exhausts the budget
+    # before stage 3 is invoked.
     mock_transport = MagicMock()
     mock_transport.messages.create.side_effect = [
         _response(20_000, 20_000, json.dumps(_clean_pm_answers())),  # PM: stage 1
@@ -45,7 +47,7 @@ def test_budget_abort_persists_completed_snapshots_and_terminal_status(
     input_path = tmp_path / "input.md"
     input_path.write_text("We need a habit tracker for busy parents.")
 
-    result = runner.invoke(app, ["run", "--input", str(input_path), "--budget", "80000"])
+    result = runner.invoke(app, ["run", "--input", str(input_path), "--budget", "0.70"])
 
     # Budget exhaustion is an orderly pause, not a crash: dedicated exit code.
     assert result.exit_code == 3

@@ -73,19 +73,28 @@ def _revalidate(state: State, stage_name: str) -> State:
         raise InvalidStateTransitionError(f"{stage_name} returned an invalid State: {exc}") from exc
 
 
-def _record_stage(state: State, stage_name: str, tokens_used: int) -> State:
-    # cost_usd is a placeholder until a per-model $/token rate table is
-    # added; no such rate exists anywhere in this codebase or the specs.
+def _record_stage(
+    state: State,
+    stage_name: str,
+    tokens_used: int,
+    cost_usd: float,
+    cache_creation_input_tokens: int = 0,
+    cache_read_input_tokens: int = 0,
+) -> State:
     record = StageRecord(
         stage_name=stage_name,
         tokens_used=tokens_used,
-        cost_usd=0.0,
+        cost_usd=cost_usd,
         completed_at=datetime.now(UTC).isoformat(),
+        cache_creation_input_tokens=cache_creation_input_tokens,
+        cache_read_input_tokens=cache_read_input_tokens,
     )
     log_stage_completion(
         stage_name=record.stage_name,
         tokens_used=record.tokens_used,
         cost_usd=record.cost_usd,
+        cache_creation_input_tokens=record.cache_creation_input_tokens,
+        cache_read_input_tokens=record.cache_read_input_tokens,
     )
     return state.model_copy(update={"stage_history": [*state.stage_history, record]})
 
@@ -209,6 +218,9 @@ def run_loop(
         gate_result = GateResult(GateDecision.REVISE)
         previous_gate_findings: list[str] | None = None
         tokens_before = llm_client.tokens_used
+        cost_before = llm_client.cost_used
+        cache_creation_before = llm_client.cache_creation_tokens_used
+        cache_read_before = llm_client.cache_read_tokens_used
 
         for _attempt in range(stage.max_revisions + 1):
             try:
@@ -286,7 +298,14 @@ def run_loop(
             continue
 
         # ACCEPT
-        state = _record_stage(state, stage_name, llm_client.tokens_used - tokens_before)
+        state = _record_stage(
+            state,
+            stage_name,
+            llm_client.tokens_used - tokens_before,
+            llm_client.cost_used - cost_before,
+            llm_client.cache_creation_tokens_used - cache_creation_before,
+            llm_client.cache_read_tokens_used - cache_read_before,
+        )
         write_state_snapshot(
             state,
             run_id=state.run_id,

@@ -25,7 +25,9 @@ app = typer.Typer()
 
 NAMED_LOOPS: dict[str, Loop] = {"default": DEFAULT_LOOP}
 
-DEFAULT_BUDGET_TOKENS = 100_000
+DEFAULT_BUDGET_USD = 5.00
+
+_BUDGET_HELP = "Hard cap on cumulative LLM spend for the run, in USD."
 
 _EXIT_CODES = {
     RunStatus.COMPLETED: 0,
@@ -80,7 +82,7 @@ def _report_outcome(state: State) -> None:
 def run(
     loop: Annotated[str, typer.Option("--loop")] = "default",
     input: Annotated[Path | None, typer.Option("--input")] = None,
-    budget: Annotated[int, typer.Option("--budget")] = DEFAULT_BUDGET_TOKENS,
+    budget: Annotated[float, typer.Option("--budget", help=_BUDGET_HELP)] = DEFAULT_BUDGET_USD,
     resume_from: Annotated[Path | None, typer.Option("--resume-from")] = None,
 ) -> None:
     selected_loop = NAMED_LOOPS[loop]
@@ -98,7 +100,7 @@ def run(
         )
         start_index = 0
 
-    llm_client = LLMClient(budget_tokens=budget)
+    llm_client = LLMClient(budget_usd=budget)
     final_state = run_loop(selected_loop, initial_state, llm_client, start_index=start_index)
     _report_outcome(final_state)
 
@@ -107,7 +109,7 @@ def run(
 def resume(
     from_issue: Annotated[int, typer.Option("--from-issue")],
     loop: Annotated[str, typer.Option("--loop")] = "default",
-    budget: Annotated[int, typer.Option("--budget")] = DEFAULT_BUDGET_TOKENS,
+    budget: Annotated[float, typer.Option("--budget", help=_BUDGET_HELP)] = DEFAULT_BUDGET_USD,
     snapshot: Annotated[
         Path | None,
         typer.Option("--snapshot", help="Override the snapshot path recorded in the issue."),
@@ -148,7 +150,7 @@ def resume(
         }
     )
 
-    llm_client = LLMClient(budget_tokens=budget)
+    llm_client = LLMClient(budget_usd=budget)
 
     # PM folds the answers into the spec and classifies each answer's blast
     # radius, which decides how far back the run re-enters.
@@ -193,15 +195,25 @@ def cost_summary(run_id: Annotated[str, typer.Option("--run-id")]) -> None:
         if best is None or len(state.stage_history) > len(best.stage_history):
             best = state
 
-    typer.echo(f"{'Stage':<40}{'Tokens':>10}{'Cost (USD)':>14}")
+    typer.echo(f"{'Stage':<40}{'Tokens':>10}{'Cache W':>10}{'Cache R':>10}{'Cost (USD)':>14}")
     total_tokens = 0
+    total_cache_w = 0
+    total_cache_r = 0
     total_cost = 0.0
     if best is not None:
         for record in best.stage_history:
             total_tokens += record.tokens_used
+            total_cache_w += record.cache_creation_input_tokens
+            total_cache_r += record.cache_read_input_tokens
             total_cost += record.cost_usd
-            typer.echo(f"{record.stage_name:<40}{record.tokens_used:>10}{record.cost_usd:>14.4f}")
-    typer.echo(f"{'TOTAL':<40}{total_tokens:>10}{total_cost:>14.4f}")
+            typer.echo(
+                f"{record.stage_name:<40}{record.tokens_used:>10}"
+                f"{record.cache_creation_input_tokens:>10}"
+                f"{record.cache_read_input_tokens:>10}{record.cost_usd:>14.4f}"
+            )
+    typer.echo(
+        f"{'TOTAL':<40}{total_tokens:>10}{total_cache_w:>10}{total_cache_r:>10}{total_cost:>14.4f}"
+    )
 
 
 if __name__ == "__main__":

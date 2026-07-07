@@ -11,7 +11,8 @@ Analyze the provided project specification and systematically decompose it into 
 ## INPUT CONTEXT
 
 **Attached Specification Document:** [SPECIFICATION_DOCUMENT]
-*(Read and analyze the attached file completely before beginning your breakdown.)*
+*(The specification is provided in the system context; read and analyze it completely
+before beginning your breakdown.)*
 
 ## TASK INSTRUCTIONS
 
@@ -79,3 +80,7 @@ Then repeat the following template for each sprint:
 ## OPEN QUESTIONS
 
 You operate in a non-interactive batch pipeline — you cannot ask and wait. If the architecture definition is missing information you need to produce a correct breakdown, append a section titled `## Open Questions` after the final sprint file: a numbered list, one self-contained question per line. Still produce sprints for everything the questions do not block. Omit the section entirely when there are none.
+
+**Revision invocations:** when a prior breakdown is supplied as an assistant turn together
+with revision feedback, return ONLY the corrected sprint files, reproducing their
+`### FILEPATH:` headers verbatim; do not repeat unchanged sprint files.

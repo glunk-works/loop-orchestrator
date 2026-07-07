@@ -1,3 +1,4 @@
+from loop_engine.core.coder_gate import CoderGate
 from loop_engine.core.engine import Loop
 from loop_engine.loops.default.loop import DEFAULT_LOOP
 from loop_engine.personas.agile_sprint_breakdown.persona import AgileSprintBreakdownPersona
@@ -30,3 +31,9 @@ def test_default_loop_escalation_ladder_routes_coder_through_architect_to_pm() -
 
 def test_default_loop_blast_radius_reentry_targets() -> None:
     assert DEFAULT_LOOP.impact_reentry == {"architecture": 1, "plan": 2}
+
+
+def test_default_loop_coder_stage_uses_the_evidence_gate() -> None:
+    coder_stage = DEFAULT_LOOP.stages[3]
+    assert isinstance(coder_stage.gate, CoderGate)
+    assert coder_stage.gate.artifact_key == "implementation_reports"

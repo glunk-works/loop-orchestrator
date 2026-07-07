@@ -44,10 +44,15 @@ def _initial_state(run_id: str = "run-1", artifacts: dict[str, str] | None = Non
     )
 
 
-def _stub_llm_client(tokens_used: int = 0, budget_tokens: int = 10_000) -> SimpleNamespace:
-    client = SimpleNamespace(_tokens_used=tokens_used, budget_tokens=budget_tokens)
-    client.tokens_used = tokens_used
-    client.remaining = lambda: client.budget_tokens - client.tokens_used
+def _stub_llm_client(cost_used: float = 0.0, budget_usd: float = 10.0) -> SimpleNamespace:
+    client = SimpleNamespace(
+        budget_usd=budget_usd,
+        tokens_used=0,
+        cost_used=cost_used,
+        cache_creation_tokens_used=0,
+        cache_read_tokens_used=0,
+    )
+    client.remaining = lambda: client.budget_usd - client.cost_used
     return client
 
 
@@ -125,12 +130,31 @@ def test_run_loop_budget_exhaustion_returns_budget_exceeded_with_snapshot() -> N
             raise AssertionError("this persona must never be invoked")
 
     loop = Loop(stages=[Stage(persona=NeverCalledPersona(), gate=ArtifactGate("x"))])
-    client = _stub_llm_client(tokens_used=100, budget_tokens=100)
+    client = _stub_llm_client(cost_used=5.0, budget_usd=5.0)
 
     final = run_loop(loop, _initial_state("run-4"), client)
 
     assert final.status is RunStatus.BUDGET_EXCEEDED
     assert (Path("state") / "run-4" / "00_budget_exceeded.json").exists()
+
+
+def test_run_loop_records_real_cost_and_cache_deltas_per_stage() -> None:
+    class SpendingPersona(BasePersona):
+        def run(self, state: State, llm_client, findings=None) -> State:
+            llm_client.tokens_used += 100
+            llm_client.cost_used += 0.25
+            llm_client.cache_creation_tokens_used += 40
+            llm_client.cache_read_tokens_used += 60
+            return state.model_copy(update={"artifacts": {**state.artifacts, "doc": "done"}})
+
+    loop = Loop(stages=[Stage(persona=SpendingPersona(), gate=ArtifactGate("doc"))])
+    final = run_loop(loop, _initial_state("run-cost"), _stub_llm_client())
+
+    record = final.stage_history[-1]
+    assert record.tokens_used == 100
+    assert record.cost_usd == pytest.approx(0.25)
+    assert record.cache_creation_input_tokens == 40
+    assert record.cache_read_input_tokens == 60
 
 
 def test_run_loop_revise_then_accept_passes_gate_findings_to_persona() -> None:
