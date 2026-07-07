@@ -21,6 +21,10 @@ class StageRecord(BaseModel):
     tokens_used: int = Field(ge=0)
     cost_usd: float
     completed_at: str
+    # Prompt-cache activity for the stage; defaulted so pre-caching snapshots
+    # still validate without a schema_version bump.
+    cache_creation_input_tokens: int = Field(default=0, ge=0)
+    cache_read_input_tokens: int = Field(default=0, ge=0)
 
 
 class Question(BaseModel):
@@ -34,6 +38,10 @@ class Question(BaseModel):
     # so custom loops can add resolver layers without a schema change.
     resolved_by: str | None = None
     impact: Literal["task", "plan", "architecture"] | None = None
+    # Finer-grained attribution within the origin stage (e.g. the sprint plan
+    # path that raised the question), so re-entry can rework only the affected
+    # unit instead of the whole stage. Defaulted: no schema_version bump.
+    origin_detail: str | None = None
 
 
 class IssueRef(BaseModel):

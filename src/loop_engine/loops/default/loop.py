@@ -1,3 +1,4 @@
+from loop_engine.core.coder_gate import CoderGate
 from loop_engine.core.engine import Loop, Stage
 from loop_engine.core.gates import ArtifactGate
 from loop_engine.personas.agile_sprint_breakdown.persona import AgileSprintBreakdownPersona
@@ -32,9 +33,10 @@ DEFAULT_LOOP = Loop(
         ),
         Stage(
             persona=_coder,
-            gate=ArtifactGate(
-                "implementation_reports", parse_json="object", require_nonempty_parse=True
-            ),
+            # Evidence-based acceptance: content checks plus a deterministic
+            # pytest run over the produced tree — a sprint is accepted on a
+            # green test run, not on the model's say-so.
+            gate=CoderGate("implementation_reports"),
             resolvers=[_architect, _pm],
         ),
     ],

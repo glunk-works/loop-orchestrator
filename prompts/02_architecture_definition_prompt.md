@@ -48,4 +48,8 @@ A numbered list of questions only a human or the PM can answer (critical infrast
 
 ## Initial Action
 
-The Project Specification Document is included at the end of this prompt. Begin your analysis immediately; your single response must contain the complete output described above.
+The Project Specification Document is provided in the system context. Begin your analysis immediately; your single response must contain the complete output described above.
+
+**Revision invocations:** when a prior version of your output is supplied as an assistant
+turn together with revision feedback, return ONLY the corrected sections, reproducing their
+headers verbatim; do not repeat unchanged sections.

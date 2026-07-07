@@ -14,7 +14,10 @@ def _validate_safe_name(value: str, *, label: str) -> None:
         )
 
 
-def _validate_artifact_relative_path(relative_path: str) -> PurePosixPath:
+def validate_artifact_relative_path(relative_path: str) -> PurePosixPath:
+    """Validate a model-supplied artifact path: relative, under an allowed
+    root, no traversal. Public so read-side tools (tools/coder_tools) reuse
+    the exact write-side rules instead of duplicating them."""
     normalized = relative_path.replace("\\", "/")
     if not normalized or normalized.startswith("/"):
         raise ValueError(f"Invalid artifact path: {relative_path!r} must be a relative path")
@@ -41,7 +44,7 @@ def write_state_snapshot(state: State, run_id: str, stage_index: int, stage_name
 
 
 def write_artifact(content: str, relative_path: str) -> Path:
-    posix_path = _validate_artifact_relative_path(relative_path)
+    posix_path = validate_artifact_relative_path(relative_path)
 
     target_path = Path(*posix_path.parts)
     target_path.parent.mkdir(parents=True, exist_ok=True)

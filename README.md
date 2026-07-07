@@ -38,14 +38,14 @@ hatch run python -c "import keyring; keyring.set_password('loop-engine', 'anthro
 ### Run the default loop
 
 ```bash
-hatch run loop-engine run --input path/to/requirements.md --budget 100000
+hatch run loop-engine run --input path/to/requirements.md --budget 5.00
 ```
 
 | Option | Description | Default |
 |---|---|---|
 | `--loop` | Named loop to run | `default` |
 | `--input` | Path to the seed content (e.g. a requirements doc) for the initial `State` | none |
-| `--budget` | Hard cap on cumulative LLM tokens for the run | `100000` |
+| `--budget` | Hard cap on cumulative LLM spend for the run, in USD (float) | `5.00` |
 | `--resume-from` | Path to a prior `State` snapshot; resumes after the last completed stage instead of starting over | none |
 
 Every stage's `State` snapshot is written to `state/<run_id>/<NN>_<StageName>.json` as it completes, and a terminal snapshot records how every run ended (`completed`, `failed_stage`, `budget_exceeded`, `awaiting_issue`) — the run is resumable and fully inspectable, not a black box. Exit codes: `0` completed, `2` paused on a GitHub issue, `3` budget exceeded.
@@ -88,8 +88,8 @@ The full programmatic surface is available without the CLI:
 ```python
 from loop_engine import DEFAULT_LOOP, LLMClient, State, run_loop
 
-initial_state = State(schema_version=1, run_id="my-run", stage_history=[], artifacts={})
-llm_client = LLMClient(budget_tokens=100_000)
+initial_state = State(schema_version=2, run_id="my-run", stage_history=[], artifacts={})
+llm_client = LLMClient(budget_usd=5.00)
 final_state = run_loop(DEFAULT_LOOP, initial_state, llm_client)
 ```
 
@@ -120,7 +120,7 @@ A bare Linux container has no OS-native keyring backend, so the prod/dev images 
      -v /path/to/keyring_data.enc:/run/secrets/keyring_data.enc:ro \
      -v /path/to/keyring_passphrase:/run/secrets/keyring_passphrase:ro \
      -v $(pwd)/state:/workspace/state \
-     loop-engine:prod run --input requirements.md --budget 100000
+     loop-engine:prod run --input requirements.md --budget 5.00
    ```
    The `state/` volume mount is required for `--resume-from` to work across separate `docker run` invocations — without it, each container starts with an empty `state/` directory.
 
@@ -147,7 +147,7 @@ For a CI job that needs to run loop-engine for real (not just the mocked test su
 docker run --rm \
   -e LOOP_ENGINE_ALLOW_ENV_CREDENTIAL=1 \
   -e LOOP_ENGINE_CI_API_KEY=sk-ant-... \
-  loop-engine:prod run --input requirements.md --budget 100000
+  loop-engine:prod run --input requirements.md --budget 5.00
 ```
 
 **Both variables must be set together** — this is intentionally not a single `API_KEY`-style env var, so a leftover value in a shell can't silently bypass keyring. Use this only in CI/automation contexts; everywhere else, use the encrypted keyring file above.
@@ -173,12 +173,12 @@ docker run --rm \
 The user engages only with the PM role; the other personas coordinate through it. Each stage's output must pass a content **gate** before the run advances. Questions a persona cannot answer escalate up a resolver ladder (Coder → Architect → PM), and whatever no automated layer resolves is filed as a GitHub issue for the human. Every resolution carries a blast-radius classification that routes rework: `task` re-runs the asking stage, `plan` re-enters Sprint Breakdown, `architecture` re-enters the Architect. Hard caps on escalations and re-plans keep every feedback edge finite — hitting a cap escalates to the human instead of looping.
 
 - **`core/state.py`** — `State`, a Pydantic v2 model (`schema_version` 2: `run_id`, `status`, `questions`, `pending_issue`, `counters`, `stage_history`, `artifacts`) with `extra="forbid"`, so no field can silently smuggle a credential through. `RunStatus` makes termination explicit; v1 snapshots are migrated on load.
-- **`core/engine.py`** — `run_loop()`: per stage, a bounded propose → gate → accept/revise/escalate cycle. Gate findings feed revision re-prompts (identical findings twice stops paying and escalates); every exit path — success or any failure — persists a snapshot, so no paid work is lost to a traceback.
+- **`core/engine.py`** — `run_loop()`: per stage, a bounded propose → gate → accept/revise/escalate cycle. Gate findings feed revisions against the prior artifact — only flagged sections regenerate, merged back locally (identical findings twice stops paying and escalates); every exit path — success or any failure — persists a snapshot, so no paid work is lost to a traceback.
 - **`core/gates.py`** — `ArtifactGate`: presence/JSON-shape checks, question-shaped-output detection (a model that answers with a question never advances the pipeline), and `## Open Questions` extraction.
 - **`personas/base.py`** — `BasePersona`: abstract `run(state, llm_client, findings=None)`, declared `consumes`/`produces` artifact keys (pre-checked by the engine), and an overridable `resolve_questions()` hook for resolver duty. Personas receive the LLM client via injection — they cannot construct their own or touch credentials directly.
-- **`personas/{pm,architecture,agile_sprint_breakdown,coder_iac}/`** — the four default personas, with batch-mode prompts (explicit assumptions + `## Open Questions`, never "ask and wait"). `PMPersona` keeps its critic revision loop with no-progress detection and folds human issue answers back into the spec; `CoderIacPersona` implements one sprint per LLM call and stops at a sprint that raises questions. Sprint plans and implementation reports are written to `sprints/` as real files.
+- **`personas/{pm,architecture,agile_sprint_breakdown,coder_iac}/`** — the four default personas, with batch-mode prompts (explicit assumptions + `## Open Questions`, never "ask and wait"). `PMPersona` keeps its critic revision loop with no-progress detection and folds human issue answers back into the spec; `CoderIacPersona` implements one sprint per LLM call and stops at a sprint that raises questions; on findings re-entry it re-runs only the sprint(s) whose questions were resolved, falling back to a full re-run for gate-revision findings. Sprint plans and implementation reports are written to `sprints/` as real files.
 - **`loops/default/loop.py`** — `DEFAULT_LOOP`, a `Loop` of `Stage`s wiring personas, gates, the resolver ladder, and blast-radius re-entry targets. No YAML/JSON loop-definition format — loops are just Python.
-- **`tools/llm/client.py`** — `LLMClient`, a thin wrapper around the Anthropic SDK. Retrieves the API key from `keyring` exactly once per instance, enforces a hard per-run token budget *before* each call (`BudgetExceededError`), and refuses to return silently truncated output (`TruncatedResponseError` on `stop_reason == "max_tokens"`).
+- **`tools/llm/client.py`** — `LLMClient`, a thin wrapper around the Anthropic SDK. Retrieves the API key from `keyring` exactly once per instance, prices every call from a per-model rate table (`tools/llm/pricing.py`, covering input, output, and cache write/read tokens), enforces a hard per-run USD budget *before* each call (`BudgetExceededError`; the pre-flight estimate is a chars/4 heuristic, refined by the token-counting endpoint near the cap), sends each persona's stable prefix (template + consumed artifact) as cached system blocks (`cache_control: ephemeral` — cache reads bill at ~0.1x input rate), and refuses to return silently truncated output (`TruncatedResponseError` on `stop_reason == "max_tokens"`).
 - **`tools/issue_io/`** — the sole GitHub caller (shells out to the already-authenticated `gh`; no token passes through the process). Files escalation issues and parses answer comments.
 - **`tools/state_io/writer.py`** — the sole writer of `State` snapshots (`state/`) and produced artifacts (`docs/`, `sprints/`, `src/`). Validates `run_id`/artifact paths against path traversal before any filesystem call.
 - **`tools/logging_config.py`** — structured per-stage cost logging.
@@ -202,7 +202,8 @@ Every sprint's changes must satisfy [`sprints/GLOBAL_DEFINITION_OF_DONE.md`](spr
 - `tools/state_io/` is the only module permitted to write to `state/`, `docs/`, or `sprints/`; `run_id` and artifact paths are validated against path traversal before any filesystem call.
 - `core/` imports no concrete persona module, only `personas/base.py` — personas can't bypass the engine's validation/budget/persistence guarantees.
 - `State.model_config = ConfigDict(extra="forbid")` — no field exists that could hold a raw credential, and a compromised/buggy persona can't smuggle one through.
-- Per-run token budget is enforced centrally and aborts the run *before* an over-budget call executes, not after.
+- Per-run USD budget is enforced centrally — every call is priced from a per-model rate table, with the pre-flight estimate refined via the token-counting endpoint near the cap — and aborts the run *before* an over-budget call executes, not after.
+- The agentic Coder executes generated tests via subprocess (`pytest`, fixed argv, no shell, hard timeout), and the Coder stage's gate re-runs them before accepting — **acceptance is evidence-based, and generated code runs with your privileges: run untrusted loops only inside the sandboxed devcontainer.** Coder tool paths are traversal- and symlink-validated; writes still go only through `tools/state_io`.
 
 See [`docs/architecture_definition.md`](docs/architecture_definition.md) for the full architecture and threat-model writeup.
 

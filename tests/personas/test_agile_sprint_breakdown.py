@@ -52,6 +52,20 @@ def test_agile_sprint_breakdown_persona_parses_two_sprint_blocks() -> None:
     assert "Sprint two content." in sprint_plans[1]["content"]
 
 
+def test_agile_sprint_breakdown_persona_puts_template_and_architecture_in_system_blocks() -> None:
+    mock_llm_client = MagicMock()
+    mock_llm_client.call.return_value = SimpleNamespace(text=TWO_SPRINT_RESPONSE)
+
+    AgileSprintBreakdownPersona().run(
+        _state({"architecture_definition": "# Architecture\n..."}), mock_llm_client
+    )
+
+    system_blocks = mock_llm_client.call.call_args.kwargs["system_blocks"]
+    assert any("Agile Project Manager" in block for block in system_blocks)
+    assert any("# Architecture\n..." in block for block in system_blocks)
+    assert "# Architecture" not in mock_llm_client.call.call_args.args[0]
+
+
 def test_agile_sprint_breakdown_persona_writes_sprint_plan_files() -> None:
     mock_llm_client = MagicMock()
     mock_llm_client.call.return_value = SimpleNamespace(text=TWO_SPRINT_RESPONSE)
@@ -80,6 +94,36 @@ def test_agile_sprint_breakdown_persona_skips_invalid_paths_without_crashing() -
     assert (Path("sprints") / "01_ok" / "sprint_plan.md").exists()
     # Both blocks stay in state (auditability); only valid paths hit disk.
     assert len(json.loads(result_state.artifacts["sprint_plans"])) == 2
+
+
+def test_agile_sprint_breakdown_persona_revises_only_flagged_sprint_files() -> None:
+    prior_blocks = json.dumps(
+        [
+            {"path": "/sprints/01_foo/sprint_plan.md", "content": "Sprint one content."},
+            {"path": "/sprints/02_bar/sprint_plan.md", "content": "Sprint two content."},
+        ]
+    )
+    mock_llm_client = MagicMock()
+    mock_llm_client.call_messages.return_value = SimpleNamespace(
+        text="### FILEPATH: /sprints/02_bar/sprint_plan.md\n\nSprint two, corrected.\n"
+    )
+
+    result_state = AgileSprintBreakdownPersona().run(
+        _state({"architecture_definition": "# Architecture", "sprint_plans": prior_blocks}),
+        mock_llm_client,
+        findings=["Sprint two lacks a security task."],
+    )
+
+    mock_llm_client.call.assert_not_called()
+    messages = mock_llm_client.call_messages.call_args.args[0]
+    assert [m["role"] for m in messages] == ["user", "assistant", "user"]
+    assert "Sprint one content." in messages[1]["content"]
+    assert "Sprint two lacks a security task." in messages[2]["content"]
+
+    plans = {b["path"]: b["content"] for b in json.loads(result_state.artifacts["sprint_plans"])}
+    # Untouched sprint byte-identical; flagged sprint replaced.
+    assert plans["/sprints/01_foo/sprint_plan.md"] == "Sprint one content."
+    assert plans["/sprints/02_bar/sprint_plan.md"] == "Sprint two, corrected."
 
 
 def test_agile_sprint_breakdown_persona_captures_open_questions() -> None:

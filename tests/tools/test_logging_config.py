@@ -13,16 +13,20 @@ class StubPersona(BasePersona):
 
     def run(self, state: State, llm_client, findings=None) -> State:
         llm_client.tokens_used += 10
+        llm_client.cost_used += 0.01
         return state.model_copy(update={"artifacts": {**state.artifacts, self._key: "done"}})
 
 
 class StubClient:
-    def __init__(self, budget_tokens: int) -> None:
-        self.budget_tokens = budget_tokens
+    def __init__(self, budget_usd: float) -> None:
+        self.budget_usd = budget_usd
         self.tokens_used = 0
+        self.cost_used = 0.0
+        self.cache_creation_tokens_used = 0
+        self.cache_read_tokens_used = 0
 
-    def remaining(self) -> int:
-        return self.budget_tokens - self.tokens_used
+    def remaining(self) -> float:
+        return self.budget_usd - self.cost_used
 
 
 def _initial_state() -> State:
@@ -36,12 +40,18 @@ def test_run_loop_emits_json_log_line_per_stage(tmp_path, monkeypatch, caplog) -
     )
 
     with caplog.at_level(logging.INFO, logger="loop_engine.cost"):
-        run_loop(loop, _initial_state(), StubClient(budget_tokens=1000))
+        run_loop(loop, _initial_state(), StubClient(budget_usd=10.0))
 
     records = [r for r in caplog.records if r.name == "loop_engine.cost"]
     assert len(records) == 3
 
     for record in records:
         payload = json.loads(record.message)
-        assert set(payload) == {"stage_name", "tokens_used", "cost_usd"}
+        assert set(payload) == {
+            "stage_name",
+            "tokens_used",
+            "cost_usd",
+            "cache_creation_input_tokens",
+            "cache_read_input_tokens",
+        }
         assert payload["tokens_used"] == 10

@@ -36,19 +36,27 @@ def test_completed_run_never_writes_the_api_key_to_disk(tmp_path, monkeypatch) -
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("keyring.get_password", lambda *args: FAKE_API_KEY)
 
+    # The Coder's response carries a file block producing a passing test:
+    # the evidence gate re-runs pytest and only ACCEPTs a green tree.
+    coder_response = (
+        "Sprint 1 implemented.\n\n"
+        "## Files Created/Modified\n\n"
+        "### FILEPATH: src/test_habit.py\n\n"
+        "```python\ndef test_habit_placeholder():\n    assert True\n```\n"
+    )
     mock_transport = MagicMock()
     mock_transport.messages.create.side_effect = [
         _response(10, 10, json.dumps(_clean_pm_answers())),  # PM
         _response(10, 10, "# Architecture Definition\n..."),  # Architecture
         _response(10, 10, SPRINT_BLOCKS_RESPONSE),  # Agile Sprint Breakdown
-        _response(10, 10, "Sprint 1 implemented: created src/foo.py."),  # Coder/IaC
+        _response(10, 10, coder_response),  # Coder/IaC (end_turn: 1 loop call)
     ]
     monkeypatch.setattr("anthropic.Anthropic", lambda **kwargs: mock_transport)
 
     input_path = tmp_path / "input.md"
     input_path.write_text("We need a habit tracker for busy parents.")
 
-    result = runner.invoke(app, ["run", "--input", str(input_path), "--budget", "1000000"])
+    result = runner.invoke(app, ["run", "--input", str(input_path), "--budget", "100.0"])
 
     assert result.exit_code == 0
 

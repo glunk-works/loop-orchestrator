@@ -14,7 +14,7 @@
 | 6 | Loop definition format: **pure Python** (ordered list of persona instances), not declarative YAML/JSON. |
 | 7 | State persistence: **persisted to disk at every stage transition** (resumability + audit trail). |
 | 8 | Execution shape: **strictly sequential** chain only — no DAG/branching/parallel execution in v1. |
-| 9 | Cost safeguard: **per-run token/cost budget cap**, enforced centrally, aborts loop on breach. |
+| 9 | Cost safeguard: **per-run USD budget cap**, priced from a per-model rate table (input/output/cache-write/cache-read $/MTok), enforced centrally, aborts loop on breach. |
 | 10 | Interface: **CLI entrypoint required for v1** (Typer), in addition to the library API. |
 
 ---
@@ -42,15 +42,16 @@ loop-engine is a single local Python process, invoked either via CLI (`loop-engi
 - **Ingress:** a human-provided artifact (free-form markdown or a prior `State` JSON file) supplied as a CLI argument or library call parameter.
 - **Processing boundary:** each persona is a pure function of `State -> State`. A persona may make one or more outbound LLM API calls but must not perform side effects outside what it returns in `State` (file writes belong to `tools/state_io`, not to persona code).
 - **Egress:** at the end of each stage, the engine (not the persona) persists the updated `State` to disk. At the end of the loop, the final `State` contains references to all produced artifacts (spec, architecture doc, sprint plans, implementation diff summary).
-- **Trust boundary:** the only network egress is outbound HTTPS from the `tools/llm` client to the configured LLM API endpoint. There is no inbound network surface — this is not a service, it has no listener.
+- **Trust boundary:** the only network egress is outbound HTTPS from the `tools/llm` client to the configured LLM API endpoint (this includes the token-counting endpoint the client may call to refine a near-cap budget estimate — same host, same credential). There is no inbound network surface — this is not a service, it has no listener.
+- **Execution boundary (new with the agentic Coder):** the engine executes generated code via subprocess — the Coder's `run_tests` tool and the Coder stage's evidence gate both run `pytest` (fixed argv, no shell, hard timeout, size-capped output) against the run's artifact tree. Generated code runs with the invoking user's privileges. **The stated operating assumption is the sandboxed devcontainer** — run untrusted loops only inside the container; outside it, this is arbitrary code execution by the model on the host.
 
 ## 2. Technology Stack
 
 - **Language/runtime:** Python 3.12+, matching existing `pm-agent-loop` conventions.
 - **Package layout:** `src/loop_engine/{core,personas,loops,tools}/`, `tests/` mirroring that layout, per `requirements.md`.
 - **Schema/validation:** Pydantic v2 for the `State` model and all persona input/output contracts.
-- **CLI:** Typer, exposing `loop-engine run --loop <name> --input <path> [--resume-from <state.json>] [--budget <tokens|usd>]`.
-- **LLM client:** a thin wrapper in `tools/llm/` around the Anthropic SDK (or equivalent), the **only** module permitted to read the API key from the OS keyring.
+- **CLI:** Typer, exposing `loop-engine run --loop <name> --input <path> [--resume-from <state.json>] [--budget <usd>]`.
+- **LLM client:** a thin wrapper in `tools/llm/` around the Anthropic SDK (or equivalent), the **only** module permitted to read the API key from the OS keyring. Pricing (`pricing.py`), prompt-cache placement (a `cache_control` breakpoint on the caller-supplied stable system prefix), and near-cap token counting all live inside `tools/llm/` — personas only pass content.
 - **State persistence:** `tools/state_io/` — Pydantic `.model_dump_json()` writes to `state/<run_id>/<NN_stage_name>.json`.
 - **Packaging/tooling:** `hatch` for environment and script management (`hatch run test`, `hatch run ruff check .`, `hatch run ruff format .`), matching `pm-agent-loop` precedent so both tools share one contributor workflow.
 - **No cloud services, no IaC tooling** are part of this stack. Containers are supported as an optional, local-only packaging/dev-environment path (2026-07): a shared multi-stage `Dockerfile` (repo root) with `dev` and `prod` build stages, plus `.devcontainer/devcontainer.json` targeting the `dev` stage for VS Code. Deployment remains `pip install` / local checkout / `docker run` — no registry publish step, no cloud runtime.
@@ -63,7 +64,7 @@ There is no cloud IAM in this architecture; least privilege is enforced at the *
 - **Credential holder:** only `tools/llm/client.py` may call the keyring API to retrieve the LLM API key. No persona module, no `core/` module, and no `tools/state_io` module may import the keyring library.
 - **Persona isolation:** a `BasePersona` implementation receives only the `State` object (via its `run(state) -> state` method) and a handle to the shared LLM client passed in by `core/`. Personas must not be able to instantiate their own LLM client or read credentials directly — this is enforced by constructor injection, not by convention alone.
 - **Zero trust between stages:** each persona must treat the incoming `State` as untrusted input and validate it against the Pydantic schema before acting on it, even though it was produced by another in-process persona. A persona must not assume a prior stage's output is well-formed merely because it's in-process.
-- **File-system scope:** `tools/state_io` is the only module permitted to write to the `state/` directory. `tools/state_io` (or a dedicated `tools/artifacts/` module) is the only module permitted to write to `docs/`, `sprints/`, and `src/` output paths — persona logic returns data, it does not open file handles itself.
+- **File-system scope:** the agentic Coder's tool set is read/execute-only (`read_file`/`list_files`/`grep` plus `run_tests`); every write still routes through `write_artifact`. `tools/state_io` is the only module permitted to write to the `state/` directory. `tools/state_io` (or a dedicated `tools/artifacts/` module) is the only module permitted to write to `docs/`, `sprints/`, and `src/` output paths — persona logic returns data, it does not open file handles itself.
 
 ## 4. Security & Network Posture
 
@@ -74,7 +75,7 @@ There is no cloud IAM in this architecture; least privilege is enforced at the *
 - **Encryption in transit:** all LLM API calls use TLS (enforced by the underlying SDK/HTTP client defaults — do not disable certificate verification).
 - **Encryption at rest:** `state/<run_id>/*.json` files are plaintext on the local filesystem, consistent with "local personal tool" threat model. They must never contain the API key or any other credential (enforced by the Pydantic `State` schema simply having no field capable of holding one). The `state/` directory must be `.gitignore`d.
 - **Network isolation:** none required — this is a single outbound-only local process with no listening socket and no inter-process network surface.
-- **Input handling:** all persona-to-persona and human-to-persona payloads pass through Pydantic validation before use; reject and fail loudly on schema violation rather than coercing or guessing.
+- **Input handling:** all persona-to-persona and human-to-persona payloads pass through Pydantic validation before use; reject and fail loudly on schema violation rather than coercing or guessing. Coder tool inputs (paths, patterns) are model-controlled: every path is validated with the same traversal rules as the write side plus a symlink-escape check before any filesystem access.
 
 ## 5. Supply Chain Security
 
@@ -97,10 +98,13 @@ Matches and extends existing `pm-agent-loop` conventions so both projects share 
 
 This is the **primary risk the human explicitly named** ("loops will run out of control and run up costs") and is treated as a hard runtime constraint, not a dashboard-only concern:
 
-- **Per-run budget cap:** every invocation of `loop-engine run` requires (or defaults to) a maximum token/cost budget. `tools/llm/client.py` tracks cumulative token usage centrally across all persona calls in the run.
+- **Per-run budget cap:** every invocation of `loop-engine run` requires (or defaults to) a maximum spend in USD. `tools/llm/client.py` prices every call from the per-model rate table in `tools/llm/pricing.py` — input, output, cache-write, and cache-read tokens each at their own $/MTok rate — and tracks cumulative cost centrally across all persona calls in the run. An unknown model raises rather than pricing at $0.
 - **Hard abort on breach:** the moment cumulative usage would exceed the configured budget, the engine aborts the loop **before** making the call that would breach it, persists the current `State` to disk (Section 1/3), and exits with a non-zero status and a clear message — it does not let an in-flight call finish over-budget.
 - **No silent retries that inflate cost:** any persona-internal retry logic must count against the same run-level budget; retries are not a separate, unbounded cost pool.
-- **Cost visibility:** every stage's `State` snapshot on disk includes a token/cost usage field for that stage, so a human can inspect exactly where budget was spent after the fact.
+- **Cost visibility:** every stage's `State` snapshot on disk records tokens, real `cost_usd` (from the rate table), and cache write/read token counts for that stage, so a human can inspect exactly where budget was spent after the fact (`loop-engine cost-summary`).
+- **Prompt caching:** each persona's stable prefix (prompt template + consumed artifact) is sent as cached system blocks (`cache_control: ephemeral`); cache reads bill at 0.1x the input rate and writes at 1.25x (rates in `tools/llm/pricing.py`). The prefix must be byte-identical across calls — volatile content (findings, sprint plans) stays in the user turn. Caching is best-effort: prefixes under the model's minimum cacheable size silently don't cache, and nothing may branch on a cache hit.
+- **Incremental revisions:** gate-revision and question-resolution passes do not regenerate whole documents; the prior artifact is sent as an assistant turn, the model returns only the corrected sections, and the persona merges them locally (`personas/sections.py`) — output spend scales with the size of the correction, not the document.
+- **Pre-flight refinement:** far from the cap, a chars/4 heuristic estimates a call's cost; once the estimate reaches 50% of the remaining budget, the client refines it via the (free) token-counting endpoint before deciding to abort. A count failure falls back to the heuristic — never a new failure mode.
 - **Model selection:** left to per-persona configuration (not hardcoded in `core/`), so a cheaper model can be substituted for lower-stakes personas (e.g., sprint breakdown) without changing engine code — a concrete, low-effort cost lever the Coder/IaC stage should expose as a config value, not a constant.
 
 ## 8. IaC Handoff Directives
@@ -110,8 +114,8 @@ This is the **primary risk the human explicitly named** ("loops will run out of 
 - Implement under `src/loop_engine/{core,personas,loops,tools}/` exactly as specified; `core/` must not import any concrete persona module — only `personas/base.py`'s `BasePersona` ABC.
 - Define `State` as a Pydantic v2 model including a `schema_version` field (matching the `spec_version` convention already used in `docs/project_spec*.json`), plus per-stage usage/cost fields (Section 7).
 - `BasePersona` is an ABC with a single abstract method: `run(self, state: State, llm_client: LLMClient) -> State`. Constructor injection only — no persona may construct its own `LLMClient` or touch `keyring` directly.
-- `tools/llm/client.py` is the sole module permitted to import `keyring`; it exposes a budget-tracking `LLMClient` that raises a dedicated `BudgetExceededError` rather than allowing an over-budget call.
-- `tools/state_io/` is the sole module permitted to write to `state/`, `docs/`, or `sprints/` output paths; it writes a `State` snapshot after every persona completes, before the next persona starts.
+- `tools/llm/client.py` is the sole module permitted to import `keyring`; it exposes a USD-budget-tracking `LLMClient` (priced via `tools/llm/pricing.py`) that raises a dedicated `BudgetExceededError` rather than allowing an over-budget call.
+- `tools/state_io/` is the sole module permitted to write to `state/`, `docs/`, or `sprints/` output paths; it writes a `State` snapshot after every persona completes, before the next persona starts. `tools/coder_tools/` is read/execute-only and reuses `state_io`'s path validation; its `run_tests` subprocess (with the Coder gate's deterministic pytest re-run) is the only subprocess surface besides `issue_io`'s `gh`.
 - `loops/default/loop.py` exposes an ordered `list[BasePersona]` reproducing `PM → Architecture → Agile Sprint Breakdown → Coder/IaC`; no YAML/JSON loop config format is to be introduced in v1.
 - The engine's run loop (`core/engine.py` or equivalent) must be a plain `for persona in loop: state = persona.run(state, llm_client)` — no async orchestration, no DAG resolution, no parallel stage execution in v1.
 - CLI: implement via Typer as `loop-engine run --loop <name> --input <path> [--budget <value>] [--resume-from <path>]`; the CLI is a thin wrapper — all logic lives in the library layer so `import loop_engine` remains fully usable without the CLI.

@@ -21,6 +21,8 @@ VALID_PAYLOAD = {
             "tokens_used": 100,
             "cost_usd": 0.05,
             "completed_at": "2026-07-02T00:00:00Z",
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
         }
     ],
     "artifacts": {"spec": "docs/project_spec.json"},
@@ -72,6 +74,52 @@ def test_state_rejects_invalid_status_and_impact() -> None:
                 ],
             }
         )
+
+
+def test_stage_record_without_cache_fields_still_validates() -> None:
+    # Snapshots written before cache accounting existed must load unchanged.
+    payload = {
+        **VALID_PAYLOAD,
+        "stage_history": [
+            {
+                "stage_name": "pm",
+                "tokens_used": 100,
+                "cost_usd": 0.05,
+                "completed_at": "2026-07-02T00:00:00Z",
+            }
+        ],
+    }
+    state = State.model_validate(payload)
+    assert state.stage_history[0].cache_creation_input_tokens == 0
+    assert state.stage_history[0].cache_read_input_tokens == 0
+
+
+def test_stage_record_rejects_negative_cache_counts() -> None:
+    payload = {
+        **VALID_PAYLOAD,
+        "stage_history": [{**VALID_PAYLOAD["stage_history"][0], "cache_read_input_tokens": -1}],
+    }
+    with pytest.raises(ValidationError):
+        State.model_validate(payload)
+
+
+def test_question_without_origin_detail_still_validates() -> None:
+    # Snapshots written before origin_detail existed must load unchanged.
+    payload = {
+        **VALID_PAYLOAD,
+        "questions": [{"id": "q1", "origin_stage": "S", "text": "t"}],
+    }
+    state = State.model_validate(payload)
+    assert state.questions[0].origin_detail is None
+
+
+def test_question_rejects_non_string_origin_detail() -> None:
+    payload = {
+        **VALID_PAYLOAD,
+        "questions": [{"id": "q1", "origin_stage": "S", "text": "t", "origin_detail": 42}],
+    }
+    with pytest.raises(ValidationError):
+        State.model_validate(payload)
 
 
 def test_migrate_v1_payload_fills_v2_defaults() -> None:

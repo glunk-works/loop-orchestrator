@@ -4,6 +4,7 @@ import re
 
 from loop_engine.core.gates import extract_open_questions
 from loop_engine.core.state import State
+from loop_engine.personas import sections
 from loop_engine.personas.base import BasePersona
 from loop_engine.tools.state_io.writer import write_artifact
 
@@ -35,7 +36,8 @@ ambiguity.
 ## INPUT CONTEXT
 
 **Attached Specification Document:** [SPECIFICATION_DOCUMENT]
-*(Read and analyze the attached file completely before beginning your breakdown.)*
+*(The specification is provided in the system context; read and analyze it completely
+before beginning your breakdown.)*
 
 ## TASK INSTRUCTIONS
 
@@ -132,6 +134,10 @@ definition is missing information you need to produce a correct breakdown, appen
 titled `## Open Questions` after the final sprint file: a numbered list, one self-contained
 question per line. Still produce sprints for everything the questions do not block. Omit the
 section entirely when there are none.
+
+**Revision invocations:** when a prior breakdown is supplied as an assistant turn together
+with revision feedback, return ONLY the corrected sprint files, reproducing their
+`### FILEPATH:` headers verbatim; do not repeat unchanged sprint files.
 """
 
 
@@ -158,19 +164,59 @@ class AgileSprintBreakdownPersona(BasePersona):
     def run(self, state: State, llm_client, findings: list[str] | None = None) -> State:
         architecture_definition = state.artifacts["architecture_definition"]
 
-        prompt = (
-            f"{PROMPT_TEMPLATE}\n\n---\n\n"
-            f"Architecture Definition Document:\n\n{architecture_definition}"
-        )
-        if findings:
-            feedback = "\n".join(f"- {finding}" for finding in findings)
-            prompt += (
-                "\n\n---\n\nRevision feedback on your previous attempt — "
-                f"address every item:\n{feedback}"
-            )
+        # Stable prefix (cached): template + consumed artifact, byte-identical
+        # across revision attempts. Volatile content goes in the user turns.
+        system_blocks = [
+            PROMPT_TEMPLATE,
+            f"Architecture Definition Document:\n\n{architecture_definition}",
+        ]
+        initial_prompt = "Begin your breakdown now; produce the complete output described above."
 
-        response = llm_client.call(prompt, model=DEFAULT_MODEL, max_tokens=MAX_TOKENS)
-        sprint_blocks = _parse_sprint_blocks(response.text)
+        previous_blocks: list[dict[str, str]] = []
+        if findings:
+            try:
+                previous_blocks = json.loads(state.artifacts.get("sprint_plans", "[]"))
+            except json.JSONDecodeError:
+                previous_blocks = []
+
+        if findings and previous_blocks:
+            # Targeted revision: the prior breakdown is an assistant turn and
+            # only the flagged sprint files are regenerated, then merged back.
+            previous = "\n\n".join(
+                f"### FILEPATH: {block['path']}\n\n{block['content']}" for block in previous_blocks
+            )
+            feedback = "\n".join(f"- {finding}" for finding in findings)
+            response = llm_client.call_messages(
+                [
+                    {"role": "user", "content": initial_prompt},
+                    {"role": "assistant", "content": previous},
+                    {
+                        "role": "user",
+                        "content": (
+                            "Revision feedback on your previous attempt — address "
+                            f"every item:\n{feedback}\n\n"
+                            "Return ONLY the corrected sprint files, reproducing "
+                            "their `### FILEPATH:` headers verbatim."
+                        ),
+                    },
+                ],
+                model=DEFAULT_MODEL,
+                max_tokens=MAX_TOKENS,
+                system_blocks=system_blocks,
+            )
+            sprint_blocks = _parse_sprint_blocks(sections.merge(previous, response.text))
+        else:
+            prompt = initial_prompt
+            if findings:
+                feedback = "\n".join(f"- {finding}" for finding in findings)
+                prompt += (
+                    "\n\nRevision feedback on your previous attempt — "
+                    f"address every item:\n{feedback}"
+                )
+            response = llm_client.call(
+                prompt, model=DEFAULT_MODEL, max_tokens=MAX_TOKENS, system_blocks=system_blocks
+            )
+            sprint_blocks = _parse_sprint_blocks(response.text)
 
         # The gate only sees the parsed-blocks JSON artifact, so open
         # questions must be captured from the raw response here.

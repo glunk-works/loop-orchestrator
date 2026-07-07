@@ -227,6 +227,10 @@ def test_cli_cost_summary_counts_each_stage_once_despite_terminal_snapshot(
     output = _plain_output(result)
     assert str(sum(tokens)) in output
     assert str(sum(tokens) + tokens[-1]) not in output
+    # Cache activity and real dollars are part of the summary.
+    assert "Cache W" in output
+    assert "Cache R" in output
+    assert "Cost (USD)" in output
 
 
 def test_cli_defines_no_api_key_option() -> None:

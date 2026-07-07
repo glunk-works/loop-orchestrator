@@ -23,7 +23,7 @@ def test_client_source_never_disables_tls_verification() -> None:
 def test_underlying_http_transport_has_certificate_verification_enabled(monkeypatch) -> None:
     monkeypatch.setattr("keyring.get_password", lambda *_args: "fake-api-key")
 
-    client = LLMClient(budget_tokens=1000)
+    client = LLMClient(budget_usd=1.0)
 
     ssl_context = client._anthropic._client._transport._pool._ssl_context
     assert ssl_context.verify_mode == ssl.CERT_REQUIRED

@@ -1,4 +1,5 @@
 from loop_engine.core.state import Question, State
+from loop_engine.personas import sections
 from loop_engine.personas.base import BasePersona
 from loop_engine.personas.resolution import apply_resolution_response, format_questions
 
@@ -87,8 +88,12 @@ section is treated as an escalation.
 
 ## Initial Action
 
-The Project Specification Document is included at the end of this prompt. Begin your analysis
+The Project Specification Document is provided in the system context. Begin your analysis
 immediately; your single response must contain the complete output described above.
+
+**Revision invocations:** when a prior version of your output is supplied as an assistant
+turn together with revision feedback, return ONLY the corrected sections, reproducing their
+headers verbatim; do not repeat unchanged sections.
 """
 
 RESOLUTION_PROMPT_TEMPLATE = (
@@ -115,15 +120,54 @@ class ArchitecturePersona(BasePersona):
     def run(self, state: State, llm_client, findings: list[str] | None = None) -> State:
         project_spec = state.artifacts["project_spec"]
 
-        prompt = f"{PROMPT_TEMPLATE}\n\n---\n\nProject Specification Document:\n\n{project_spec}"
+        # Stable prefix (cached): the template and the consumed artifact,
+        # built from state fields only so the bytes are identical across
+        # revision attempts. Volatile content goes in the user turns.
+        system_blocks = [
+            PROMPT_TEMPLATE,
+            f"Project Specification Document:\n\n{project_spec}",
+        ]
+        initial_prompt = "Begin your analysis now; produce the complete output described above."
+
+        previous = state.artifacts.get("architecture_definition", "")
+        if findings and previous.strip() and sections.has_sections(previous):
+            # Targeted revision: the prior document is an assistant turn and
+            # only the flagged sections are regenerated, then merged back.
+            feedback = "\n".join(f"- {finding}" for finding in findings)
+            response = llm_client.call_messages(
+                [
+                    {"role": "user", "content": initial_prompt},
+                    {"role": "assistant", "content": previous},
+                    {
+                        "role": "user",
+                        "content": (
+                            "Revision feedback on your previous attempt — address "
+                            f"every item:\n{feedback}\n\n"
+                            "Return ONLY the corrected sections, reproducing their "
+                            "`##` headers verbatim."
+                        ),
+                    },
+                ],
+                model=DEFAULT_MODEL,
+                max_tokens=MAX_TOKENS,
+                system_blocks=system_blocks,
+            )
+            revised = sections.merge(previous, response.text)
+            artifacts = {**state.artifacts, "architecture_definition": revised}
+            return state.model_copy(update={"artifacts": artifacts})
+
+        prompt = initial_prompt
         if findings:
+            # Findings but no prior artifact (carried resolutions into a stage
+            # that never ran): full generation with the feedback inline.
             feedback = "\n".join(f"- {finding}" for finding in findings)
             prompt += (
-                "\n\n---\n\nRevision feedback on your previous attempt — "
-                f"address every item:\n{feedback}"
+                f"\n\nRevision feedback on your previous attempt — address every item:\n{feedback}"
             )
 
-        response = llm_client.call(prompt, model=DEFAULT_MODEL, max_tokens=MAX_TOKENS)
+        response = llm_client.call(
+            prompt, model=DEFAULT_MODEL, max_tokens=MAX_TOKENS, system_blocks=system_blocks
+        )
 
         artifacts = {**state.artifacts, "architecture_definition": response.text}
         return state.model_copy(update={"artifacts": artifacts})
