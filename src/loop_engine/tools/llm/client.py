@@ -102,7 +102,12 @@ class LLMClient:
                 f"username={_KEYRING_USERNAME!r}."
             )
         self._api_key = api_key
-        self._anthropic = anthropic.Anthropic(api_key=api_key)
+        # Document-emitting personas run non-streaming at max_tokens up to
+        # 64000; the SDK's default 10-minute timeout estimates that as
+        # potentially too slow for a non-streaming call and raises ValueError
+        # before ever sending the request. Widen it instead of migrating
+        # every call site to streaming.
+        self._anthropic = anthropic.Anthropic(api_key=api_key, timeout=2400.0)
         self.budget_usd = budget_usd
         self._tokens_used = 0
         self._cost_used = 0.0

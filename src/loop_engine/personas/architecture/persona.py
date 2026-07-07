@@ -5,8 +5,11 @@ from loop_engine.personas.resolution import apply_resolution_response, format_qu
 
 DEFAULT_MODEL = "claude-sonnet-5"
 # A full architecture definition is a multi-page document; the old 1024
-# default guaranteed silent truncation before the client learned to raise.
-MAX_TOKENS = 8192
+# default guaranteed silent truncation before the client learned to raise,
+# and both 8192 and a subsequent 16000 proved insufficient for a real
+# document in practice (repeated TruncatedResponseError on real runs — see
+# sprints/DEFERRED_VERIFICATION.md).
+MAX_TOKENS = 64000
 RESOLUTION_MAX_TOKENS = 2048
 
 # Embedded verbatim from prompts/02_architecture_definition_prompt.md.
