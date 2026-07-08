@@ -86,4 +86,37 @@ Expected observations:
   code in-process), and per-task test selection (v1 gates on global green, not the
   single task's tests).
 
+## 4. Declarative personas parity + cost (validates Sprint 20, `LOOP_ENGINE_PERSONAS=declarative`)
+
+The `GeneratorNode` ports of PM / Architecture / Sprint Breakdown are verified
+against the mocked suite: byte-parity of the produced `architecture_definition`,
+`sprint_plans`, and `task_manifest` classic-vs-declarative for identical fake
+responses; PM clean-path `project_spec` equality; identical `system_blocks` and
+three-turn revision messages; the `untrusted` wrapper bytes; `CriticGate`
+REVISE/ACCEPT decisions and the key_merge fill; and cross-engine equivalence
+(`run_loop` vs LangGraph). What a mocked LLM cannot show is whether a **real**
+run stays parity in practice and at what cost. Run on a real key:
+
+```bash
+LOOP_ENGINE_PERSONAS=declarative hatch run loop-engine run --input <small requirements doc> --budget 5.00
+hatch run loop-engine cost-summary --run-id <run_id>
+```
+
+Expected observations:
+
+- The produced `docs/architecture_definition.md` / `sprints/*/sprint_plan.md` are
+  indistinguishable from a `classic` run over the same input (same prompts, same
+  adapters/merge), and PM's clean-path `project_spec` matches.
+- `Cache R` on the Architecture/Sprint rows is nonzero on any revision retry —
+  the declarative node builds `system_blocks` from immutable config + state only,
+  so the cached prefix must stay byte-stable across attempts (same guard as §1).
+- **PM escalation-shape (documented behavior change, NOT parity-claimed):** a
+  non-converging PM files **one combined** human-issue question naming every
+  blank/vague field (via `execute_stage`'s no-progress→escalate), not N per-field
+  questions; the declarative multi-cycle path carries **no** `revision_history`
+  trail (empty on the happy path in both modes). Confirm the combined question is
+  answerable and `fold_answers` on resume still folds the free-text answer.
+- `declarative` × `ralph` compose: run with both flags set and confirm the
+  pipeline reaches the Ralph Coder with byte-identical upstream artifacts.
+
 Delete this file once the checks have been performed and any findings are fixed.

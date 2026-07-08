@@ -34,6 +34,10 @@ dependencies = [
   # Runtime (not just dev) dependency: the agentic Coder's run_tests tool and
   # the Coder stage's evidence gate execute pytest via subprocess.
   "pytest==9.1.1",
+  # Declarative persona config format (GeneratorNode, behind the
+  # LOOP_ENGINE_PERSONAS=declarative flag). Loaded with yaml.safe_load only —
+  # never yaml.load — so an in-repo config can never instantiate code.
+  "PyYAML==6.0.3",
 ]
 
 [project.scripts]

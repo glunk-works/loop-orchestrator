@@ -22,7 +22,7 @@ this file tracks *how far we've got and what's next*.
 | 3b — Execution isolation (disposable container/sandbox) — **inert seam** | ✅ built behind flag, reviewed (docker/podman primary, bwrap secondary; real `docker run` + sandboxed gate pytest deferred to a daemon host). Plan: `sprints/18_execution_isolation_container/sprint_plan.md` | `cdc7c8f` |
 | 4 · part 1 — Ralph-loop Coder (`AgenticNode`) | ✅ built behind flag, reviewed; 4 review findings hardened in 4a (below). Plan: `sprints/19_ralph_coder/sprint_plan.md` | `195f7b7` |
 | 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ built behind flag, 319 tests green — awaiting HITL review. Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | `d675d5d` |
-| 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ⬜ sketch (planned next, sprint 20) | — |
+| 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ✅ built behind flag, 385 tests green — awaiting HITL review. Plan: `sprints/20_declarative_generators/sprint_plan.md` | `(pending)` |
 | 5 — Autonomous triggers + multi-repo factory | ⬜ sketch only | — |
 | 6 — Collapse the flags (decommission the migration scaffolding) | ⬜ sketch only | — |
 
@@ -31,10 +31,10 @@ lost — see its plan). Phase 4's planning pass is done and it **split into two
 separately-gated sub-phases, Ralph-Coder-first** (see the Phase 4 section and
 decisions log below). Part 1 (Ralph Coder, `195f7b7`) is built + reviewed, and
 its four review findings are hardened in **part 1a** (`sprints/19a_ralph_hardening/`).
-The **part 2** plan (`GeneratorNode` + PM critic-gate) is written at
-`sprints/20_declarative_generators/sprint_plan.md`. **▶ NEXT ACTION: HITL-review
-part 1a**, then build Phase 4 · part 2 from its plan (green commit + HITL gate).
-Phase 5 remains sketch-only after that; Phase 6 (below) is the tracked teardown
+**Part 2** (`GeneratorNode` + PM critic-gate, `sprints/20_declarative_generators/`)
+is now **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`).
+**▶ NEXT ACTION: HITL-review part 2** (and part 1a if not yet reviewed), then
+Phase 5. Phase 5 remains sketch-only; Phase 6 (below) is the tracked teardown
 that keeps the feature flags from calcifying into permanent bloat.
 
 ## Decisions log (locked)
@@ -109,6 +109,45 @@ that keeps the feature flags from calcifying into permanent bloat.
   - **Sequencing: Ralph Coder first (part 1, sprint 19), declarative generators
     + PM critic-gate second (part 2, sprint 20).** De-risk the higher-uncertainty
     piece first; each part is its own green commit + HITL gate.
+- **Phase 4 · part 2 build (locked, owner-confirmed 2026-07-08):**
+  - **Persona config = PyYAML (owner reaffirmed over stdlib dataclasses).**
+    Pinned `PyYAML==6.0.3` (CVE-clean); SBOM regenerated + `pip-audit` green.
+    Loader is `yaml.safe_load`-only (asserted by test) — a hostile `!!python/*`
+    tag fails to load rather than instantiating.
+  - **PM escalation-shape change accepted as in-bounds (owner call).** Retiring
+    the internal critic loop into a stateless `CriticGate` means a non-converging
+    PM files **one combined** `execute_stage` escalation question (naming every
+    blank/vague field) instead of N per-field questions. Documented, flag-gated,
+    **NOT parity-claimed** on that path; the gate stays stateless (no loop state
+    smuggled back). `fold_answers` on resume is unaffected (folds the free-text
+    answer, never needed per-field granularity). Likewise the declarative
+    multi-cycle path drops the `revision_history` trail (empty on the happy path
+    in both modes — byte-parity holds there).
+  - **Parity-preserving deviations from the plan's config sketch (documented):**
+    (a) Architecture's config sets `extract_open_questions: false` — its markdown
+    artifact *is* what the stage gate reads, so the gate extracts Open Questions
+    exactly as classic; having the node also add them would diverge the produced
+    `State`. Sprint Breakdown keeps it `true` (its gate sees only the parsed-JSON,
+    so the node must lift questions). (b) Two config fields beyond the sketch:
+    `prompt_style` (`cached` for Architecture/Sprint; `inline` for PM, matching
+    the classic PM single-user-prompt call byte-for-byte) and `static_fields`
+    (baseline keys like PM's `revision_history: []` so the clean-path JSON is
+    byte-identical). (c) PM prompt files are numbered `00_pm_*` (PM is the first
+    stage; `01_` is already `01_architecture_review_prompt.md`). (d) The on-disk
+    `prompts/02`/`prompts/03` were regenerated to be **byte-identical to the
+    personas' embedded `PROMPT_TEMPLATE`** (they previously differed only by
+    line-wrapping) — required so the declarative node's `system_blocks` equal the
+    classic persona's; a parity test now pins file==embedded both ways.
+  - **`CriticGate` lives in `personas/pm/critic_gate.py`, not `core/`.** The
+    import-boundary test forbids `core` importing any persona module but `base`,
+    and the gate reuses `critic.review`; so it uses the `ManifestArtifactGate`
+    pattern (a gate under `personas/` that imports `core.gates`). Core never
+    imports it (the loop wiring does).
+  - **Stage identity via thin subclasses.** The engine keys escalation counters
+    and question `origin_stage` off `type(persona).__name__`; three identical
+    `GeneratorNode` instances would collide. `ArchitectureGenerator` /
+    `SprintBreakdownGenerator` / `PMGenerator` are one-line identity subclasses
+    (all logic stays in `GeneratorNode`) giving each stage its own name.
 
 ## Feature flags introduced
 
@@ -123,6 +162,10 @@ that keeps the feature flags from calcifying into permanent bloat.
   Coder (default `classic`). *(Phase 4 · part 1 — planned, sprint 19.)*
 - `LOOP_ENGINE_RALPH_MAX_ITERS` → Ralph iteration cap = the Coder stage's
   `max_revisions` under `ralph` mode (default `30`). *(Phase 4 · part 1.)*
+- `LOOP_ENGINE_PERSONAS=declarative` → the three document personas (PM,
+  Architecture, Sprint Breakdown) become config-driven `GeneratorNode`s and the
+  PM stage gate becomes `CriticGate` (default `classic` keeps the persona
+  classes byte-identical). Composes with `LOOP_ENGINE_CODER`. *(Phase 4 · part 2.)*
 
 ## What exists now (key modules)
 
@@ -134,6 +177,8 @@ that keeps the feature flags from calcifying into permanent bloat.
 - `mcp_servers/coder_tools_server.py` — stdio MCP server (read/execute-only).
 - `tools/mcp/` — `MCPToolProvider` (discovery + dispatch on a background event loop); Phase 3b `container_server_params`/`sandbox_server_params` + preflight (inert).
 - `tools/isolation.py` — single reader of `LOOP_ENGINE_ISOLATION` (`none|worktree|container|sandbox`) + `IsolationUnavailableError`.
+- `personas/declarative/` — Phase 4 · part 2. `mode.py` (single reader of `LOOP_ENGINE_PERSONAS`), `config.py` (`GeneratorConfig` + `yaml.safe_load` loader), `services.py` (the shared-services registry: input-wrappers / output-adapters / revision-styles / `resolve_via_document`), `node.py` (`GeneratorNode` + the three identity subclasses `ArchitectureGenerator`/`SprintBreakdownGenerator`/`PMGenerator`), `configs/*.yaml`. Prompts externalized to `prompts/` (byte-identical to the personas' embedded templates).
+- `personas/pm/critic_gate.py` — `CriticGate`, the PM critic *checks* re-expressed as a structural stage gate (core-safe home, like `ManifestArtifactGate`).
 - `CLAUDE.md` — expanded with a portable "Global Conventions" skill section.
 
 ---
@@ -199,18 +244,32 @@ not parity-claimed. Termination is hard-bounded (iteration cap
 `LOOP_ENGINE_RALPH_MAX_ITERS`, no-progress escalation via identical-findings,
 USD budget as governor).
 
-### Part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate — sprint 20 *(sketch)*
+### Part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate — sprint 20 *(built behind flag)*
+
+Built behind `LOOP_ENGINE_PERSONAS=declarative` (default `classic`). See
+`sprints/20_declarative_generators/sprint_plan.md` and the Phase 4 · part 2
+decisions above.
 
 - **`GeneratorNode`:** one YAML-driven node (prompt file, model, max_tokens,
-  consumes/produces, output-adapter, revision-style, optional resolver) replaces
-  the per-class boilerplate of **Architecture, Sprint Breakdown, and PM**. The
-  genuinely-varying logic becomes a small registry of **shared services**
-  (output-adapters, `section_merge`/`full_reextract` revision, `resolve_via_document`,
-  `untrusted` input-wrapper). Adds PyYAML (pinned) → SBOM/audit tasks.
-- **PM critic-gate:** retire the `MAX_REVISION_CYCLES` loop inside `PMPersona.run`;
-  re-express `critic.review()` as a structural `CriticGate` the engine's revise
-  loop drives. `fold_answers` stays a resume-time resolver service. Flag-gated +
-  parity where the output shape is meant to be unchanged.
+  consumes/produces, input-context+wrap, output-adapter, revision-style,
+  optional resolver) replaces the per-class boilerplate of **Architecture,
+  Sprint Breakdown, and PM**. The genuinely-varying logic is a registry of
+  **shared services** in `services.py` (input-wrappers `none`/`untrusted`;
+  output-adapters `markdown`/`sprint_blocks`/`json_object`; revision-styles
+  `section_merge`/`key_merge`/`full_reextract`; `resolve_via_document`), each
+  factored from the classic persona code so the accept-path output is
+  byte-identical. Pinned PyYAML; SBOM regenerated, audit green.
+- **PM critic-gate:** the `MAX_REVISION_CYCLES` loop inside `PMPersona.run` is
+  retired; `critic.review()` is re-expressed as a structural `CriticGate` the
+  engine's revise loop drives (its identical-findings→escalate is the
+  no-progress detector). `fold_answers` stays a resume-time resolver service on
+  `PMPersona`, outside the node. Parity on the clean-extraction path; a
+  documented, flag-gated escalation-shape change otherwise (see decisions).
+- **Verification:** unit-level against the fake-LLM harness (byte-parity of
+  Architecture/Sprint artifacts + `task_manifest`, PM clean-path `project_spec`,
+  `system_blocks`/revision-message equality, `untrusted` wrapper bytes,
+  `CriticGate` decisions, cross-engine `run_loop`≡LangGraph). Live-run
+  parity/cost deferred to `sprints/DEFERRED_VERIFICATION.md` §4.
 
 ## Phase 5 — Autonomous Triggers & Multi-Repo Factory *(sketch)*
 
@@ -244,6 +303,7 @@ daemon-bearing host (the same host the deferred 3b/Ralph verification needs).
 | `LOOP_ENGINE_ENGINE=langgraph` | **Delete** (langgraph becomes the engine) | LangGraph path verified end-to-end on a real run; parity harness has held across all of P4/P5. Then flip default → delete `run_loop` + the classic-vs-graph parity harness. |
 | `LOOP_ENGINE_TOOLS=mcp` | **Delete** (MCP becomes the tool path) | MCP tool path verified against a real coder-tools server run. Then flip default → delete the in-process `CODER_TOOLS`/`_execute_tool` dispatch. |
 | `LOOP_ENGINE_CODER=ralph` | **Delete classic** (Ralph becomes the Coder) | Ralph verified to *actually converge at acceptable cost* on a real multi-sprint run on a host (the deferred verification). Then flip default → delete `CoderIacPersona` + `CoderGate` + the classic per-sprint targeted-re-entry logic. **Note:** classic has no parity-oracle value for Ralph (Ralph is intentionally different), so its *only* justification is "known-good fallback until Ralph is proven" — the moment Ralph is proven, classic is pure bloat. |
+| `LOOP_ENGINE_PERSONAS=declarative` | **Delete classic** (declarative becomes the personas) | Declarative ports verified on a real run to hold parity at acceptable cost. Then flip default → delete the classic `PMPersona`/`ArchitecturePersona`/`AgileSprintBreakdownPersona` `run()` bodies + their embedded prompt templates + the plain-`ArtifactGate` PM wiring, leaving the `prompts/` files as the sole source of truth. The classic classes have no parity-oracle value once declarative is proven. |
 | `LOOP_ENGINE_ISOLATION` | **Keep** (genuine runtime config) | Not old-vs-new: `none` for local dev, `container` for the factory host. Stays permanently. |
 
 **Also collapses here:**
@@ -317,8 +377,9 @@ at once?
 ## How to run / verify
 
 ```bash
-hatch run test            # full suite (215 after P1, 226 after P2, 246 after P3a, 279 after P3b)
+hatch run test            # full suite (215 after P1, 226 after P2, 246 after P3a, 279 after P3b, 385 after P4·part2)
 hatch run lint && hatch run format && hatch run audit && hatch run sbom
-LOOP_ENGINE_ENGINE=langgraph  hatch run test tests/core/test_graph_engine.py
-LOOP_ENGINE_TOOLS=mcp         hatch run test tests/tools/test_mcp_provider.py
+LOOP_ENGINE_ENGINE=langgraph    hatch run test tests/core/test_graph_engine.py
+LOOP_ENGINE_TOOLS=mcp           hatch run test tests/tools/test_mcp_provider.py
+LOOP_ENGINE_PERSONAS=declarative hatch run test tests/personas/declarative tests/loops/test_declarative_pipeline.py
 ```

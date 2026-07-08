@@ -7,23 +7,48 @@ from loop_engine.personas.architecture.persona import ArchitecturePersona
 from loop_engine.personas.coder_iac.mode import ralph_max_iterations, use_ralph_coder
 from loop_engine.personas.coder_iac.persona import CoderIacPersona
 from loop_engine.personas.coder_iac.ralph import RalphCoderPersona
+from loop_engine.personas.declarative.mode import use_declarative_personas
+from loop_engine.personas.declarative.node import (
+    ArchitectureGenerator,
+    PMGenerator,
+    SprintBreakdownGenerator,
+)
+from loop_engine.personas.pm.critic_gate import CriticGate
 from loop_engine.personas.pm.persona import PMPersona
 
 
 def build_default_loop() -> Loop:
     """The PM → Architect → Sprint Breakdown → Coder pipeline.
 
-    Under `LOOP_ENGINE_CODER=ralph` the Coder stage is the Ralph loop
-    (one task per invocation, self-looping via `execute_stage`'s revise loop —
-    the stage's `max_revisions` is the iteration cap) and the Sprint-Breakdown
-    stage additionally validates the `task_manifest`. Default (`classic`) wiring
-    is byte-identical to the pre-Ralph loop. Read at call time so the flag is
-    honored at run time (like engine/tool selection), not baked in at import.
+    Two independent runtime flags shape the wiring, read at call time so they are
+    honored at run time (not baked in at import):
+
+    - `LOOP_ENGINE_PERSONAS=declarative` swaps the three document personas (PM,
+      Architecture, Sprint Breakdown) for their config-driven `GeneratorNode`
+      ports and swaps the PM stage gate for the structural `CriticGate` (the PM
+      critic *loop* retired). Architecture/Sprint output is byte-identical, so
+      their gates are unchanged. Default (`classic`) keeps the persona classes.
+    - `LOOP_ENGINE_CODER=ralph` makes the Coder a Ralph loop and the
+      Sprint-Breakdown gate manifest-aware. Default (`classic`) is the per-sprint
+      Coder.
+
+    The two flags compose (`declarative` personas × `ralph` Coder is valid).
     """
-    pm = PMPersona()
-    architect = ArchitecturePersona()
-    sprint_breakdown = AgileSprintBreakdownPersona()
+    declarative = use_declarative_personas()
     ralph = use_ralph_coder()
+
+    if declarative:
+        pm = PMGenerator()
+        architect = ArchitectureGenerator()
+        sprint_breakdown = SprintBreakdownGenerator()
+        # The PM critic checks now drive the stage gate; the engine's revise loop
+        # supplies the cycle the internal MAX_REVISION_CYCLES loop used to.
+        pm_gate = CriticGate()
+    else:
+        pm = PMPersona()
+        architect = ArchitecturePersona()
+        sprint_breakdown = AgileSprintBreakdownPersona()
+        pm_gate = ArtifactGate("project_spec", parse_json="object", require_nonempty_parse=True)
 
     sprint_gate = (
         ManifestArtifactGate()
@@ -55,10 +80,7 @@ def build_default_loop() -> Loop:
     # issue.
     return Loop(
         stages=[
-            Stage(
-                persona=pm,
-                gate=ArtifactGate("project_spec", parse_json="object", require_nonempty_parse=True),
-            ),
+            Stage(persona=pm, gate=pm_gate),
             Stage(
                 persona=architect,
                 gate=ArtifactGate("architecture_definition"),
@@ -77,6 +99,6 @@ def build_default_loop() -> Loop:
     )
 
 
-# Built once at import with the flag defaulting to `classic`; the CLI resolves
-# the loop at run time via build_default_loop() so a runtime flag is honored.
+# Built once at import with both flags defaulting off; the CLI resolves the loop
+# at run time via build_default_loop() so runtime flags are honored.
 DEFAULT_LOOP = build_default_loop()

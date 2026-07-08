@@ -1,11 +1,18 @@
 from loop_engine.core.coder_gate import CoderGate, RalphCoderGate
 from loop_engine.core.engine import Loop
+from loop_engine.core.gates import ArtifactGate
 from loop_engine.loops.default.loop import DEFAULT_LOOP, build_default_loop
 from loop_engine.personas.agile_sprint_breakdown.manifest import ManifestArtifactGate
 from loop_engine.personas.agile_sprint_breakdown.persona import AgileSprintBreakdownPersona
 from loop_engine.personas.architecture.persona import ArchitecturePersona
 from loop_engine.personas.coder_iac.persona import CoderIacPersona
 from loop_engine.personas.coder_iac.ralph import RalphCoderPersona
+from loop_engine.personas.declarative.node import (
+    ArchitectureGenerator,
+    PMGenerator,
+    SprintBreakdownGenerator,
+)
+from loop_engine.personas.pm.critic_gate import CriticGate
 from loop_engine.personas.pm.persona import PMPersona
 
 
@@ -66,3 +73,50 @@ def test_build_default_loop_uses_ralph_wiring_under_flag(monkeypatch) -> None:
     assert [type(r) for r in coder_stage.resolvers] == [ArchitecturePersona, PMPersona]
     # The Sprint-Breakdown stage now validates the task_manifest.
     assert isinstance(loop.stages[2].gate, ManifestArtifactGate)
+
+
+def test_build_default_loop_classic_personas_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("LOOP_ENGINE_PERSONAS", raising=False)
+    loop = build_default_loop()
+    assert [type(s.persona) for s in loop.stages[:3]] == [
+        PMPersona,
+        ArchitecturePersona,
+        AgileSprintBreakdownPersona,
+    ]
+    # PM gate is the plain content gate on the classic path.
+    assert isinstance(loop.stages[0].gate, ArtifactGate)
+    assert not isinstance(loop.stages[0].gate, CriticGate)
+
+
+def test_build_default_loop_uses_declarative_personas_under_flag(monkeypatch) -> None:
+    monkeypatch.setenv("LOOP_ENGINE_PERSONAS", "declarative")
+    monkeypatch.delenv("LOOP_ENGINE_CODER", raising=False)
+    loop = build_default_loop()
+
+    assert [type(s.persona) for s in loop.stages[:3]] == [
+        PMGenerator,
+        ArchitectureGenerator,
+        SprintBreakdownGenerator,
+    ]
+    # PM stage carries the structural CriticGate.
+    assert isinstance(loop.stages[0].gate, CriticGate)
+    # Architecture/Sprint gates unchanged (declarative output is byte-identical).
+    assert isinstance(loop.stages[1].gate, ArtifactGate)
+    assert isinstance(loop.stages[2].gate, ArtifactGate)
+    # Escalation ladder still wires the declarative ports as resolvers.
+    assert [type(r) for r in loop.stages[3].resolvers] == [
+        ArchitectureGenerator,
+        PMGenerator,
+    ]
+    # The Coder stays classic (its own flag is off).
+    assert isinstance(loop.stages[3].persona, CoderIacPersona)
+
+
+def test_declarative_personas_compose_with_ralph_coder(monkeypatch) -> None:
+    monkeypatch.setenv("LOOP_ENGINE_PERSONAS", "declarative")
+    monkeypatch.setenv("LOOP_ENGINE_CODER", "ralph")
+    loop = build_default_loop()
+    assert isinstance(loop.stages[0].persona, PMGenerator)
+    assert isinstance(loop.stages[0].gate, CriticGate)
+    assert isinstance(loop.stages[2].gate, ManifestArtifactGate)
+    assert isinstance(loop.stages[3].persona, RalphCoderPersona)
