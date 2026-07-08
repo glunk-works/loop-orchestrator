@@ -9,7 +9,7 @@ from loop_engine.core.state import (
 )
 
 VALID_PAYLOAD = {
-    "schema_version": 2,
+    "schema_version": 3,
     "run_id": "run-001",
     "status": "running",
     "questions": [],
@@ -26,6 +26,7 @@ VALID_PAYLOAD = {
         }
     ],
     "artifacts": {"spec": "docs/project_spec.json"},
+    "artifact_refs": {},
 }
 
 
@@ -136,6 +137,37 @@ def test_migrate_v1_payload_fills_v2_defaults() -> None:
     assert state.pending_issue is None
 
 
+def test_migrate_v2_payload_bumps_to_v3_and_defaults_refs() -> None:
+    v2_payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "artifact_refs"}
+    v2_payload["schema_version"] = 2
+    state = State.model_validate(migrate_state_payload(v2_payload))
+    assert state.schema_version == CURRENT_SCHEMA_VERSION
+    assert state.artifact_refs == {}
+    # Inline bodies carry forward untouched for the pre-LangGraph run_loop.
+    assert state.artifacts == {"spec": "docs/project_spec.json"}
+
+
+def test_v2_snapshot_without_artifact_refs_still_validates() -> None:
+    # A defaulted field must not force a re-mint of old snapshots.
+    payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "artifact_refs"}
+    state = State.model_validate(payload)
+    assert state.artifact_refs == {}
+
+
 def test_migrate_unknown_version_raises() -> None:
     with pytest.raises(ValueError, match="Unsupported"):
         migrate_state_payload({"schema_version": 99})
+
+
+def test_artifact_ref_rejects_negative_size() -> None:
+    from loop_engine.core.state import ArtifactRef
+
+    with pytest.raises(ValidationError):
+        ArtifactRef(path="docs/x", digest="abc", size_bytes=-1)
+
+
+def test_artifact_ref_forbids_extra_fields() -> None:
+    from loop_engine.core.state import ArtifactRef
+
+    with pytest.raises(ValidationError):
+        ArtifactRef(path="docs/x", digest="abc", size_bytes=1, bogus="y")

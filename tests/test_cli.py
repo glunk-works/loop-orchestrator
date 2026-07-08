@@ -6,7 +6,13 @@ import typer
 from typer.testing import CliRunner
 
 from loop_engine.cli import app
-from loop_engine.core.state import IssueRef, Question, RunStatus, State
+from loop_engine.core.state import (
+    CURRENT_SCHEMA_VERSION,
+    IssueRef,
+    Question,
+    RunStatus,
+    State,
+)
 from loop_engine.loops.default.loop import DEFAULT_LOOP
 
 runner = CliRunner()
@@ -49,6 +55,36 @@ def test_cli_run_help_lists_expected_options() -> None:
     output = _plain_output(result)
     for option in ("--loop", "--input", "--budget", "--resume-from"):
         assert option in output
+
+
+def test_cli_run_dispatches_to_langgraph_engine_when_flagged(tmp_path, monkeypatch) -> None:
+    mock_graph = MagicMock(return_value=_completed_state())
+    mock_classic = MagicMock(return_value=_completed_state())
+    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_graph)
+    monkeypatch.setattr("loop_engine.cli.run_loop", mock_classic)
+    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setenv("LOOP_ENGINE_ENGINE", "langgraph")
+
+    result = runner.invoke(app, ["run"])
+
+    assert result.exit_code == 0
+    assert mock_graph.called
+    assert not mock_classic.called
+
+
+def test_cli_run_defaults_to_classic_engine(tmp_path, monkeypatch) -> None:
+    mock_graph = MagicMock(return_value=_completed_state())
+    mock_classic = MagicMock(return_value=_completed_state())
+    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_graph)
+    monkeypatch.setattr("loop_engine.cli.run_loop", mock_classic)
+    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.delenv("LOOP_ENGINE_ENGINE", raising=False)
+
+    result = runner.invoke(app, ["run"])
+
+    assert result.exit_code == 0
+    assert mock_classic.called
+    assert not mock_graph.called
 
 
 def test_cli_resume_from_skips_already_completed_stages(tmp_path, monkeypatch) -> None:
@@ -103,7 +139,7 @@ def test_cli_resume_from_migrates_v1_snapshot(tmp_path, monkeypatch) -> None:
 
     assert result.exit_code == 0
     resumed_state = mock_run_loop.call_args.args[1]
-    assert resumed_state.schema_version == 2
+    assert resumed_state.schema_version == CURRENT_SCHEMA_VERSION
 
 
 def test_cli_resume_from_rejects_snapshot_from_a_different_loop(tmp_path, monkeypatch) -> None:

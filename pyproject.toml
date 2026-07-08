@@ -24,6 +24,9 @@ dependencies = [
   "anthropic==0.116.0",
   "keyring==25.7.0",
   "typer==0.26.8",
+  # Orchestration substrate: the engine runs as a LangGraph StateGraph (behind
+  # the LOOP_ENGINE_ENGINE=langgraph flag during the migration).
+  "langgraph==1.2.8",
   # Runtime (not just dev) dependency: the agentic Coder's run_tests tool and
   # the Coder stage's evidence gate execute pytest via subprocess.
   "pytest==9.1.1",

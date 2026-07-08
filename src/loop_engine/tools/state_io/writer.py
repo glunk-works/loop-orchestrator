@@ -50,3 +50,58 @@ def write_artifact(content: str, relative_path: str) -> Path:
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_text(content)
     return target_path
+
+
+# The `.agent/` semantic-state layer. These paths are engine-controlled
+# constants, not model-supplied, and are deliberately kept OUT of
+# `_ALLOWED_ARTIFACT_ROOTS` so model-emitted `write_artifact` edits can never
+# target the scratchpad or the decisions ledger.
+AGENT_DIR = ".agent"
+AGENT_SCRATCHPAD_PATH = f"{AGENT_DIR}/STATE.md"
+AGENT_MEMORY_PATH = f"{AGENT_DIR}/MEMORY.md"
+
+
+class AppendOnlyViolationError(Exception):
+    """A write to the append-only MEMORY.md ledger would drop or rewrite
+    existing content instead of appending to it."""
+
+
+def _agent_target(relative_path: str) -> Path:
+    # Hardened even though callers pass constants: relative, under .agent/,
+    # no traversal — the same discipline validate_artifact_relative_path
+    # applies to model paths.
+    normalized = relative_path.replace("\\", "/")
+    parts = PurePosixPath(normalized).parts
+    if not parts or parts[0] != AGENT_DIR or ".." in parts or normalized.startswith("/"):
+        raise ValueError(
+            f"Invalid agent-state path: {relative_path!r} must stay under '{AGENT_DIR}/'"
+        )
+    return Path(*parts)
+
+
+def write_agent_scratchpad(content: str) -> Path:
+    """Overwrite the mutable `.agent/STATE.md` scratchpad."""
+    target_path = _agent_target(AGENT_SCRATCHPAD_PATH)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_text(content)
+    return target_path
+
+
+def append_agent_memory(full_content: str) -> Path:
+    """Persist the `.agent/MEMORY.md` ledger, enforcing append-only semantics.
+
+    Callers render the complete file (existing + new entry); this rejects any
+    write that does not preserve the current content as a prefix, so a finalized
+    decision can never be silently edited or dropped.
+    """
+    target_path = _agent_target(AGENT_MEMORY_PATH)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    if target_path.exists():
+        existing = target_path.read_text()
+        if not full_content.startswith(existing):
+            raise AppendOnlyViolationError(
+                f"Refusing to write {AGENT_MEMORY_PATH}: the ledger is append-only "
+                "and the new content does not preserve existing entries as a prefix."
+            )
+    target_path.write_text(full_content)
+    return target_path

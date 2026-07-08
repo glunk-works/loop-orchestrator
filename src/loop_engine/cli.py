@@ -11,6 +11,7 @@ from loop_engine.core.engine import (
     reentry_index,
     run_loop,
 )
+from loop_engine.core.graph_engine import run_graph_loop, use_langgraph_engine
 from loop_engine.core.state import (
     CURRENT_SCHEMA_VERSION,
     RunStatus,
@@ -24,6 +25,14 @@ from loop_engine.tools.llm.client import LLMClient
 app = typer.Typer()
 
 NAMED_LOOPS: dict[str, Loop] = {"default": DEFAULT_LOOP}
+
+
+def _select_engine():
+    """The engine entrypoint for this run: LangGraph when the flag is set,
+    else the classic `run_loop`. Resolved through the module global so tests
+    that patch `cli.run_loop` still take effect on the default path."""
+    return run_graph_loop if use_langgraph_engine() else run_loop
+
 
 DEFAULT_BUDGET_USD = 5.00
 
@@ -101,7 +110,9 @@ def run(
         start_index = 0
 
     llm_client = LLMClient(budget_usd=budget)
-    final_state = run_loop(selected_loop, initial_state, llm_client, start_index=start_index)
+    final_state = _select_engine()(
+        selected_loop, initial_state, llm_client, start_index=start_index
+    )
     _report_outcome(final_state)
 
 
@@ -171,7 +182,7 @@ def resume(
         if q.resolution is not None
     ]
 
-    final_state = run_loop(
+    final_state = _select_engine()(
         selected_loop,
         state,
         llm_client,
