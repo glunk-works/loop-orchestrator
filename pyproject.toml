@@ -75,6 +75,8 @@ select = ["E", "F", "I", "B", "S"]
 
 [tool.ruff.lint.per-file-ignores]
 # S101: pytest's assert-based idiom is expected in test files.
-"tests/**" = ["S101"]
+# S603/S607: tests legitimately shell out to `git` (worktree isolation) with a
+# fixed argv and no shell — the same posture the runtime code documents inline.
+"tests/**" = ["S101", "S603", "S607"]
 # S106/S107: fixture passphrases in tests, not real secrets.
 "containers/keyring_backend/test_cryptfile_backend.py" = ["S101", "S106", "S107"]

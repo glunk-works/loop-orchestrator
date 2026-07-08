@@ -18,7 +18,8 @@ this file tracks *how far we've got and what's next*.
 |---|---|---|
 | 1 — State & skill externalization + LangGraph engine | ✅ complete, reviewed | `ee89718` |
 | 2 — MCP tooling (coder tools as MCP server) | ✅ complete, reviewed | `7368411` |
-| 3 — Execution isolation (worktrees + containers) | ⬜ sketch only — **plan next** | — |
+| 3a — Execution isolation (per-run git worktrees) | ✅ built behind flag, tests green — **awaiting HITL review** | — |
+| 3b — Execution isolation (disposable container/sandbox) | ⬜ seam-specced, deferred (`docs/phase3_execution_isolation_plan.md`) | — |
 | 4 — Flattening orchestration (declarative personas, exit-code gates) | ⬜ sketch only | — |
 | 5 — Autonomous triggers + multi-repo factory | ⬜ sketch only | — |
 
@@ -51,6 +52,9 @@ and need a detailed planning pass before implementation.
 - `LOOP_ENGINE_ENGINE=langgraph` → LangGraph engine (default: classic `run_loop`).
 - `LOOP_ENGINE_TOOLS=mcp` → Coder dispatches tools via the MCP provider
   (default: in-process `CODER_TOOLS`/`_execute_tool`).
+- `LOOP_ENGINE_ISOLATION=worktree` → per-run git worktree; the CLI chdir's the
+  run into it (default: no isolation, runs in the checkout). Worktree base dir
+  overridable via `LOOP_ENGINE_WORKTREE_ROOT` (default `.worktrees/`).
 
 ## What exists now (key modules)
 
@@ -65,24 +69,37 @@ and need a detailed planning pass before implementation.
 
 ---
 
-## Phase 3 — Execution Isolation *(sketch — needs detailed planning)*
+## Phase 3 — Execution Isolation *(planned — see `docs/phase3_execution_isolation_plan.md`)*
 
-- **Worktree per task:** a manager that runs `git worktree add` per run and
-  roots `coder_tools`/`state_io` paths at the worktree instead of `Path.cwd()`
-  (today's CWD assumption lives at `tools/coder_tools/__init__.py:82` and in
-  `tools/state_io/writer.py`). Cleanup on terminal states.
-- **Disposable compute:** high-risk nodes (code execution, tests) run inside a
-  throwaway container mounting **only** the active worktree; the test-runner
-  MCP server becomes the in-container entrypoint. Reuse the `dev` stage of the
-  root `Dockerfile`.
-- **Mount restrictions:** worktree only — no repo root, no keyring, no host paths.
+Detailed buildable spec lives in **`docs/phase3_execution_isolation_plan.md`**.
+Summary + the decisions that resolved the earlier open questions:
 
-**Open questions for planning:** Is a container runtime (docker/podman)
-available in the devcontainer, or is isolation worktree-only for now? Where do
-worktrees live (base dir, naming, cleanup policy)? How does worktree-rooting
-interact with `mirror_to_disk`'s `docs/artifacts/<run_id>/…` paths and the
-deferred artifact strip? Does the MCP server's `cwd` param (already plumbed)
-become the worktree root?
+- **Split into 3a (build now) + 3b (spec the seam, defer the build).** Forced by
+  the environment: the devcontainer has **no `docker`/`podman`** and is itself an
+  unprivileged container. DinD needs `--privileged`; DooD mounts the host socket
+  (host-root-equivalent) into a process that already runs untrusted model code
+  in-process — that *enlarges* the surface. So no DinD/DooD here.
+- **3a — worktree isolation:** a `tools/worktree/` manager (`git worktree` per
+  run, a new sanctioned subprocess surface) + a `worktree_run(run_id)` context
+  manager that **`chdir`s** into the worktree for the run. Rooting is by chdir
+  (not root-threading) because everything already keys off `Path.cwd()` — this
+  needs ~zero signature changes, converges the MCP `cwd` param and the in-process
+  tool path, and auto-tightens the existing traversal/symlink checks to the
+  worktree. Gated by `LOOP_ENGINE_ISOLATION=worktree` (default off).
+- **Snapshots stay in the main checkout** (state_io grows a `state_root()` the
+  context manager pins to the orchestrator home); only the artifact tree
+  (`src/`/`docs/`/`sprints/`/`.agent/`) follows the chdir into the worktree. So
+  `mirror_to_disk`'s `docs/artifacts/<run_id>/…` lands in the worktree; the
+  snapshot's *relative* artifact refs are valid only inside the worktree context
+  (matters for the deferred inline-artifacts strip — cross-cutting #1).
+- **3b — container/sandbox:** preserved as a drop-in via the MCP provider seam
+  (only the server *launch params* change: `docker`/`podman` on a daemon-bearing
+  host, or `bwrap`/`nsjail` daemon-free). Reuses the `dev` Dockerfile stage;
+  mounts worktree only. Spec + flag stub now, no executing code until a runtime
+  is chosen and verified.
+- **Honest caveat:** 3a is blast-radius isolation, **not** a security sandbox —
+  on the default tools path untrusted code still runs in-process. The security
+  boundary is 3b.
 
 ## Phase 4 — Flattening Orchestration *(sketch)*
 
@@ -125,7 +142,7 @@ to `glunk-works`; how runs are queued/rate-limited.
 ## How to run / verify
 
 ```bash
-hatch run test            # full suite (215 after P1, 226 after P2)
+hatch run test            # full suite (215 after P1, 226 after P2, 246 after P3a)
 hatch run lint && hatch run format && hatch run audit && hatch run sbom
 LOOP_ENGINE_ENGINE=langgraph  hatch run test tests/core/test_graph_engine.py
 LOOP_ENGINE_TOOLS=mcp         hatch run test tests/tools/test_mcp_provider.py

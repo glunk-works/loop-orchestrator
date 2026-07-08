@@ -6,12 +6,41 @@ from loop_engine.core.state import State
 _SAFE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 _ALLOWED_ARTIFACT_ROOTS = ("docs", "sprints", "src")
 
+# Where `state/<run_id>/` snapshots are anchored. Defaults to the process CWD,
+# so behavior is unchanged when execution isolation is off. Under worktree
+# isolation (Phase 3a) the run chdir's into its worktree, but snapshots must
+# stay in the orchestrator's main checkout — `worktree_run` pins this to the
+# original CWD before the chdir. Only snapshots honor it; model-facing artifacts
+# (`write_artifact`) deliberately follow the CWD into the worktree.
+_STATE_ROOT: Path | None = None
+
+
+def set_state_root(root: Path | None) -> None:
+    """Pin (or, with None, reset to CWD) the anchor for state snapshots."""
+    global _STATE_ROOT
+    _STATE_ROOT = root
+
+
+def state_root() -> Path:
+    """The directory `state/` is written under: the pinned root when set (an
+    absolute main-checkout path, under worktree isolation), else `Path(".")`
+    (the CWD, keeping the snapshot path relative as before)."""
+    return _STATE_ROOT if _STATE_ROOT is not None else Path(".")
+
 
 def _validate_safe_name(value: str, *, label: str) -> None:
     if not _SAFE_NAME_PATTERN.match(value):
         raise ValueError(
             f"Invalid {label}: {value!r} must match pattern {_SAFE_NAME_PATTERN.pattern!r}"
         )
+
+
+def validate_run_id(run_id: str) -> str:
+    """Public run_id guard (same rule the snapshot writer applies), so callers
+    that derive filesystem paths from a run_id — e.g. the worktree manager —
+    reuse the exact validation instead of duplicating the pattern."""
+    _validate_safe_name(run_id, label="run_id")
+    return run_id
 
 
 def validate_artifact_relative_path(relative_path: str) -> PurePosixPath:
@@ -36,7 +65,7 @@ def write_state_snapshot(state: State, run_id: str, stage_index: int, stage_name
     _validate_safe_name(run_id, label="run_id")
     _validate_safe_name(stage_name, label="stage_name")
 
-    target_dir = Path("state") / run_id
+    target_dir = state_root() / "state" / run_id
     target_dir.mkdir(parents=True, exist_ok=True)
     target_path = target_dir / f"{stage_index:02d}_{stage_name}.json"
     target_path.write_text(state.model_dump_json())

@@ -1,5 +1,7 @@
 import json
 import re
+import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import typer
@@ -267,6 +269,66 @@ def test_cli_cost_summary_counts_each_stage_once_despite_terminal_snapshot(
     assert "Cache W" in output
     assert "Cache R" in output
     assert "Cost (USD)" in output
+
+
+def _init_repo(path: Path) -> None:
+    for args in (
+        ["init", "-b", "main"],
+        ["config", "user.email", "t@t.test"],
+        ["config", "user.name", "T"],
+    ):
+        subprocess.run(["git", *args], cwd=path, check=True, capture_output=True)
+    (path / "seed.txt").write_text("seed")
+    subprocess.run(["git", "add", "seed.txt"], cwd=path, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "seed"], cwd=path, check=True, capture_output=True)
+
+
+def test_cli_run_under_worktree_isolation_runs_engine_in_worktree(tmp_path, monkeypatch) -> None:
+    _init_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "worktree")
+
+    seen = {}
+
+    def fake_run_loop(loop, state, client, **kwargs):
+        seen["cwd"] = Path.cwd()
+        return _completed_state()
+
+    monkeypatch.setattr("loop_engine.cli.run_loop", fake_run_loop)
+    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+
+    origin = Path.cwd()
+    result = runner.invoke(app, ["run"])
+
+    assert result.exit_code == 0
+    # The engine ran inside a per-run worktree, not the main checkout...
+    assert seen["cwd"] != origin
+    assert (tmp_path / ".worktrees").resolve() == seen["cwd"].parent
+    # ...and the CWD was restored afterward.
+    assert Path.cwd() == origin
+
+
+def test_cli_prune_worktrees_all_removes_worktrees(tmp_path, monkeypatch) -> None:
+    _init_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "worktree")
+
+    from loop_engine.tools.worktree import create
+
+    create("runa")
+    create("runb")
+
+    result = runner.invoke(app, ["prune-worktrees", "--all"])
+
+    assert result.exit_code == 0
+    assert not (tmp_path / ".worktrees" / "runa").exists()
+    assert not (tmp_path / ".worktrees" / "runb").exists()
+
+
+def test_cli_prune_worktrees_requires_a_target(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["prune-worktrees"])
+    assert result.exit_code != 0
 
 
 def test_cli_defines_no_api_key_option() -> None:

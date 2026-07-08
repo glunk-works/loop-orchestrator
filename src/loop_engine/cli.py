@@ -21,6 +21,7 @@ from loop_engine.core.state import (
 from loop_engine.loops.default.loop import DEFAULT_LOOP
 from loop_engine.tools import issue_io
 from loop_engine.tools.llm.client import LLMClient
+from loop_engine.tools.worktree import prune_all, worktree_run
 
 app = typer.Typer()
 
@@ -96,7 +97,8 @@ def run(
 ) -> None:
     selected_loop = NAMED_LOOPS[loop]
 
-    if resume_from is not None:
+    resuming = resume_from is not None
+    if resuming:
         initial_state = _load_state(resume_from)
         start_index = _start_index_for(initial_state, selected_loop)
     else:
@@ -110,9 +112,10 @@ def run(
         start_index = 0
 
     llm_client = LLMClient(budget_usd=budget)
-    final_state = _select_engine()(
-        selected_loop, initial_state, llm_client, start_index=start_index
-    )
+    with worktree_run(initial_state.run_id, reuse=resuming):
+        final_state = _select_engine()(
+            selected_loop, initial_state, llm_client, start_index=start_index
+        )
     _report_outcome(final_state)
 
 
@@ -170,25 +173,29 @@ def resume(
         raise typer.BadParameter(
             f"Loop {loop!r} has no answer-folding persona at stage 0; cannot resume from an issue."
         )
-    state = pm_persona.fold_answers(state, llm_client)
 
-    paused_index = state.counters.get(PAUSED_STAGE_COUNTER, 0)
-    resolved = [q for q in state.questions if q.resolved_by == f"human:{from_issue}"]
-    start_index = reentry_index(selected_loop, paused_index, resolved)
+    # fold_answers and the engine both read the run's artifact tree, so run
+    # them inside the run's worktree (reuse the one created on the original run).
+    with worktree_run(state.run_id, reuse=True):
+        state = pm_persona.fold_answers(state, llm_client)
 
-    findings = [
-        f"Escalated question: {q.text}\n  Resolution (from human): {q.resolution}"
-        for q in resolved
-        if q.resolution is not None
-    ]
+        paused_index = state.counters.get(PAUSED_STAGE_COUNTER, 0)
+        resolved = [q for q in state.questions if q.resolved_by == f"human:{from_issue}"]
+        start_index = reentry_index(selected_loop, paused_index, resolved)
 
-    final_state = _select_engine()(
-        selected_loop,
-        state,
-        llm_client,
-        start_index=start_index,
-        initial_findings=findings,
-    )
+        findings = [
+            f"Escalated question: {q.text}\n  Resolution (from human): {q.resolution}"
+            for q in resolved
+            if q.resolution is not None
+        ]
+
+        final_state = _select_engine()(
+            selected_loop,
+            state,
+            llm_client,
+            start_index=start_index,
+            initial_findings=findings,
+        )
     _report_outcome(final_state)
 
 
@@ -225,6 +232,31 @@ def cost_summary(run_id: Annotated[str, typer.Option("--run-id")]) -> None:
     typer.echo(
         f"{'TOTAL':<40}{total_tokens:>10}{total_cache_w:>10}{total_cache_r:>10}{total_cost:>14.4f}"
     )
+
+
+@app.command(name="prune-worktrees")
+def prune_worktrees(
+    run_id: Annotated[
+        str | None,
+        typer.Option("--run-id", help="Remove only this run's worktree and branch."),
+    ] = None,
+    all_: Annotated[
+        bool,
+        typer.Option("--all", help="Remove every per-run worktree under the worktree root."),
+    ] = False,
+) -> None:
+    """Remove retained per-run worktrees. Worktrees are kept by default (resume,
+    PR source, inspection); this reclaims them once a run is truly done."""
+    if run_id is not None:
+        from loop_engine.tools.worktree import cleanup
+
+        cleanup(run_id)
+        typer.echo(f"removed worktree for run {run_id}")
+    elif all_:
+        removed = prune_all()
+        typer.echo(f"removed {len(removed)} worktree(s): {', '.join(removed) or '(none)'}")
+    else:
+        raise typer.BadParameter("pass --run-id <id> or --all")
 
 
 if __name__ == "__main__":
