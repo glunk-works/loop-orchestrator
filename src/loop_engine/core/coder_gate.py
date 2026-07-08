@@ -19,6 +19,14 @@ from loop_engine.tools.isolation import IsolationUnavailableError, sandbox_runti
 # blocks failed to apply; its presence is a deterministic REVISE signal.
 EDIT_FAILURES_HEADER = "## Edit Application Failures"
 
+# Stable prefix on the finding the Ralph gate emits when EVERY manifest task is
+# checked off but the suite is red — a cross-task regression, not incomplete
+# coverage. The Ralph persona keys its repair increment off this prefix, so it
+# must never be sniffed from raw pytest output. Distinct from the
+# incomplete-coverage status line so the two "no selectable task" states
+# (repair vs escalate-blocked) are unambiguous.
+RALPH_REGRESSION_PREFIX = "Ralph regression —"
+
 
 def _raise_if_sandboxed(context: str) -> None:
     """Both Coder gates run pytest in-process — under container/sandbox isolation
@@ -166,7 +174,7 @@ class RalphCoderGate:
         if outstanding:
             return GateResult(
                 GateDecision.REVISE,
-                findings=[_status_finding(outstanding, failing=None)],
+                findings=[_status_finding(outstanding)],
             )
 
         exit_code, output = _run_gate_pytest(self.test_path)
@@ -179,17 +187,27 @@ class RalphCoderGate:
                 ],
             )
         if exit_code != 0:
+            # All tasks are checked off, yet the suite is red: a change regressed
+            # a previously-passing test. This is NOT incomplete coverage, so it
+            # carries the regression prefix that routes the persona to a repair
+            # increment instead of the escalate-when-blocked path.
             return GateResult(
                 GateDecision.REVISE,
-                findings=[_status_finding([], failing=f"pytest exit {exit_code}:\n{output}")],
+                findings=[
+                    f"{RALPH_REGRESSION_PREFIX} every manifest task is complete but the "
+                    f"suite is red; a change regressed a previously-passing test "
+                    f"(pytest exit {exit_code}):\n{output}"
+                ],
             )
         return GateResult(GateDecision.ACCEPT)
 
 
-def _status_finding(outstanding: list[str], failing: str | None) -> str:
+def _status_finding(outstanding: list[str]) -> str:
+    """Incomplete-coverage status: tasks remain (possibly all dep-blocked). The
+    red-suite-with-all-tasks-done case uses `RALPH_REGRESSION_PREFIX` instead."""
     next_task = outstanding[0] if outstanding else "none"
     remaining = ", ".join(outstanding) if outstanding else "none"
     return (
-        f"Ralph status — next task: {next_task}; tasks still to complete: {remaining}; "
-        f"failing tests: {failing or 'none'}. Implement/fix the next unit."
+        f"Ralph status — next task: {next_task}; tasks still to complete: {remaining}. "
+        "Implement the next unit."
     )

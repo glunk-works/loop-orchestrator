@@ -18,6 +18,12 @@ _HEADER_LINE_RE = re.compile(r"^#{1,6}\s+\S")
 # pipeline stored as ground truth.
 _QUESTION_SHAPED_MAX_LENGTH = 600
 
+# Prefix marking a finding that carries a resolved-question answer (as opposed
+# to a gate status line). Shared with `engine._resolution_findings` so a
+# self-looping persona (the Ralph Coder) can keep resolution answers in the
+# prompt across iterations while trimming stale status lines.
+RESOLUTION_FINDING_PREFIX = "Escalated question:"
+
 
 class GateDecision(StrEnum):
     ACCEPT = "accept"

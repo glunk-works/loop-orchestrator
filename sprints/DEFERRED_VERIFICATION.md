@@ -72,6 +72,14 @@ Expected observations:
   (`LOOP_ENGINE_RALPH_MAX_ITERS`, default 30) with a `FAILED_STAGE` snapshot, at
   the USD budget (`BUDGET_EXCEEDED`), or escalates on repeated identical failing
   findings (no-progress guard) — it never spins unbounded.
+- **Self-healing (Phase 4a, `sprints/19a_ralph_hardening/`):** if a later task
+  regresses an earlier task's test, the run does **not** dead-end — once every
+  task is checked off but the suite is red, the gate emits a regression finding
+  and the Coder runs a **repair increment** until green (bounded by the same cap
+  + budget). What a mocked LLM cannot show is whether a real repair increment
+  actually diagnoses and fixes a genuine regression at acceptable cost — verify
+  this on the host run (introduce a deliberate cross-task regression and confirm
+  the loop recovers rather than escalating to a human issue).
 - **Deferred with the sprint-18 host work:** routing the Ralph gate's pytest and
   the `run_tests` tool through a sandbox under `LOOP_ENGINE_ISOLATION=container`
   (until then the gate raises `IsolationUnavailableError` rather than run model

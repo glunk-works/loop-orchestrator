@@ -12,7 +12,13 @@ from datetime import UTC, datetime
 
 from pydantic import ValidationError
 
-from loop_engine.core.gates import ArtifactGate, GateDecision, GateResult, new_question
+from loop_engine.core.gates import (
+    RESOLUTION_FINDING_PREFIX,
+    ArtifactGate,
+    GateDecision,
+    GateResult,
+    new_question,
+)
 from loop_engine.core.state import Question, RunStatus, StageRecord, State
 from loop_engine.personas.base import BasePersona
 from loop_engine.tools.artifact_store import has_artifact, mirror_to_disk
@@ -138,7 +144,7 @@ def _run_resolver_ladder(
 
 def _resolution_findings(questions: list[Question]) -> list[str]:
     return [
-        f"Escalated question: {q.text}\n  Resolution: {q.resolution}"
+        f"{RESOLUTION_FINDING_PREFIX} {q.text}\n  Resolution: {q.resolution}"
         for q in questions
         if q.resolution is not None
     ]

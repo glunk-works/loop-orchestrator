@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from loop_engine.core.coder_gate import CoderGate, RalphCoderGate
+from loop_engine.core.coder_gate import RALPH_REGRESSION_PREFIX, CoderGate, RalphCoderGate
 from loop_engine.core.gates import GateDecision
 from loop_engine.core.state import State
 from loop_engine.tools.agent_state import ScratchpadState, write_scratchpad
@@ -169,13 +169,32 @@ def test_ralph_gate_revises_when_a_task_is_unchecked_even_if_green() -> None:
 
 
 def test_ralph_gate_revises_on_red_tests_when_all_checked() -> None:
+    # All tasks checked but the suite is red: a cross-task regression. The gate
+    # emits the regression-prefixed finding (which routes the persona to a repair
+    # increment), not the incomplete-coverage status line.
     Path("src").mkdir()
     Path("src/test_red.py").write_text("def test_bad():\n    assert 1 == 2\n")
     state = _ralph_state(["s::t01"], {"/sprints/01_foo/sprint_plan.md": "done"}, ["s::t01"])
 
     result = RalphCoderGate()(state, "RalphCoderPersona")
     assert result.decision is GateDecision.REVISE
-    assert "failing tests" in result.findings[0]
+    assert result.findings[0].startswith(RALPH_REGRESSION_PREFIX)
+    assert "test_bad" in result.findings[0]
+
+
+def test_ralph_gate_incomplete_coverage_is_not_a_regression() -> None:
+    # An unchecked task must NOT carry the regression prefix — it is ordinary
+    # incomplete coverage, which the persona escalates rather than repairs.
+    Path("src").mkdir()
+    Path("src/test_green.py").write_text("def test_ok():\n    assert True\n")
+    state = _ralph_state(
+        ["s::t01", "s::t02"], {"/sprints/01_foo/sprint_plan.md": "done"}, ["s::t01"]
+    )
+
+    result = RalphCoderGate()(state, "RalphCoderPersona")
+    assert result.decision is GateDecision.REVISE
+    assert not result.findings[0].startswith(RALPH_REGRESSION_PREFIX)
+    assert "s::t02" in result.findings[0]
 
 
 def test_ralph_gate_revises_on_missing_manifest() -> None:

@@ -20,7 +20,8 @@ this file tracks *how far we've got and what's next*.
 | 2 — MCP tooling (coder tools as MCP server) | ✅ complete, reviewed | `7368411` |
 | 3a — Execution isolation (per-run git worktrees) | ✅ built behind flag, reviewed | `951e377` |
 | 3b — Execution isolation (disposable container/sandbox) — **inert seam** | ✅ built behind flag, reviewed (docker/podman primary, bwrap secondary; real `docker run` + sandboxed gate pytest deferred to a daemon host). Plan: `sprints/18_execution_isolation_container/sprint_plan.md` | `cdc7c8f` |
-| 4 · part 1 — Ralph-loop Coder (`AgenticNode`) | ✅ built behind flag, 311 tests green — awaiting HITL review. Plan: `sprints/19_ralph_coder/sprint_plan.md` | `195f7b7` |
+| 4 · part 1 — Ralph-loop Coder (`AgenticNode`) | ✅ built behind flag, reviewed; 4 review findings hardened in 4a (below). Plan: `sprints/19_ralph_coder/sprint_plan.md` | `195f7b7` |
+| 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ built behind flag, 319 tests green — awaiting HITL review. Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | _this commit_ |
 | 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ⬜ sketch (planned next, sprint 20) | — |
 | 5 — Autonomous triggers + multi-repo factory | ⬜ sketch only | — |
 | 6 — Collapse the flags (decommission the migration scaffolding) | ⬜ sketch only | — |
@@ -28,11 +29,13 @@ this file tracks *how far we've got and what's next*.
 Phases 1–3b are detailed and executed (3b's daemon-host e2e is deferred, not
 lost — see its plan). Phase 4's planning pass is done and it **split into two
 separately-gated sub-phases, Ralph-Coder-first** (see the Phase 4 section and
-decisions log below). **▶ NEXT ACTION: build Phase 4 · part 1** from
-`sprints/19_ralph_coder/sprint_plan.md` (green commit + HITL gate), then write
-the part-2 (`GeneratorNode` + PM critic-gate) sprint plan and build it. Phase 5
-remains sketch-only after that; Phase 6 (below) is the tracked teardown that
-keeps the feature flags from calcifying into permanent bloat.
+decisions log below). Part 1 (Ralph Coder, `195f7b7`) is built + reviewed, and
+its four review findings are hardened in **part 1a** (`sprints/19a_ralph_hardening/`).
+The **part 2** plan (`GeneratorNode` + PM critic-gate) is written at
+`sprints/20_declarative_generators/sprint_plan.md`. **▶ NEXT ACTION: HITL-review
+part 1a**, then build Phase 4 · part 2 from its plan (green commit + HITL gate).
+Phase 5 remains sketch-only after that; Phase 6 (below) is the tracked teardown
+that keeps the feature flags from calcifying into permanent bloat.
 
 ## Decisions log (locked)
 
@@ -273,26 +276,43 @@ at once?
 4. **Ralph cap-exhaustion → escalate, not fail.** Part-1 v1 hard-fails
    (`FAILED_STAGE` snapshot) when the Ralph loop hits its iteration cap while
    still making progress; a nicer behavior is to file a human issue ("did not
-   converge") instead. Deferred so `execute_stage` stays generic for now.
+   converge") instead. Deferred so `execute_stage` stays generic for now. **Still
+   open** — the Phase 4a repair increment (#6a) also terminates at the cap via
+   `FAILED_STAGE`, so this deferral now covers the repair path too.
 5. **Real Ralph-run convergence/cost is unverified on this branch** (no LLM key
    + no container runtime here) — deferred to a live host run, recorded in
-   `sprints/DEFERRED_VERIFICATION.md`.
-6. **Ralph code-review findings (`195f7b7`, to address before flipping the Ralph
-   default):**
-   - **(a, most substantive) Ralph can't fix a cross-task test regression.** Once
-     every task is checked off, `select_next_task` returns None, so a red suite
-     that no *incomplete* task explains (task B regressed task A's test) dead-ends
-     into escalation/`FAILED_STAGE` instead of a fix attempt — the "loop until
-     green" promise breaks for regressions. Needs a "tests red but all tasks done
-     ⇒ re-open work / a fix increment" path.
-   - **(b) Spurious cross-sprint deps from incidental digits** in a sprint's
-     `Dependencies:` prose (`manifest._dependency_sprint_paths` matches any `\d+`).
-     Tighten the match (e.g. require a `sprint`/`##_name` token, or match dir
-     names not bare numbers).
-   - **(c) Duplicate report sections** accumulate when an escalating task re-runs
-     after resolution (not marked done ⇒ re-selected ⇒ appends again).
-   - **(d) Only `findings[-1]` reaches the model**, so a resolution answer is
-     dropped from the prompt after the first post-re-entry iteration.
+   `sprints/DEFERRED_VERIFICATION.md`. Now includes the **self-healing** repair
+   path (#6a): whether a real regression-repair increment converges at acceptable
+   cost is part of the deferred live verification.
+6. **Ralph code-review findings (`195f7b7`) — ✅ addressed in the Phase 4a
+   hardening pass** (`sprints/19a_ralph_hardening/sprint_plan.md`), a dedicated
+   green commit before sprint 20. All four are flag-scoped to `LOOP_ENGINE_CODER=ralph`:
+   - **(a, most substantive) Ralph can't fix a cross-task test regression.** ✅
+     `RalphCoderGate` now emits a distinct `RALPH_REGRESSION_PREFIX` finding when
+     *every* manifest task is checked off but the suite is red; `RalphCoderPersona`
+     routes that (no selectable task + regression finding) to a **repair increment**
+     — one fresh-context tool loop scoped to fixing the regression, marking no task,
+     upserting a single `### Regression fix` report section — instead of the
+     escalate-when-blocked dead-end. The persona distinguishes this from an
+     all-blocked-deps state purely by the gate's finding prefix (never by sniffing
+     pytest output). Residual: cap-exhaustion still routes through `FAILED_STAGE`
+     (see #4). Fix stayed persona/gate-local — no `execute_stage` change.
+   - **(b) Spurious cross-sprint deps from incidental digits.** ✅
+     `manifest._dependency_sprint_paths` no longer matches bare `\d+`; it matches
+     sprint-qualified number tokens (`Sprint 3`, `#3`) or a sprint directory/name
+     token (`01_ci_cd_foundation` / `ci_cd_foundation`) appearing whole in the
+     `Dependencies:` field. The order-safe "nothing matched ⇒ immediately-preceding
+     sprint" fallback is retained (strictly more conservative — can only remove
+     spurious edges).
+   - **(c) Duplicate report sections.** ✅ Report sections are now **upserted** by
+     task id (`_upsert_task_section`): a re-run task (or repeated repair) replaces
+     its `### Task <id>:`/`### Regression fix` block rather than appending a
+     duplicate.
+   - **(d) Only `findings[-1]` reaches the model.** ✅ The persona partitions
+     carried findings into resolution answers (shared `RESOLUTION_FINDING_PREFIX`)
+     and gate status, and composes the prompt from **all** resolution answers plus
+     the **latest** status line — so a resolution answer survives every
+     post-re-entry iteration while the prompt stays bounded and current.
 
 ## How to run / verify
 

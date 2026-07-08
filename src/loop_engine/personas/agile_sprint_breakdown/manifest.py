@@ -29,6 +29,10 @@ _DEPENDENCIES_RE = re.compile(
     r"\*\*Dependencies:\*\*\s*(.*?)(?=\n\s*[-*]?\s*\*\*[A-Z]|\Z)", re.DOTALL
 )
 _LEADING_NUMBER_RE = re.compile(r"^(\d+)")
+# A number counts as a sprint reference only when sprint-qualified (`Sprint 3`,
+# `Sprint #3`, `#3`) — never a bare digit, which would forge a dependency from
+# an incidental number in the prose (`OAuth2`, `RFC 6749`).
+_SPRINT_NUMBER_REF_RE = re.compile(r"(?:sprint\s*#?\s*|#)0*(\d+)", re.IGNORECASE)
 
 
 class TaskEntry(BaseModel):
@@ -109,12 +113,16 @@ def _dependency_sprint_paths(
     content: str,
     earlier_paths: list[str],
     sprint_numbers: dict[str, str | None],
+    sprint_dirs: dict[str, str],
 ) -> list[str]:
     """Which earlier sprint paths this sprint's `Dependencies:` field names.
 
-    Matched by sprint number tokens in the field; if the field is non-empty and
-    not "None" but no number matches, conservatively depend on the immediately
-    preceding sprint so plan order is never violated.
+    Matched by sprint-qualified number tokens (`Sprint 3`, `#3`) or by a sprint
+    directory/name token (`01_ci_cd_foundation` / `ci_cd_foundation`) appearing
+    whole in the field. Bare digits are ignored so an incidental number never
+    forges a dependency. If the field is non-empty and not "None" but nothing
+    matches, conservatively depend on the immediately preceding sprint so plan
+    order is never violated.
     """
     match = _DEPENDENCIES_RE.search(content)
     if not match or not earlier_paths:
@@ -122,8 +130,18 @@ def _dependency_sprint_paths(
     text = match.group(1).strip()
     if not text or text.upper().startswith("NONE"):
         return []
-    wanted = {str(int(tok)) for tok in re.findall(r"\d+", text)}
-    matched = [p for p in earlier_paths if sprint_numbers.get(p) in wanted]
+    lowered = text.lower()
+    wanted_numbers = {str(int(tok)) for tok in _SPRINT_NUMBER_REF_RE.findall(text)}
+    matched: list[str] = []
+    for path in earlier_paths:
+        if sprint_numbers.get(path) in wanted_numbers:
+            matched.append(path)
+            continue
+        dir_name = sprint_dirs.get(path, "").lower()
+        name_only = re.sub(r"^\d+_", "", dir_name)
+        tokens = [tok for tok in (dir_name, name_only) if tok]
+        if any(re.search(rf"\b{re.escape(tok)}\b", lowered) for tok in tokens):
+            matched.append(path)
     if matched:
         return matched
     return earlier_paths[-1:]
@@ -139,17 +157,19 @@ def build_task_manifest(sprint_blocks: list[dict]) -> list[TaskEntry]:
     """
     per_sprint: list[tuple[str, list[TaskEntry]]] = []
     sprint_numbers: dict[str, str | None] = {}
+    sprint_dirs: dict[str, str] = {}
     for block in sprint_blocks:
         path = block.get("path", "")
         content = block.get("content", "")
         per_sprint.append((path, _tasks_for_block(path, content)))
-        sprint_numbers[path] = _leading_number(_sprint_dir(path))
+        sprint_dirs[path] = _sprint_dir(path)
+        sprint_numbers[path] = _leading_number(sprint_dirs[path])
 
     tasks_by_path = {path: tasks for path, tasks in per_sprint}
     for index, (_path, tasks) in enumerate(per_sprint):
         content = sprint_blocks[index].get("content", "")
         earlier_paths = [p for p, _ in per_sprint[:index]]
-        dep_paths = _dependency_sprint_paths(content, earlier_paths, sprint_numbers)
+        dep_paths = _dependency_sprint_paths(content, earlier_paths, sprint_numbers, sprint_dirs)
         cross_ids = [task.id for dep in dep_paths for task in tasks_by_path[dep]]
         for task in tasks:
             task.deps = list(dict.fromkeys([*task.deps, *cross_ids]))

@@ -6,6 +6,11 @@ engine's existing revise loop (`execute_stage`) re-enter it until the
 coverage-aware gate is green. Progress is the `.agent/STATE.md` task checklist;
 the manifest is the immutable backlog; the worktree filesystem is the memory.
 
+When every task is checked off but the suite is red (a cross-task regression),
+the gate emits a `RALPH_REGRESSION_PREFIX` finding and this persona runs a
+**repair increment** instead of no-opping — so "loop until green" holds for
+regressions too, not just for unbuilt tasks.
+
 Selected by `LOOP_ENGINE_CODER=ralph`; the classic per-sprint Coder is the
 default. This is a behavior change, not a refactor — it is not parity-tested
 against the classic Coder.
@@ -13,10 +18,11 @@ against the classic Coder.
 
 import json
 import logging
+import re
 
-from loop_engine.core.coder_gate import EDIT_FAILURES_HEADER
-from loop_engine.core.gates import extract_open_questions
-from loop_engine.core.state import State
+from loop_engine.core.coder_gate import EDIT_FAILURES_HEADER, RALPH_REGRESSION_PREFIX
+from loop_engine.core.gates import RESOLUTION_FINDING_PREFIX, extract_open_questions
+from loop_engine.core.state import Question, State
 from loop_engine.personas.agile_sprint_breakdown.manifest import TaskEntry
 from loop_engine.personas.base import BasePersona
 from loop_engine.personas.coder_iac.shared import (
@@ -29,6 +35,7 @@ from loop_engine.personas.coder_iac.shared import (
 )
 from loop_engine.tools.agent_state import (
     MemoryEntry,
+    ScratchpadState,
     append_memory,
     read_scratchpad,
     write_scratchpad,
@@ -36,6 +43,8 @@ from loop_engine.tools.agent_state import (
 from loop_engine.tools.state_io.writer import write_artifact
 
 logger = logging.getLogger(__name__)
+
+_REGRESSION_SECTION_HEADER = "### Regression fix"
 
 
 def select_next_task(manifest: list[TaskEntry], done: list[str]) -> TaskEntry | None:
@@ -53,8 +62,43 @@ def select_next_task(manifest: list[TaskEntry], done: list[str]) -> TaskEntry | 
     return None
 
 
+def _split_findings(findings: list[str] | None) -> tuple[list[str], str | None]:
+    """Partition carried findings into resolution answers and the latest gate
+    status line. Resolution answers (carried across the whole Coder stage) are
+    all kept in the prompt; only the most recent status/regression line is —
+    stale intermediate status lines would just be noise. Fixes the old
+    `findings[-1]`-only behavior that dropped resolutions after one iteration.
+    """
+    if not findings:
+        return [], None
+    resolutions = [f for f in findings if f.startswith(RESOLUTION_FINDING_PREFIX)]
+    status = [f for f in findings if not f.startswith(RESOLUTION_FINDING_PREFIX)]
+    return resolutions, (status[-1] if status else None)
+
+
+def _compose_findings(resolutions: list[str], latest_status: str | None) -> str | None:
+    parts = [*resolutions]
+    if latest_status:
+        parts.append(latest_status)
+    return "\n\n".join(parts) if parts else None
+
+
+def _upsert_task_section(existing: str, header: str, body: str) -> str:
+    """Replace the block starting with `header` (up to the next `### ` header or
+    end) with a fresh one, or append it if absent — so re-running an escalated
+    task, or a repeated repair increment, never duplicates its report section.
+    """
+    section = f"{header}\n\n{body}"
+    if not existing:
+        return section
+    pattern = re.compile(rf"^{re.escape(header)}.*?(?=\n### |\Z)", re.DOTALL | re.MULTILINE)
+    if pattern.search(existing):
+        return pattern.sub(lambda _match: section, existing, count=1)
+    return f"{existing}\n\n{section}"
+
+
 def _build_task_prompt(
-    task: TaskEntry, sprint_content: str, latest_finding: str | None, completed: list[str]
+    task: TaskEntry, sprint_content: str, composed_findings: str | None, completed: list[str]
 ) -> str:
     parts = [
         "You are working this project ONE task at a time. Implement exactly the "
@@ -67,14 +111,91 @@ def _build_task_prompt(
     ]
     if completed:
         parts.append("\nAlready-completed tasks: " + ", ".join(completed))
-    if latest_finding:
-        parts.append(f"\nLatest gate status / resolutions to address:\n{latest_finding}")
+    if composed_findings:
+        parts.append(f"\nLatest gate status / resolutions to address:\n{composed_findings}")
     parts.append(
         "\nImplement only this task and write its acceptance-criteria test. Run the "
         "tests before finishing. If a genuine ambiguity blocks the task, add a "
         "`## Open Questions` section instead of guessing."
     )
     return "\n".join(parts)
+
+
+def _build_repair_prompt(composed_findings: str | None, completed: list[str]) -> str:
+    parts = [
+        "Every task in the manifest is complete, but the full test suite is RED: a "
+        "recent change regressed a previously-passing test. Diagnose the failure and "
+        "fix it. Do NOT add new features, new tasks, or new scope — repair only the "
+        "regression so the whole suite is green again.",
+    ]
+    if completed:
+        parts.append("\nCompleted tasks: " + ", ".join(completed))
+    if composed_findings:
+        parts.append(f"\nGate status / failing tests to address:\n{composed_findings}")
+    parts.append(
+        "\nUse your tools to locate the failing test(s) and the change that broke them. "
+        "Run the tests before finishing. If a genuine ambiguity blocks the fix, add a "
+        "`## Open Questions` section instead of guessing."
+    )
+    return "\n".join(parts)
+
+
+def _run_increment(llm_client, architecture: str, prompt: str) -> str:
+    """One fresh-context tool loop; returns the stripped report text."""
+    system_blocks = [
+        PROMPT_TEMPLATE,
+        f"Architecture Definition Document:\n\n{architecture}",
+    ]
+    tool_backend = _CoderToolBackend()
+    try:
+        tools, execute = tool_backend.resolve()
+        response = llm_client.run_tool_loop(
+            [{"role": "user", "content": prompt}],
+            model=DEFAULT_MODEL,
+            max_tokens=MAX_TOKENS,
+            tools=tools,
+            execute=execute,
+            system_blocks=system_blocks,
+        )
+    finally:
+        tool_backend.close()
+    return response.text.strip()
+
+
+def _finalize_report(report: str) -> str:
+    """Append the edit-failure section if any model edit blocks did not apply."""
+    failures = apply_file_blocks(report)
+    if failures:
+        failure_lines = "\n".join(f"- {failure}" for failure in failures)
+        report += f"\n\n{EDIT_FAILURES_HEADER}\n\n{failure_lines}"
+    return report
+
+
+def _load_reports(state: State) -> dict[str, str]:
+    try:
+        return json.loads(state.artifacts.get("implementation_reports", "{}"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def _write_report(reports: dict[str, str], sprint_path: str, header: str, report: str) -> None:
+    reports[sprint_path] = _upsert_task_section(reports.get(sprint_path, ""), header, report)
+    report_path = sprint_report_path(sprint_path)
+    if report_path is not None:
+        try:
+            write_artifact(reports[sprint_path], report_path)
+        except ValueError:
+            logger.warning("skipping report with invalid path %r", report_path)
+
+
+def _new_questions(state: State, report: str, origin_detail: str | None) -> list[Question]:
+    existing_texts = {q.text for q in state.questions}
+    update = {"origin_detail": origin_detail} if origin_detail is not None else {}
+    return [
+        q.model_copy(update=update)
+        for q in extract_open_questions(report, "RalphCoderPersona")
+        if q.text not in existing_texts
+    ]
 
 
 class RalphCoderPersona(BasePersona):
@@ -89,76 +210,49 @@ class RalphCoderPersona(BasePersona):
         ]
 
         scratch = read_scratchpad()
+        resolutions, latest_status = _split_findings(findings)
+        composed = _compose_findings(resolutions, latest_status)
+
         task = select_next_task(manifest, scratch.completed_tasks)
         if task is None:
-            # Nothing with satisfied deps remains — a no-op; the gate decides
-            # ACCEPT (all tasks checked) vs REVISE (still-blocked work).
+            # No selectable task. If the gate reported a regression (all tasks
+            # done but the suite is red), repair it; otherwise this is a true
+            # no-op — the gate decides ACCEPT (all done, green) vs escalate
+            # (still-blocked work).
+            if latest_status is not None and latest_status.startswith(RALPH_REGRESSION_PREFIX):
+                return self._repair(
+                    state, llm_client, architecture, sprint_blocks, composed, scratch
+                )
             return state
 
-        content_by_path = {block["path"]: block["content"] for block in sprint_blocks}
-        latest_finding = findings[-1] if findings else None
-        prompt = _build_task_prompt(
-            task, content_by_path.get(task.sprint_path, ""), latest_finding, scratch.completed_tasks
+        return self._task_increment(
+            state, llm_client, architecture, sprint_blocks, task, composed, scratch
         )
-        system_blocks = [
-            PROMPT_TEMPLATE,
-            f"Architecture Definition Document:\n\n{architecture}",
-        ]
 
-        tool_backend = _CoderToolBackend()
-        try:
-            tools, execute = tool_backend.resolve()
-            response = llm_client.run_tool_loop(
-                [{"role": "user", "content": prompt}],
-                model=DEFAULT_MODEL,
-                max_tokens=MAX_TOKENS,
-                tools=tools,
-                execute=execute,
-                system_blocks=system_blocks,
-            )
-        finally:
-            tool_backend.close()
-
-        report = response.text.strip()
+    def _task_increment(
+        self, state, llm_client, architecture, sprint_blocks, task, composed, scratch
+    ) -> State:
+        content_by_path = {block["path"]: block["content"] for block in sprint_blocks}
+        prompt = _build_task_prompt(
+            task, content_by_path.get(task.sprint_path, ""), composed, scratch.completed_tasks
+        )
+        report = _run_increment(llm_client, architecture, prompt)
         if not report:
             # No output — do not mark done; the loop re-selects this task and the
             # engine's identical-findings guard escalates if it stays stuck.
             logger.warning("empty Ralph response for task %s", task.id)
             return state
 
-        failures = apply_file_blocks(report)
-        if failures:
-            failure_lines = "\n".join(f"- {failure}" for failure in failures)
-            report += f"\n\n{EDIT_FAILURES_HEADER}\n\n{failure_lines}"
+        report = _finalize_report(report)
+        reports = _load_reports(state)
+        _write_report(reports, task.sprint_path, f"### Task {task.id}: {task.title}", report)
 
-        try:
-            reports: dict[str, str] = json.loads(
-                state.artifacts.get("implementation_reports", "{}")
-            )
-        except json.JSONDecodeError:
-            reports = {}
-        section = f"### Task {task.id}: {task.title}\n\n{report}"
-        reports[task.sprint_path] = (
-            f"{reports[task.sprint_path]}\n\n{section}" if task.sprint_path in reports else section
-        )
-        report_path = sprint_report_path(task.sprint_path)
-        if report_path is not None:
-            try:
-                write_artifact(reports[task.sprint_path], report_path)
-            except ValueError:
-                logger.warning("skipping report with invalid path %r", report_path)
+        new_questions = _new_questions(state, report, origin_detail=task.id)
+        questions = [*state.questions, *new_questions]
 
-        questions = list(state.questions)
-        existing_texts = {q.text for q in questions}
-        new_questions = [
-            q.model_copy(update={"origin_detail": task.id})
-            for q in extract_open_questions(report, "RalphCoderPersona")
-            if q.text not in existing_texts
-        ]
-        questions.extend(new_questions)
-
-        # One `.agent/` memory append per non-noop increment; mark the task done
-        # only if it did not escalate (an escalating task stays uncompleted).
+        # One `.agent/` memory append per increment; mark the task done only if
+        # it did not escalate (an escalating task stays uncompleted so the loop
+        # re-selects it after resolution).
         if new_questions:
             outcome = (
                 f"Blocked task {task.id} ({task.title}): "
@@ -179,6 +273,45 @@ class RalphCoderPersona(BasePersona):
                 )
             )
         append_memory(MemoryEntry(title=f"Ralph increment — {task.id}", body=outcome))
+
+        artifacts = {**state.artifacts, "implementation_reports": json.dumps(reports)}
+        return state.model_copy(update={"artifacts": artifacts, "questions": questions})
+
+    def _repair(
+        self,
+        state: State,
+        llm_client,
+        architecture: str,
+        sprint_blocks: list[dict],
+        composed: str | None,
+        scratch: ScratchpadState,
+    ) -> State:
+        """Fix a cross-task regression: the manifest is complete but the suite is
+        red. Runs one fresh-context increment, marks no task, and upserts a single
+        `### Regression fix` report section so repeated repairs stay bounded."""
+        prompt = _build_repair_prompt(composed, scratch.completed_tasks)
+        report = _run_increment(llm_client, architecture, prompt)
+        if not report:
+            logger.warning("empty Ralph repair response")
+            return state
+
+        report = _finalize_report(report)
+        reports = _load_reports(state)
+        # Attribute the fix to the last sprint in plan order (where a regression
+        # is most likely to have landed); it never marks a task done.
+        target_path = sprint_blocks[-1]["path"] if sprint_blocks else None
+        if target_path is not None:
+            _write_report(reports, target_path, _REGRESSION_SECTION_HEADER, report)
+
+        new_questions = _new_questions(state, report, origin_detail=None)
+        questions = [*state.questions, *new_questions]
+        write_scratchpad(scratch.model_copy(update={"active_task": None}))
+        append_memory(
+            MemoryEntry(
+                title="Ralph regression fix",
+                body="Repaired a cross-task test regression (no new task).",
+            )
+        )
 
         artifacts = {**state.artifacts, "implementation_reports": json.dumps(reports)}
         return state.model_copy(update={"artifacts": artifacts, "questions": questions})

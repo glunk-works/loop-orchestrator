@@ -103,6 +103,43 @@ def test_sprint_with_no_parseable_tasks_contributes_nothing() -> None:
     assert manifest == []
 
 
+def _sprint(path: str, dependencies: str) -> dict:
+    return {
+        "path": path,
+        "content": (
+            f"**Dependencies:** {dependencies}\n\n**Tasks:**\n\n"
+            "- **Task 1: Work**\n"
+            "  - **Description:** Do the work.\n"
+            "  - **Acceptance Criteria:** It works.\n"
+        ),
+    }
+
+
+def test_bare_digit_in_dependencies_does_not_forge_a_dep() -> None:
+    # Incidental digits ("v1", "6749") must not create dependencies. With no
+    # sprint-qualified reference, the conservative fallback is the immediately
+    # preceding sprint only — never a non-adjacent sprint the digit happened to
+    # name.
+    blocks = [
+        _sprint("/sprints/01_alpha/sprint_plan.md", "None"),
+        _sprint("/sprints/02_beta/sprint_plan.md", "None"),
+        _sprint("/sprints/03_gamma/sprint_plan.md", "Uses the v1 API per RFC 6749."),
+    ]
+    by_id = {task.id: task for task in build_task_manifest(blocks)}
+    assert set(by_id["03_gamma::t01"].deps) == {"02_beta::t01"}
+
+
+def test_sprint_qualified_and_named_dependencies_resolve() -> None:
+    blocks = [
+        _sprint("/sprints/01_alpha/sprint_plan.md", "None"),
+        _sprint("/sprints/02_beta/sprint_plan.md", "None"),
+        _sprint("/sprints/03_gamma/sprint_plan.md", "Depends on Sprint 1 and the beta module."),
+    ]
+    by_id = {task.id: task for task in build_task_manifest(blocks)}
+    # "Sprint 1" resolves by number; "beta" resolves by sprint name token.
+    assert set(by_id["03_gamma::t01"].deps) == {"01_alpha::t01", "02_beta::t01"}
+
+
 def test_task_entry_rejects_malformed_input() -> None:
     # Negative-input test for the new Pydantic boundary: missing required field.
     with pytest.raises(ValidationError):
