@@ -159,11 +159,39 @@ CLAUDE.md updated; flag defaults off; **hard stop for HITL review** before 3b.
 
 ## Phase 3b — Container / sandbox isolation (spec the seam, defer the build)
 
+> **Detailed buildable spec:** `sprints/18_execution_isolation_container/sprint_plan.md`
+> (house sprint format, model-executable). This section is the design record;
+> the sprint is the task-by-task build. **Resolved with the user (2026-07-08):**
+> - **Primary substrate = docker/podman on a daemon-bearing host** (the Phase 5
+>   factory host), reusing the `dev` Dockerfile stage. `bwrap`/`nsjail` is the
+>   secondary daemon-free path.
+> - **Build scope on this branch = the inert seam:** the argv builders
+>   (`container_server_params`, `sandbox_server_params`), the runtime preflight,
+>   provider selection, and honest-failure guards — all argv-shape unit-tested,
+>   **nothing untrusted executed**. The real `docker run` end-to-end path + its
+>   parity test are **deferred to a daemon-bearing host** (they cannot run in
+>   this devcontainer: no runtime, and `unshare -Ur` → EPERM, so even `bwrap`
+>   has no unprivileged userns here).
+
 **Goal (when a runtime exists).** Untrusted execution (`run_tests`, and any
 future code-exec tool) runs in a throwaway sandbox mounting **only** the active
 worktree — no repo root, no keyring, no host paths — so the orchestrator process
 never runs untrusted code in-process. The coder-tools MCP server becomes the
 in-sandbox entrypoint.
+
+**Two untrusted-execution surfaces, not one.** The boundary is a lie unless
+*both* are moved out of process: (1) the Coder's `run_tests` MCP tool, and
+(2) the **Coder gate's own deterministic pytest** (`core/coder_gate.py:69`,
+`run_tests_tool.run_pytest`). The inert-seam sprint sandboxes (1)'s launch
+params and **hard-guards (2)** — under `container`/`sandbox` the gate refuses to
+run pytest in-process and raises, because routing the gate's pytest through the
+sandbox is part of the deferred host-side build. A `container`-mode run that let
+the gate execute model tests in-process would defeat the entire phase.
+
+**Never silently degrade.** Selecting `container`/`sandbox` when no runtime is
+present, or without `LOOP_ENGINE_TOOLS=mcp` (there is no server to sandbox on the
+in-process tool path), raises `IsolationUnavailableError` — it must never fall
+back to running untrusted code in-process.
 
 **The seam we preserve in 3a so 3b is a drop-in.** All LLM-facing tool execution
 already flows through the MCP provider abstraction
@@ -201,13 +229,18 @@ it — noted as the first 3b task, not assumed.
 **Explicitly out of scope now:** DinD, DooD-from-devcontainer, host-socket
 mounts. See D3.
 
-**3b open items for its own planning pass:**
-- Which substrate first — factory-host Docker vs. `bwrap` sandbox — depends on
-  where Phase 5 hosts the engine and whether userns is available.
+**Deferred to a daemon-bearing host** (out of scope for the inert-seam sprint):
+- The real `docker run` end-to-end path + a live parity test (outcomes identical
+  to isolation-off). Exercises the `-i`/no-`-t` stdio-framing requirement and the
+  bind-mount ownership hazard (`--user {uid}:{gid}`) that can't be tested here.
+- **Routing the Coder gate's pytest through the sandbox** — replaces the inert
+  sprint's Task-4 guard; this is untrusted-exec surface (2) above.
 - Network policy per tool (`run_tests` → `--network none`; a future dependency-
   install step would need egress — separate policy).
-- How gate evidence (pytest exit code) crosses the sandbox boundary back to the
-  Coder gate (it already flows as MCP tool output — confirm parity).
+- Confirm gate evidence (pytest exit code) crosses the sandbox boundary back as
+  MCP tool output with parity.
+- `bwrap`/`sandbox` substrate: verify unprivileged userns on the target host
+  (`unshare -Ur true`) before committing to build it — denied in this devcontainer.
 
 ---
 
