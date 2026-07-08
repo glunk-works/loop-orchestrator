@@ -46,4 +46,36 @@ Expected observations:
 - `cost-summary` shows heavy `Cache R` on the Coder stage: the cached prefix is
   re-read on every tool-loop iteration.
 
-Delete this file once both checks have been performed and any findings are fixed.
+## 3. Ralph-loop Coder convergence + cost (validates Sprint 19, `LOOP_ENGINE_CODER=ralph`)
+
+The Ralph loop's *mechanism* is verified against the mocked suite (incremental
+task selection, coverage-aware gate, dependency ordering, `.agent/` checklist +
+memory, cross-engine parity). What a mocked LLM cannot show is whether a real
+Ralph run **actually converges** — finishes a multi-sprint project one task at a
+time — and at what cost. That needs a real key and, for a real security boundary,
+a container runtime (absent in this devcontainer). Run on a daemon-bearing host:
+
+```bash
+LOOP_ENGINE_CODER=ralph hatch run loop-engine run --input <small requirements doc> --budget 5.00
+hatch run loop-engine cost-summary --run-id <run_id>
+```
+
+Expected observations:
+
+- The Sprint Breakdown emits a `task_manifest` artifact; the Coder advances **one
+  task per iteration** (each with a fresh tool-loop context), checking tasks off
+  in `.agent/STATE.md` and appending a lesson to `.agent/MEMORY.md` per increment.
+- The run reaches `completed` only when **every** manifest task is checked off and
+  the gate's pytest is green — a green-but-incomplete tree keeps looping (REVISE),
+  it does not ACCEPT early.
+- Termination is bounded: a non-converging run stops at the iteration cap
+  (`LOOP_ENGINE_RALPH_MAX_ITERS`, default 30) with a `FAILED_STAGE` snapshot, at
+  the USD budget (`BUDGET_EXCEEDED`), or escalates on repeated identical failing
+  findings (no-progress guard) — it never spins unbounded.
+- **Deferred with the sprint-18 host work:** routing the Ralph gate's pytest and
+  the `run_tests` tool through a sandbox under `LOOP_ENGINE_ISOLATION=container`
+  (until then the gate raises `IsolationUnavailableError` rather than run model
+  code in-process), and per-task test selection (v1 gates on global green, not the
+  single task's tests).
+
+Delete this file once the checks have been performed and any findings are fixed.

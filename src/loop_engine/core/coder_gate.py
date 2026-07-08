@@ -11,12 +11,35 @@ from pathlib import Path
 
 from loop_engine.core.gates import ArtifactGate, GateDecision, GateResult
 from loop_engine.core.state import State
+from loop_engine.tools.agent_state import read_scratchpad
 from loop_engine.tools.coder_tools import run_tests as run_tests_tool
 from loop_engine.tools.isolation import IsolationUnavailableError, sandbox_runtime_mode
 
 # The persona appends this section to a report when model-emitted edit
 # blocks failed to apply; its presence is a deterministic REVISE signal.
 EDIT_FAILURES_HEADER = "## Edit Application Failures"
+
+
+def _raise_if_sandboxed(context: str) -> None:
+    """Both Coder gates run pytest in-process — under container/sandbox isolation
+    that would execute untrusted model code in the orchestrator, the exact thing
+    the mode exists to prevent. Routing the gate's pytest through the sandbox is
+    deferred host-side work; until then, fail honestly rather than run it.
+    See sprints/18_execution_isolation_container/sprint_plan.md.
+    """
+    if sandbox_runtime_mode() is not None:
+        raise IsolationUnavailableError(
+            f"{context} runs pytest in-process, but {sandbox_runtime_mode()} "
+            "isolation is selected; sandboxed gate verification is deferred to the "
+            "host-side e2e build (see sprints/18_execution_isolation_container)"
+        )
+
+
+def _run_gate_pytest(test_path: str) -> tuple[int, str]:
+    """Deterministic pytest run for a Coder gate (no tree ⇒ 'no tests collected')."""
+    if not Path(test_path).exists():
+        return run_tests_tool.PYTEST_NO_TESTS_COLLECTED, f"no {test_path}/ tree was produced"
+    return run_tests_tool.run_pytest(test_path)
 
 
 def _last_reported_sprint(state: State, reports: dict[str, str]) -> str:
@@ -63,24 +86,8 @@ class CoderGate:
 
         blamed_sprint = _last_reported_sprint(state, reports)
 
-        # The gate runs pytest in-process — under container/sandbox isolation that
-        # would execute untrusted model code in the orchestrator, the exact thing
-        # the mode exists to prevent. Routing the gate's pytest through the sandbox
-        # is deferred host-side work; until then, fail honestly rather than run it.
-        # See sprints/18_execution_isolation_container/sprint_plan.md.
-        if sandbox_runtime_mode() is not None:
-            raise IsolationUnavailableError(
-                f"the Coder gate runs pytest in-process, but "
-                f"{sandbox_runtime_mode()} isolation is selected; sandboxed gate "
-                "verification is deferred to the host-side e2e build "
-                "(see sprints/18_execution_isolation_container)"
-            )
-
-        if not Path(self.test_path).exists():
-            exit_code: int = run_tests_tool.PYTEST_NO_TESTS_COLLECTED
-            output = f"no {self.test_path}/ tree was produced"
-        else:
-            exit_code, output = run_tests_tool.run_pytest(self.test_path)
+        _raise_if_sandboxed("the Coder gate")
+        exit_code, output = _run_gate_pytest(self.test_path)
 
         if exit_code == run_tests_tool.PYTEST_NO_TESTS_COLLECTED:
             return GateResult(
@@ -99,3 +106,90 @@ class CoderGate:
                 ],
             )
         return GateResult(GateDecision.ACCEPT)
+
+
+def _manifest_task_ids(state: State, manifest_key: str) -> list[str] | None:
+    """Task ids from the `task_manifest` artifact — parsed core-safely (no persona
+    import), returning None if the artifact is missing or malformed."""
+    try:
+        manifest = json.loads(state.artifacts.get(manifest_key, ""))
+        return [entry["id"] for entry in manifest]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return None
+
+
+@dataclass(frozen=True)
+class RalphCoderGate:
+    """Coverage-aware gate for the Ralph-loop Coder: green is necessary, not
+    sufficient. ACCEPT requires **every** manifest task checked off in the
+    `.agent/STATE.md` checklist AND a green pytest run. Every REVISE returns a
+    single self-contained status finding so the accumulated-findings list stays
+    authoritative-by-latest.
+    """
+
+    artifact_key: str = "implementation_reports"
+    manifest_key: str = "task_manifest"
+    test_path: str = "src"
+
+    def __call__(self, state: State, stage_name: str) -> GateResult:
+        content_gate = ArtifactGate(
+            self.artifact_key, parse_json="object", require_nonempty_parse=True
+        )
+        content_result = content_gate(state, stage_name)
+        if content_result.decision is not GateDecision.ACCEPT:
+            return content_result
+
+        task_ids = _manifest_task_ids(state, self.manifest_key)
+        if task_ids is None:
+            return GateResult(
+                GateDecision.REVISE,
+                findings=["task_manifest is missing or malformed; cannot gate Ralph coverage"],
+            )
+
+        reports: dict[str, str] = json.loads(state.artifacts[self.artifact_key])
+        edit_findings = [
+            f"{sprint_path}: {EDIT_FAILURES_HEADER.lstrip('# ')} recorded in the "
+            "implementation report; re-emit the corrected blocks so they apply cleanly"
+            for sprint_path, report in reports.items()
+            if EDIT_FAILURES_HEADER in report
+        ]
+        if edit_findings:
+            return GateResult(GateDecision.REVISE, findings=edit_findings)
+
+        # The gate runs pytest in-process; refuse under container/sandbox exactly
+        # like the classic gate (the second untrusted-exec surface).
+        _raise_if_sandboxed("the Ralph Coder gate")
+
+        # Coverage: every manifest task must be checked off in .agent/STATE.md.
+        done = set(read_scratchpad().completed_tasks)
+        outstanding = [tid for tid in task_ids if tid not in done]
+        if outstanding:
+            return GateResult(
+                GateDecision.REVISE,
+                findings=[_status_finding(outstanding, failing=None)],
+            )
+
+        exit_code, output = _run_gate_pytest(self.test_path)
+        if exit_code == run_tests_tool.PYTEST_NO_TESTS_COLLECTED:
+            return GateResult(
+                GateDecision.REVISE,
+                findings=[
+                    "Ralph status — all tasks checked off but no tests were produced; "
+                    f"the Global Definition of Done requires tests.\n{output}"
+                ],
+            )
+        if exit_code != 0:
+            return GateResult(
+                GateDecision.REVISE,
+                findings=[_status_finding([], failing=f"pytest exit {exit_code}:\n{output}")],
+            )
+        return GateResult(GateDecision.ACCEPT)
+
+
+def _status_finding(outstanding: list[str], failing: str | None) -> str:
+    next_task = outstanding[0] if outstanding else "none"
+    remaining = ", ".join(outstanding) if outstanding else "none"
+    return (
+        f"Ralph status — next task: {next_task}; tasks still to complete: {remaining}; "
+        f"failing tests: {failing or 'none'}. Implement/fix the next unit."
+    )

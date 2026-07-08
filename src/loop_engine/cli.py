@@ -18,7 +18,7 @@ from loop_engine.core.state import (
     State,
     migrate_state_payload,
 )
-from loop_engine.loops.default.loop import DEFAULT_LOOP
+from loop_engine.loops.default.loop import DEFAULT_LOOP, build_default_loop
 from loop_engine.tools import issue_io
 from loop_engine.tools.llm.client import LLMClient
 from loop_engine.tools.worktree import prune_all, worktree_run
@@ -26,6 +26,14 @@ from loop_engine.tools.worktree import prune_all, worktree_run
 app = typer.Typer()
 
 NAMED_LOOPS: dict[str, Loop] = {"default": DEFAULT_LOOP}
+
+
+def _resolve_loop(loop_name: str) -> Loop:
+    """The named loop, rebuilt for "default" so a runtime `LOOP_ENGINE_CODER`
+    flag is honored (like `_select_engine`); other names come from NAMED_LOOPS."""
+    if loop_name == "default":
+        return build_default_loop()
+    return NAMED_LOOPS[loop_name]
 
 
 def _select_engine():
@@ -95,7 +103,7 @@ def run(
     budget: Annotated[float, typer.Option("--budget", help=_BUDGET_HELP)] = DEFAULT_BUDGET_USD,
     resume_from: Annotated[Path | None, typer.Option("--resume-from")] = None,
 ) -> None:
-    selected_loop = NAMED_LOOPS[loop]
+    selected_loop = _resolve_loop(loop)
 
     resuming = resume_from is not None
     if resuming:
@@ -130,7 +138,7 @@ def resume(
     ] = None,
 ) -> None:
     """Resume a run paused on a GitHub issue, folding in the human's answers."""
-    selected_loop = NAMED_LOOPS[loop]
+    selected_loop = _resolve_loop(loop)
 
     issue_data = issue_io.read_issue(from_issue)
     snapshot_path = snapshot or (

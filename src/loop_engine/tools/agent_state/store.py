@@ -15,6 +15,7 @@ from loop_engine.tools.state_io.writer import (
 _SCRATCHPAD_HEADER = "# Agent Scratchpad"
 _ACTIVE_TASK_ANCHOR = "## Active Task"
 _BLOCKED_ITEMS_ANCHOR = "## Blocked Items"
+_COMPLETED_TASKS_ANCHOR = "## Completed Tasks"
 _NONE_MARKER = "_none_"
 
 _MEMORY_HEADER = (
@@ -32,6 +33,9 @@ class ScratchpadState(BaseModel):
 
     active_task: str | None = None
     blocked_items: list[str] = Field(default_factory=list)
+    # The Ralph loop's task checklist: ids of manifest tasks already completed.
+    # The authoritative "what's done" progress record across iterations.
+    completed_tasks: list[str] = Field(default_factory=list)
 
 
 class MemoryEntry(BaseModel):
@@ -54,11 +58,16 @@ def _render_scratchpad(state: ScratchpadState) -> str:
         blocked = "\n".join(f"- {item}" for item in state.blocked_items)
     else:
         blocked = _NONE_MARKER
+    if state.completed_tasks:
+        completed = "\n".join(f"- {item}" for item in state.completed_tasks)
+    else:
+        completed = _NONE_MARKER
     return (
         f"{_SCRATCHPAD_HEADER}\n\n"
         "<!-- Mutable working state for the active run. Overwritten each update. -->\n\n"
         f"{_ACTIVE_TASK_ANCHOR}\n\n{active}\n\n"
-        f"{_BLOCKED_ITEMS_ANCHOR}\n\n{blocked}\n"
+        f"{_BLOCKED_ITEMS_ANCHOR}\n\n{blocked}\n\n"
+        f"{_COMPLETED_TASKS_ANCHOR}\n\n{completed}\n"
     )
 
 
@@ -73,14 +82,19 @@ def _parse_scratchpad(text: str) -> ScratchpadState:
     active_raw = _section_body(text, _ACTIVE_TASK_ANCHOR)
     active = None if active_raw in ("", _NONE_MARKER) else active_raw
 
-    blocked_raw = _section_body(text, _BLOCKED_ITEMS_ANCHOR)
-    blocked: list[str] = []
-    if blocked_raw and blocked_raw != _NONE_MARKER:
-        for line in blocked_raw.splitlines():
+    blocked = _parse_bullets(_section_body(text, _BLOCKED_ITEMS_ANCHOR))
+    completed = _parse_bullets(_section_body(text, _COMPLETED_TASKS_ANCHOR))
+    return ScratchpadState(active_task=active, blocked_items=blocked, completed_tasks=completed)
+
+
+def _parse_bullets(raw: str) -> list[str]:
+    items: list[str] = []
+    if raw and raw != _NONE_MARKER:
+        for line in raw.splitlines():
             stripped = line.strip()
             if stripped.startswith("- "):
-                blocked.append(stripped[2:].strip())
-    return ScratchpadState(active_task=active, blocked_items=blocked)
+                items.append(stripped[2:].strip())
+    return items
 
 
 def read_scratchpad() -> ScratchpadState:

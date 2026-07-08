@@ -3,9 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from loop_engine.core.coder_gate import CoderGate
+from loop_engine.core.coder_gate import CoderGate, RalphCoderGate
 from loop_engine.core.gates import GateDecision
 from loop_engine.core.state import State
+from loop_engine.tools.agent_state import ScratchpadState, write_scratchpad
 
 SPRINT_PLANS = json.dumps(
     [
@@ -122,3 +123,86 @@ def test_coder_gate_refuses_in_process_pytest_under_container_isolation(monkeypa
 
     with pytest.raises(IsolationUnavailableError, match="deferred"):
         CoderGate()(_state({"/sprints/01_foo/sprint_plan.md": "done"}), "CoderIacPersona")
+
+
+# --- RalphCoderGate: coverage-aware (green necessary, not sufficient) ---
+
+
+def _ralph_state(task_ids: list[str], reports: dict[str, str], completed: list[str]) -> State:
+    write_scratchpad(ScratchpadState(completed_tasks=completed))
+    manifest = [{"id": tid, "sprint_path": "/sprints/01_foo/sprint_plan.md"} for tid in task_ids]
+    return State(
+        schema_version=2,
+        run_id="run-1",
+        stage_history=[],
+        artifacts={
+            "sprint_plans": SPRINT_PLANS,
+            "task_manifest": json.dumps(manifest),
+            "implementation_reports": json.dumps(reports),
+        },
+    )
+
+
+def test_ralph_gate_accepts_when_all_tasks_done_and_green() -> None:
+    Path("src").mkdir()
+    Path("src/test_green.py").write_text("def test_ok():\n    assert True\n")
+    state = _ralph_state(
+        ["s::t01", "s::t02"], {"/sprints/01_foo/sprint_plan.md": "done"}, ["s::t01", "s::t02"]
+    )
+
+    result = RalphCoderGate()(state, "RalphCoderPersona")
+    assert result.decision is GateDecision.ACCEPT
+
+
+def test_ralph_gate_revises_when_a_task_is_unchecked_even_if_green() -> None:
+    # The green-but-incomplete trap: pytest is green but a manifest task is not
+    # yet done, so the gate must REVISE (not ACCEPT) and not stop the loop early.
+    Path("src").mkdir()
+    Path("src/test_green.py").write_text("def test_ok():\n    assert True\n")
+    state = _ralph_state(
+        ["s::t01", "s::t02"], {"/sprints/01_foo/sprint_plan.md": "done"}, ["s::t01"]
+    )
+
+    result = RalphCoderGate()(state, "RalphCoderPersona")
+    assert result.decision is GateDecision.REVISE
+    assert "s::t02" in result.findings[0]
+
+
+def test_ralph_gate_revises_on_red_tests_when_all_checked() -> None:
+    Path("src").mkdir()
+    Path("src/test_red.py").write_text("def test_bad():\n    assert 1 == 2\n")
+    state = _ralph_state(["s::t01"], {"/sprints/01_foo/sprint_plan.md": "done"}, ["s::t01"])
+
+    result = RalphCoderGate()(state, "RalphCoderPersona")
+    assert result.decision is GateDecision.REVISE
+    assert "failing tests" in result.findings[0]
+
+
+def test_ralph_gate_revises_on_missing_manifest() -> None:
+    state = State(
+        schema_version=2,
+        run_id="run-1",
+        stage_history=[],
+        artifacts={
+            "sprint_plans": SPRINT_PLANS,
+            "implementation_reports": json.dumps({"/sprints/01_foo/sprint_plan.md": "done"}),
+        },
+    )
+    result = RalphCoderGate()(state, "RalphCoderPersona")
+    assert result.decision is GateDecision.REVISE
+    assert "task_manifest" in result.findings[0]
+
+
+def test_ralph_gate_refuses_in_process_pytest_under_container(monkeypatch) -> None:
+    from loop_engine.core import coder_gate
+    from loop_engine.tools.isolation import IsolationUnavailableError
+
+    def _must_not_run(*args, **kwargs):
+        raise AssertionError("run_pytest must not be called under container isolation")
+
+    monkeypatch.setattr(coder_gate.run_tests_tool, "run_pytest", _must_not_run)
+    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "container")
+    state = _ralph_state(["s::t01"], {"/sprints/01_foo/sprint_plan.md": "done"}, ["s::t01"])
+
+    with pytest.raises(IsolationUnavailableError, match="deferred"):
+        RalphCoderGate()(state, "RalphCoderPersona")

@@ -230,3 +230,56 @@ def test_graph_engine_selected_by_env_flag(monkeypatch) -> None:
     assert use_langgraph_engine() is False
     monkeypatch.setenv("LOOP_ENGINE_ENGINE", "langgraph")
     assert use_langgraph_engine() is True
+
+
+# A Ralph stage is `execute_stage`'s revise loop driving an incremental persona
+# until a coverage gate is green. Both engines drive `execute_stage`, so the
+# self-loop must behave identically — proven here without an LLM by a fake
+# incremental persona + coverage gate, mirroring the Ralph mechanism.
+class _IncrementalPersona(BasePersona):
+    produces = ("items",)
+
+    def run(self, state, llm_client, findings=None):
+        import json
+
+        items = json.loads(state.artifacts.get("items", "[]"))
+        items.append(f"t{len(items) + 1}")
+        return state.model_copy(
+            update={"artifacts": {**state.artifacts, "items": json.dumps(items)}}
+        )
+
+
+def _coverage_gate(target: int):
+    import json
+
+    from loop_engine.core.gates import GateDecision, GateResult
+
+    def gate(state, stage_name):
+        done = len(json.loads(state.artifacts.get("items", "[]")))
+        if done < target:
+            # A CHANGING finding each iteration ⇒ progress ⇒ keep looping
+            # (identical findings would trip the engine's no-progress escalation).
+            return GateResult(GateDecision.REVISE, findings=[f"{done}/{target}; next t{done + 1}"])
+        return GateResult(GateDecision.ACCEPT)
+
+    return gate
+
+
+def _ralph_like_loop(target: int = 3, cap: int = 10) -> Loop:
+    return Loop(
+        stages=[
+            Stage(persona=_IncrementalPersona(), gate=_coverage_gate(target), max_revisions=cap)
+        ]
+    )
+
+
+def test_ralph_like_self_loop_parity_between_engines() -> None:
+    from loop_engine.core.engine import run_loop
+
+    final_classic = run_loop(_ralph_like_loop(), _initial_state("rc"), _stub_llm_client())
+    final_graph = run_graph_loop(_ralph_like_loop(), _initial_state("rg"), _stub_llm_client())
+
+    # Both engines drive the incremental persona to full coverage identically.
+    assert final_classic.artifacts["items"] == final_graph.artifacts["items"]
+    assert final_classic.artifacts["items"] == '["t1", "t2", "t3"]'
+    assert final_classic.status is final_graph.status is RunStatus.COMPLETED

@@ -3,7 +3,7 @@ flag, with the provider opened once and always closed."""
 
 import pytest
 
-from loop_engine.personas.coder_iac.persona import (
+from loop_engine.personas.coder_iac.shared import (
     CODER_TOOLS,
     _CoderToolBackend,
     _execute_tool,
@@ -54,7 +54,7 @@ def test_mcp_backend_opens_provider_once_and_closes(monkeypatch) -> None:
     fake = _FakeProvider()
     monkeypatch.setenv("LOOP_ENGINE_TOOLS", "mcp")
     monkeypatch.setattr(
-        "loop_engine.personas.coder_iac.persona.build_coder_tool_provider",
+        "loop_engine.personas.coder_iac.shared.build_coder_tool_provider",
         lambda cwd=None: fake,
     )
 

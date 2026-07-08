@@ -5,6 +5,7 @@ import re
 from loop_engine.core.gates import extract_open_questions
 from loop_engine.core.state import State
 from loop_engine.personas import sections
+from loop_engine.personas.agile_sprint_breakdown.manifest import build_task_manifest
 from loop_engine.personas.base import BasePersona
 from loop_engine.tools.state_io.writer import write_artifact
 
@@ -242,5 +243,13 @@ class AgileSprintBreakdownPersona(BasePersona):
             except ValueError:
                 logger.warning("skipping sprint block with invalid path %r", block["path"])
 
-        artifacts = {**state.artifacts, "sprint_plans": json.dumps(sprint_blocks)}
+        # Additive machine-readable view over the (unchanged) sprint_plans: the
+        # discrete, dependency-ordered task checklist a Ralph-loop Coder consumes.
+        # Deterministically parsed from the same markdown — no extra LLM call.
+        manifest = build_task_manifest(sprint_blocks)
+        artifacts = {
+            **state.artifacts,
+            "sprint_plans": json.dumps(sprint_blocks),
+            "task_manifest": json.dumps([task.model_dump() for task in manifest]),
+        }
         return state.model_copy(update={"artifacts": artifacts, "questions": questions})
