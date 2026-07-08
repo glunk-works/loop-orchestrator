@@ -20,7 +20,7 @@ this file tracks *how far we've got and what's next*.
 | 2 — MCP tooling (coder tools as MCP server) | ✅ complete, reviewed | `7368411` |
 | 3a — Execution isolation (per-run git worktrees) | ✅ built behind flag, reviewed | `951e377` |
 | 3b — Execution isolation (disposable container/sandbox) — **inert seam** | ✅ built behind flag, reviewed (docker/podman primary, bwrap secondary; real `docker run` + sandboxed gate pytest deferred to a daemon host). Plan: `sprints/18_execution_isolation_container/sprint_plan.md` | `cdc7c8f` |
-| 4 · part 1 — Ralph-loop Coder (`AgenticNode`) | ✅ built behind flag, tests green — awaiting HITL review. Plan: `sprints/19_ralph_coder/sprint_plan.md` | _pending commit_ |
+| 4 · part 1 — Ralph-loop Coder (`AgenticNode`) | ✅ built behind flag, 311 tests green — awaiting HITL review. Plan: `sprints/19_ralph_coder/sprint_plan.md` | `195f7b7` |
 | 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ⬜ sketch (planned next, sprint 20) | — |
 | 5 — Autonomous triggers + multi-repo factory | ⬜ sketch only | — |
 | 6 — Collapse the flags (decommission the migration scaffolding) | ⬜ sketch only | — |
