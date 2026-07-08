@@ -27,6 +27,10 @@ dependencies = [
   # Orchestration substrate: the engine runs as a LangGraph StateGraph (behind
   # the LOOP_ENGINE_ENGINE=langgraph flag during the migration).
   "langgraph==1.2.8",
+  # Model Context Protocol: coder tools are re-fronted as stdio MCP servers
+  # (mcp_servers/) and discovered/dispatched by the LLM client behind the
+  # LOOP_ENGINE_TOOLS=mcp flag during the migration.
+  "mcp==1.28.1",
   # Runtime (not just dev) dependency: the agentic Coder's run_tests tool and
   # the Coder stage's evidence gate execute pytest via subprocess.
   "pytest==9.1.1",

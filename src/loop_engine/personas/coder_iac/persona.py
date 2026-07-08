@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+from pathlib import Path
 
 from loop_engine.core.coder_gate import EDIT_FAILURES_HEADER
 from loop_engine.core.gates import extract_open_questions
@@ -15,6 +16,7 @@ from loop_engine.tools.coder_tools import (
     resolve_tool_path,
 )
 from loop_engine.tools.coder_tools.run_tests import RUN_TESTS_TOOL_SCHEMA, run_tests
+from loop_engine.tools.mcp import build_coder_tool_provider, use_mcp_tools
 from loop_engine.tools.state_io.writer import write_artifact
 
 logger = logging.getLogger(__name__)
@@ -44,6 +46,30 @@ def _execute_tool(name: str, tool_input: dict) -> str:
     if name == "run_tests":
         return run_tests(tool_input["path"])
     raise ValueError(f"Unknown tool: {name!r}")
+
+
+class _CoderToolBackend:
+    """Selects the Coder's tool set: the in-process read/execute tools, or the
+    MCP-served equivalents when LOOP_ENGINE_TOOLS=mcp. On the MCP path the
+    provider (which spawns the stdio server) is opened on first use and closed
+    once; on the default path nothing is spawned."""
+
+    def __init__(self) -> None:
+        self._provider = None
+
+    def resolve(self):
+        """Return (tools, execute) for a run_tool_loop call."""
+        if not use_mcp_tools():
+            return CODER_TOOLS, _execute_tool
+        if self._provider is None:
+            self._provider = build_coder_tool_provider(cwd=Path.cwd())
+            self._provider.__enter__()
+        return self._provider.tools, self._provider.execute
+
+    def close(self) -> None:
+        if self._provider is not None:
+            self._provider.__exit__(None, None, None)
+            self._provider = None
 
 
 def _apply_file_blocks(report: str) -> list[str]:
@@ -246,99 +272,106 @@ class CoderIacPersona(BasePersona):
         # Inner loop: one invocation per sprint, in plan order. Sprints whose
         # reports already exist (a prior attempt, resumed run, or re-entry
         # after question resolution) are skipped unless findings target them.
-        for block in sprint_blocks:
-            sprint_path = block["path"]
-            if sprint_path in reports:
-                rerun = bool(findings) and (sprint_path in targeted_sprints or not targeted_sprints)
-                if not rerun:
+        tool_backend = _CoderToolBackend()
+        try:
+            for block in sprint_blocks:
+                sprint_path = block["path"]
+                if sprint_path in reports:
+                    rerun = bool(findings) and (
+                        sprint_path in targeted_sprints or not targeted_sprints
+                    )
+                    if not rerun:
+                        continue
+
+                # Stable prefix (cached): template + architecture definition,
+                # byte-identical across every sprint invocation in this inner
+                # loop, so sprints 2..N read the prefix from cache. The sprint
+                # plan and findings are volatile and stay in the user turns.
+                system_blocks = [
+                    PROMPT_TEMPLATE,
+                    f"Architecture Definition Document:\n\n{architecture_definition}",
+                ]
+                initial_prompt = f"Sprint Plan ({sprint_path}):\n\n{block['content']}"
+
+                previous_report = reports.get(sprint_path, "")
+                if findings and previous_report.strip() and sections.has_sections(previous_report):
+                    # Targeted revision: the sprint's prior report is an assistant
+                    # turn; only the corrected sections come back, merged locally.
+                    feedback = "\n".join(f"- {finding}" for finding in findings)
+                    response = llm_client.call_messages(
+                        [
+                            {"role": "user", "content": initial_prompt},
+                            {"role": "assistant", "content": previous_report},
+                            {
+                                "role": "user",
+                                "content": (
+                                    "Resolutions to your escalated questions:\n"
+                                    f"{feedback}\n\n"
+                                    "Return ONLY the corrected sections of your "
+                                    "report, reproducing their `##`/`###` headers "
+                                    "verbatim."
+                                ),
+                            },
+                        ],
+                        model=DEFAULT_MODEL,
+                        max_tokens=MAX_TOKENS,
+                        system_blocks=system_blocks,
+                    )
+                    report = sections.merge(previous_report, response.text).strip()
+                else:
+                    prompt = initial_prompt
+                    if findings:
+                        feedback = "\n".join(f"- {finding}" for finding in findings)
+                        prompt += f"\n\n---\n\nResolutions to your escalated questions:\n{feedback}"
+                    # Agentic implementation: the model reads prior sprints'
+                    # output and runs the tests itself before finishing; the
+                    # client debits budget per iteration.
+                    tools, execute = tool_backend.resolve()
+                    response = llm_client.run_tool_loop(
+                        [{"role": "user", "content": prompt}],
+                        model=DEFAULT_MODEL,
+                        max_tokens=MAX_TOKENS,
+                        tools=tools,
+                        execute=execute,
+                        system_blocks=system_blocks,
+                    )
+                    report = response.text.strip()
+                if not report:
+                    logger.warning("empty implementation response for %s", sprint_path)
                     continue
 
-            # Stable prefix (cached): template + architecture definition,
-            # byte-identical across every sprint invocation in this inner
-            # loop, so sprints 2..N read the prefix from cache. The sprint
-            # plan and findings are volatile and stay in the user turns.
-            system_blocks = [
-                PROMPT_TEMPLATE,
-                f"Architecture Definition Document:\n\n{architecture_definition}",
-            ]
-            initial_prompt = f"Sprint Plan ({sprint_path}):\n\n{block['content']}"
+                # Apply the report's file blocks to the artifact tree (the tool
+                # set is read/execute-only; all writes go through write_artifact).
+                # Failures are recorded on the report so the gate can demand
+                # corrected blocks with exact sprint attribution.
+                failures = _apply_file_blocks(report)
+                if failures:
+                    failure_lines = "\n".join(f"- {failure}" for failure in failures)
+                    report += f"\n\n{EDIT_FAILURES_HEADER}\n\n{failure_lines}"
 
-            previous_report = reports.get(sprint_path, "")
-            if findings and previous_report.strip() and sections.has_sections(previous_report):
-                # Targeted revision: the sprint's prior report is an assistant
-                # turn; only the corrected sections come back, merged locally.
-                feedback = "\n".join(f"- {finding}" for finding in findings)
-                response = llm_client.call_messages(
-                    [
-                        {"role": "user", "content": initial_prompt},
-                        {"role": "assistant", "content": previous_report},
-                        {
-                            "role": "user",
-                            "content": (
-                                "Resolutions to your escalated questions:\n"
-                                f"{feedback}\n\n"
-                                "Return ONLY the corrected sections of your "
-                                "report, reproducing their `##`/`###` headers "
-                                "verbatim."
-                            ),
-                        },
-                    ],
-                    model=DEFAULT_MODEL,
-                    max_tokens=MAX_TOKENS,
-                    system_blocks=system_blocks,
-                )
-                report = sections.merge(previous_report, response.text).strip()
-            else:
-                prompt = initial_prompt
-                if findings:
-                    feedback = "\n".join(f"- {finding}" for finding in findings)
-                    prompt += f"\n\n---\n\nResolutions to your escalated questions:\n{feedback}"
-                # Agentic implementation: the model reads prior sprints'
-                # output and runs the tests itself before finishing; the
-                # client debits budget per iteration.
-                response = llm_client.run_tool_loop(
-                    [{"role": "user", "content": prompt}],
-                    model=DEFAULT_MODEL,
-                    max_tokens=MAX_TOKENS,
-                    tools=CODER_TOOLS,
-                    execute=_execute_tool,
-                    system_blocks=system_blocks,
-                )
-                report = response.text.strip()
-            if not report:
-                logger.warning("empty implementation response for %s", sprint_path)
-                continue
+                reports[sprint_path] = report
 
-            # Apply the report's file blocks to the artifact tree (the tool
-            # set is read/execute-only; all writes go through write_artifact).
-            # Failures are recorded on the report so the gate can demand
-            # corrected blocks with exact sprint attribution.
-            failures = _apply_file_blocks(report)
-            if failures:
-                failure_lines = "\n".join(f"- {failure}" for failure in failures)
-                report += f"\n\n{EDIT_FAILURES_HEADER}\n\n{failure_lines}"
+                report_path = _sprint_report_path(sprint_path)
+                if report_path is not None:
+                    try:
+                        write_artifact(report, report_path)
+                    except ValueError:
+                        logger.warning("skipping report with invalid path %r", report_path)
 
-            reports[sprint_path] = report
-
-            report_path = _sprint_report_path(sprint_path)
-            if report_path is not None:
-                try:
-                    write_artifact(report, report_path)
-                except ValueError:
-                    logger.warning("skipping report with invalid path %r", report_path)
-
-            sprint_questions = [
-                q.model_copy(update={"origin_detail": sprint_path})
-                for q in extract_open_questions(report, "CoderIacPersona")
-            ]
-            new_questions = [q for q in sprint_questions if q.text not in existing_texts]
-            questions.extend(new_questions)
-            existing_texts.update(q.text for q in new_questions)
-            if new_questions:
-                # Blocked on answers: stop burning budget on later sprints
-                # that likely depend on this one; the engine escalates and
-                # re-enters here with resolutions.
-                break
+                sprint_questions = [
+                    q.model_copy(update={"origin_detail": sprint_path})
+                    for q in extract_open_questions(report, "CoderIacPersona")
+                ]
+                new_questions = [q for q in sprint_questions if q.text not in existing_texts]
+                questions.extend(new_questions)
+                existing_texts.update(q.text for q in new_questions)
+                if new_questions:
+                    # Blocked on answers: stop burning budget on later sprints
+                    # that likely depend on this one; the engine escalates and
+                    # re-enters here with resolutions.
+                    break
+        finally:
+            tool_backend.close()
 
         artifacts = {**state.artifacts, "implementation_reports": json.dumps(reports)}
         return state.model_copy(update={"artifacts": artifacts, "questions": questions})
