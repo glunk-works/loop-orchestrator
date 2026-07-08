@@ -4,5 +4,13 @@ __pycache__/
 *.pyc
 .venv/
 dist/
-.claude/
 .scratch/
+
+# .claude/: track shared workflow config (skills/agents/settings.json); ignore
+# machine-local settings + harness session state.
+.claude/settings.local.json
+
+# .ai/ dev-workflow state: track the human ledger (next-steps.md) + context/;
+# ignore the volatile machine cursor and completed-sprint archives (PRD 2.6).
+.ai/state.json
+.ai/archive/
