@@ -277,6 +277,22 @@ at once?
 5. **Real Ralph-run convergence/cost is unverified on this branch** (no LLM key
    + no container runtime here) — deferred to a live host run, recorded in
    `sprints/DEFERRED_VERIFICATION.md`.
+6. **Ralph code-review findings (`195f7b7`, to address before flipping the Ralph
+   default):**
+   - **(a, most substantive) Ralph can't fix a cross-task test regression.** Once
+     every task is checked off, `select_next_task` returns None, so a red suite
+     that no *incomplete* task explains (task B regressed task A's test) dead-ends
+     into escalation/`FAILED_STAGE` instead of a fix attempt — the "loop until
+     green" promise breaks for regressions. Needs a "tests red but all tasks done
+     ⇒ re-open work / a fix increment" path.
+   - **(b) Spurious cross-sprint deps from incidental digits** in a sprint's
+     `Dependencies:` prose (`manifest._dependency_sprint_paths` matches any `\d+`).
+     Tighten the match (e.g. require a `sprint`/`##_name` token, or match dir
+     names not bare numbers).
+   - **(c) Duplicate report sections** accumulate when an escalating task re-runs
+     after resolution (not marked done ⇒ re-selected ⇒ appends again).
+   - **(d) Only `findings[-1]` reaches the model**, so a resolution answer is
+     dropped from the prompt after the first post-re-entry iteration.
 
 ## How to run / verify
 
