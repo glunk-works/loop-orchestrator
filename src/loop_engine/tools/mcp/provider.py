@@ -12,6 +12,7 @@ same loop, blocking for the result. Nothing here imports keyring or writes files
 import asyncio
 import logging
 import os
+import shutil
 import sys
 import threading
 from contextlib import AsyncExitStack
@@ -20,12 +21,22 @@ from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from loop_engine.tools.isolation import IsolationUnavailableError, sandbox_runtime_mode
+
 logger = logging.getLogger(__name__)
 
 _TOOLS_ENV_VAR = "LOOP_ENGINE_TOOLS"
 _MCP_VALUE = "mcp"
 
 _CODER_TOOLS_SERVER_MODULE = "loop_engine.mcp_servers.coder_tools_server"
+
+# Phase 3b sandbox launch (env-overridable): the container runtime, the dev-stage
+# image tag, and the uid:gid the sandbox runs as (defaults to the orchestrator's
+# own, so bind-mounted artifacts keep correct host ownership).
+_CONTAINER_RUNTIME_ENV_VAR = "LOOP_ENGINE_CONTAINER_RUNTIME"
+_DEV_IMAGE_ENV_VAR = "LOOP_ENGINE_DEV_IMAGE"
+_SANDBOX_UID_ENV_VAR = "LOOP_ENGINE_SANDBOX_UID"
+_SUPPORTED_RUNTIMES = ("docker", "podman")
 
 # Bounds so a hung server can never wedge the run indefinitely.
 _CONNECT_TIMEOUT_S = 30.0
@@ -51,6 +62,151 @@ def coder_tools_server_params(cwd: str | Path | None = None) -> StdioServerParam
         command=sys.executable,
         args=["-m", _CODER_TOOLS_SERVER_MODULE],
         cwd=str(cwd) if cwd is not None else None,
+    )
+
+
+def _container_runtime() -> str:
+    """Resolve the container runtime (`docker`/`podman`). An explicit
+    `LOOP_ENGINE_CONTAINER_RUNTIME` override wins; otherwise the first one found
+    on PATH. Raises `IsolationUnavailableError` when none is available — the
+    caller must never fall back to in-process execution.
+
+    Uses `shutil.which` (a PATH lookup), not a subprocess: this module adds no
+    new sanctioned subprocess surface — the runtime is spawned by the MCP stdio
+    client, exactly as the in-process server is."""
+    override = os.environ.get(_CONTAINER_RUNTIME_ENV_VAR, "").strip().lower()
+    if override:
+        if override not in _SUPPORTED_RUNTIMES:
+            raise IsolationUnavailableError(
+                f"{_CONTAINER_RUNTIME_ENV_VAR}={override!r} is not supported "
+                f"(expected one of {_SUPPORTED_RUNTIMES})"
+            )
+        if shutil.which(override) is None:
+            raise IsolationUnavailableError(
+                f"container isolation selected but {override!r} is not on PATH"
+            )
+        return override
+    for runtime in _SUPPORTED_RUNTIMES:
+        if shutil.which(runtime) is not None:
+            return runtime
+    raise IsolationUnavailableError(
+        "container isolation selected but no container runtime (docker/podman) is "
+        "on PATH; refusing to run untrusted code in-process"
+    )
+
+
+def _sandbox_user() -> str:
+    """The `uid:gid` the sandbox runs as. Defaults to the orchestrator's own so
+    files the sandbox writes into the bind-mounted worktree stay host-owned."""
+    override = os.environ.get(_SANDBOX_UID_ENV_VAR, "").strip()
+    if override:
+        return override
+    return f"{os.getuid()}:{os.getgid()}"
+
+
+def container_server_params(worktree: str | Path) -> StdioServerParameters:
+    """Launch params for the coder-tools server inside a throwaway container
+    (docker/podman) that mounts **only** the worktree — no repo root, no
+    `state/`, no keyring, no network. The single bind mount is the security
+    contract; a second mount would be a security regression.
+
+    `-i` (and no `-t`) is required: the MCP stdio transport frames JSON-RPC over
+    the child's stdin/stdout pipes, so stdin must stay attached and a TTY would
+    corrupt it. `-w` and the bind use the same absolute path, so the server's
+    cwd is the worktree — matching the in-process/worktree tool paths that key
+    off `Path.cwd()`.
+
+    Nothing is launched here: the returned params are handed to the MCP stdio
+    client. Raises `IsolationUnavailableError` if no runtime or dev image is
+    available, so `container` mode fails honestly rather than silently running
+    untrusted code in-process."""
+    runtime = _container_runtime()
+    image = os.environ.get(_DEV_IMAGE_ENV_VAR, "").strip()
+    if not image:
+        raise IsolationUnavailableError(
+            f"container isolation requires {_DEV_IMAGE_ENV_VAR} (the dev-stage "
+            "image tag holding hatch + pytest); it is unset"
+        )
+    wt = str(Path(worktree).resolve())
+    return StdioServerParameters(
+        command=runtime,
+        args=[
+            "run",
+            "--rm",
+            "-i",
+            "--network",
+            "none",
+            "--read-only",
+            "--tmpfs",
+            "/tmp",  # noqa: S108 — container tmpfs mount target (writable /tmp inside the sandbox), not a host temp path
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--user",
+            _sandbox_user(),
+            "-v",
+            f"{wt}:{wt}:rw",
+            "-w",
+            wt,
+            image,
+            "python",
+            "-m",
+            _CODER_TOOLS_SERVER_MODULE,
+        ],
+        cwd=None,
+    )
+
+
+def sandbox_server_params(worktree: str | Path) -> StdioServerParameters:
+    """Launch params for the coder-tools server inside a daemon-free `bwrap`
+    sandbox — the **secondary** substrate. Read-only system dirs, the worktree
+    the only writable bind, no network (`--unshare-all` includes the net
+    namespace). `bwrap` also needs unprivileged user namespaces on the host
+    (verify with `unshare -Ur true`).
+
+    INERT on this branch: argv-shape tested, never launched (no runtime here).
+    Raises `IsolationUnavailableError` if `bwrap` is not on PATH."""
+    if shutil.which("bwrap") is None:
+        raise IsolationUnavailableError(
+            "sandbox isolation selected but 'bwrap' is not on PATH (it also "
+            "requires unprivileged user namespaces; verify with `unshare -Ur "
+            "true` on the target host)"
+        )
+    wt = str(Path(worktree).resolve())
+    return StdioServerParameters(
+        command="bwrap",
+        args=[
+            "--unshare-all",
+            "--die-with-parent",
+            "--ro-bind",
+            "/usr",
+            "/usr",
+            "--ro-bind",
+            "/lib",
+            "/lib",
+            "--ro-bind",
+            "/lib64",
+            "/lib64",
+            "--ro-bind",
+            "/bin",
+            "/bin",
+            "--proc",
+            "/proc",
+            "--dev",
+            "/dev",
+            "--tmpfs",
+            "/tmp",  # noqa: S108 — bwrap tmpfs mount target (writable /tmp inside the sandbox), not a host temp path
+            "--bind",
+            wt,
+            wt,
+            "--chdir",
+            wt,
+            "python",
+            "-m",
+            _CODER_TOOLS_SERVER_MODULE,
+        ],
+        cwd=None,
     )
 
 
@@ -148,6 +304,16 @@ class MCPToolProvider:
 
 
 def build_coder_tool_provider(cwd: str | Path | None = None) -> MCPToolProvider:
-    """A provider wired to the coder-tools stdio server (the runtime tool set
-    the agentic Coder uses)."""
-    return MCPToolProvider([coder_tools_server_params(cwd)])
+    """A provider wired to the coder-tools stdio server (the runtime tool set the
+    agentic Coder uses). Under `container`/`sandbox` isolation the server is
+    launched inside a sandbox mounting only the worktree; otherwise it runs as a
+    local subprocess. The selected sandbox mode never degrades to in-process
+    execution — a missing runtime raises `IsolationUnavailableError`."""
+    mode = sandbox_runtime_mode()
+    if mode == "container":
+        params = container_server_params(cwd if cwd is not None else Path.cwd())
+    elif mode == "sandbox":
+        params = sandbox_server_params(cwd if cwd is not None else Path.cwd())
+    else:
+        params = coder_tools_server_params(cwd)
+    return MCPToolProvider([params])

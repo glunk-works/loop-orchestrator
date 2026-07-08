@@ -1,11 +1,14 @@
 """The Coder's tool-backend selector: in-process by default, MCP behind the
 flag, with the provider opened once and always closed."""
 
+import pytest
+
 from loop_engine.personas.coder_iac.persona import (
     CODER_TOOLS,
     _CoderToolBackend,
     _execute_tool,
 )
+from loop_engine.tools.isolation import IsolationUnavailableError
 
 
 class _FakeProvider:
@@ -34,6 +37,17 @@ def test_default_backend_is_in_process(monkeypatch) -> None:
     assert execute is _execute_tool
 
     backend.close()  # no-op when nothing was opened
+
+
+def test_container_isolation_without_mcp_tools_refuses(monkeypatch) -> None:
+    """container/sandbox isolation only sandboxes the MCP server; on the
+    in-process path there is nothing to sandbox, so resolve() must refuse rather
+    than run untrusted tools in-process."""
+    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "container")
+    monkeypatch.delenv("LOOP_ENGINE_TOOLS", raising=False)
+    backend = _CoderToolBackend()
+    with pytest.raises(IsolationUnavailableError, match="LOOP_ENGINE_TOOLS=mcp"):
+        backend.resolve()
 
 
 def test_mcp_backend_opens_provider_once_and_closes(monkeypatch) -> None:

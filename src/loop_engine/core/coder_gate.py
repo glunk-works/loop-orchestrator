@@ -12,6 +12,7 @@ from pathlib import Path
 from loop_engine.core.gates import ArtifactGate, GateDecision, GateResult
 from loop_engine.core.state import State
 from loop_engine.tools.coder_tools import run_tests as run_tests_tool
+from loop_engine.tools.isolation import IsolationUnavailableError, sandbox_runtime_mode
 
 # The persona appends this section to a report when model-emitted edit
 # blocks failed to apply; its presence is a deterministic REVISE signal.
@@ -61,6 +62,19 @@ class CoderGate:
             return GateResult(GateDecision.REVISE, findings=edit_findings)
 
         blamed_sprint = _last_reported_sprint(state, reports)
+
+        # The gate runs pytest in-process — under container/sandbox isolation that
+        # would execute untrusted model code in the orchestrator, the exact thing
+        # the mode exists to prevent. Routing the gate's pytest through the sandbox
+        # is deferred host-side work; until then, fail honestly rather than run it.
+        # See sprints/18_execution_isolation_container/sprint_plan.md.
+        if sandbox_runtime_mode() is not None:
+            raise IsolationUnavailableError(
+                f"the Coder gate runs pytest in-process, but "
+                f"{sandbox_runtime_mode()} isolation is selected; sandboxed gate "
+                "verification is deferred to the host-side e2e build "
+                "(see sprints/18_execution_isolation_container)"
+            )
 
         if not Path(self.test_path).exists():
             exit_code: int = run_tests_tool.PYTEST_NO_TESTS_COLLECTED

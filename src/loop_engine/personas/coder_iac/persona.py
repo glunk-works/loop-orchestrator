@@ -16,6 +16,7 @@ from loop_engine.tools.coder_tools import (
     resolve_tool_path,
 )
 from loop_engine.tools.coder_tools.run_tests import RUN_TESTS_TOOL_SCHEMA, run_tests
+from loop_engine.tools.isolation import IsolationUnavailableError, sandbox_runtime_mode
 from loop_engine.tools.mcp import build_coder_tool_provider, use_mcp_tools
 from loop_engine.tools.state_io.writer import write_artifact
 
@@ -59,6 +60,14 @@ class _CoderToolBackend:
 
     def resolve(self):
         """Return (tools, execute) for a run_tool_loop call."""
+        # container/sandbox isolation only sandboxes the MCP server launch; there
+        # is nothing to sandbox on the in-process path, so refuse rather than run
+        # untrusted tools in the orchestrator process.
+        if sandbox_runtime_mode() is not None and not use_mcp_tools():
+            raise IsolationUnavailableError(
+                "container/sandbox isolation requires LOOP_ENGINE_TOOLS=mcp; "
+                "refusing to run untrusted tools in-process"
+            )
         if not use_mcp_tools():
             return CODER_TOOLS, _execute_tool
         if self._provider is None:

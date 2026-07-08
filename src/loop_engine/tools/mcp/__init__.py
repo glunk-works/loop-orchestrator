@@ -11,6 +11,9 @@ from loop_engine.tools.mcp.provider import (
     MCPToolError,
     MCPToolProvider,
     build_coder_tool_provider,
+    coder_tools_server_params,
+    container_server_params,
+    sandbox_server_params,
     use_mcp_tools,
 )
 
@@ -18,5 +21,8 @@ __all__ = [
     "MCPToolError",
     "MCPToolProvider",
     "build_coder_tool_provider",
+    "coder_tools_server_params",
+    "container_server_params",
+    "sandbox_server_params",
     "use_mcp_tools",
 ]

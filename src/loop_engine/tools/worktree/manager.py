@@ -30,10 +30,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from loop_engine.tools.isolation import worktree_needed
 from loop_engine.tools.state_io.writer import set_state_root, validate_run_id
 
-_ISOLATION_ENV_VAR = "LOOP_ENGINE_ISOLATION"
-_WORKTREE_VALUE = "worktree"
 _WORKTREE_ROOT_ENV_VAR = "LOOP_ENGINE_WORKTREE_ROOT"
 _DEFAULT_WORKTREE_DIRNAME = ".worktrees"
 
@@ -46,8 +45,11 @@ class WorktreeError(Exception):
 
 
 def use_worktree_isolation() -> bool:
-    """Whether per-run worktree isolation is selected via the environment flag."""
-    return os.environ.get(_ISOLATION_ENV_VAR, "").strip().lower() == _WORKTREE_VALUE
+    """Whether the selected isolation mode needs a per-run git worktree
+    (`worktree`/`container`/`sandbox`). Delegates to `tools.isolation` so the
+    flag has a single reader; the container/sandbox modes still run inside a
+    worktree (the sandbox mounts it)."""
+    return worktree_needed()
 
 
 def worktree_root() -> Path:

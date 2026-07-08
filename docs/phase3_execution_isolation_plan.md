@@ -246,7 +246,14 @@ mounts. See D3.
 
 ## Sequencing & phase gate
 
-1. Build 3a as its own green commit (per `branch-isolation-phase-gates`).
-2. **Hard stop for HITL review.**
-3. 3b lands as spec + flag stub in the same or a follow-up commit; no
+1. Build 3a as its own green commit (per `branch-isolation-phase-gates`). ✅ `951e377`
+2. **Hard stop for HITL review.** ✅
+3. Build 3b's **inert seam** as its own green commit — the argv builders,
+   runtime preflight, provider selection, and honest-failure guards (both
+   untrusted-exec surfaces), argv-shape tested; **no sandbox/container code
+   executes** (guarded to raise). ✅ done —
+   `sprints/18_execution_isolation_container/sprint_plan.md`.
+4. **Hard stop for HITL review.**
+5. On a daemon-bearing host: replace the guards with the real `docker run` path +
+   sandboxed gate pytest + a live parity test (the "Deferred" list above). No
    sandbox/container code executes until a runtime is chosen and verified.

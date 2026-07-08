@@ -102,3 +102,23 @@ def test_coder_gate_defers_to_content_gate_for_shape_problems() -> None:
 
     assert result.decision is GateDecision.REVISE
     assert "not valid JSON" in result.findings[0]
+
+
+def test_coder_gate_refuses_in_process_pytest_under_container_isolation(monkeypatch) -> None:
+    """The gate runs pytest in-process; under container/sandbox isolation that
+    would execute untrusted model code in the orchestrator, so it must raise
+    rather than run pytest. (Sandboxed gate verification is deferred host-side.)"""
+    from loop_engine.core import coder_gate
+    from loop_engine.tools.isolation import IsolationUnavailableError
+
+    Path("src").mkdir()
+    Path("src/test_green.py").write_text("def test_ok():\n    assert True\n")
+
+    def _must_not_run(*args, **kwargs):
+        raise AssertionError("run_pytest must not be called under container isolation")
+
+    monkeypatch.setattr(coder_gate.run_tests_tool, "run_pytest", _must_not_run)
+    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "container")
+
+    with pytest.raises(IsolationUnavailableError, match="deferred"):
+        CoderGate()(_state({"/sprints/01_foo/sprint_plan.md": "done"}), "CoderIacPersona")
