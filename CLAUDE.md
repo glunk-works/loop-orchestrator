@@ -6,6 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 loop-engine runs a named sequence of decoupled AI "persona" stages against a single, explicit, versioned `State` object. The default loop is a **PM → Architecture → Agile Sprint Breakdown → Coder/IaC** pipeline, but it is not a one-way conveyor: every stage's output passes a content **gate** (accept / revise / escalate), questions escalate up a resolver ladder (Coder → Architect → PM → human via GitHub issue), and resolved questions route rework back down by blast radius ("task" re-runs the asker, "plan" re-enters Sprint Breakdown, "architecture" re-enters the Architect). A snapshot is persisted after every accepted stage AND on every exit path (completed / failed / budget-exceeded / awaiting-issue).
 
+> **Migration in progress.** The engine is mid-migration toward MCP tooling +
+> LangGraph + an isolated multi-repo factory. **Status, decisions, and the
+> remaining phases live in [`docs/migration_roadmap.md`](docs/migration_roadmap.md)** —
+> read it before extending this work. Phases 1–2 are done behind flags
+> (`LOOP_ENGINE_ENGINE=langgraph`, `LOOP_ENGINE_TOOLS=mcp`; both default off);
+> Phases 3–5 are sketched and need detailed planning.
+
 ## Commands
 
 ```bash
