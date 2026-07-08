@@ -19,12 +19,15 @@ this file tracks *how far we've got and what's next*.
 | 1 — State & skill externalization + LangGraph engine | ✅ complete, reviewed | `ee89718` |
 | 2 — MCP tooling (coder tools as MCP server) | ✅ complete, reviewed | `7368411` |
 | 3a — Execution isolation (per-run git worktrees) | ✅ built behind flag, reviewed | `951e377` |
-| 3b — Execution isolation (disposable container/sandbox) | ✅ inert seam built behind flag, tests green — **awaiting HITL review** (docker/podman primary, bwrap secondary; real `docker run` + sandboxed gate deferred to a daemon host). Plan: `sprints/18_execution_isolation_container/sprint_plan.md` | — |
+| 3b — Execution isolation (disposable container/sandbox) — **inert seam** | ✅ built behind flag, reviewed (docker/podman primary, bwrap secondary; real `docker run` + sandboxed gate pytest deferred to a daemon host). Plan: `sprints/18_execution_isolation_container/sprint_plan.md` | `cdc7c8f` |
 | 4 — Flattening orchestration (declarative personas, exit-code gates) | ⬜ sketch only | — |
 | 5 — Autonomous triggers + multi-repo factory | ⬜ sketch only | — |
 
-Phases 1–2 were detailed and executed. **Phases 3–5 are only sketched** (below)
-and need a detailed planning pass before implementation.
+Phases 1–3b are detailed and executed (3b's daemon-host e2e is deferred, not
+lost — see its plan). **▶ NEXT ACTION: Phase 4 needs a detailed planning pass**
+(it is sketch-only below). Follow the 3b pattern: write the plan as
+`sprints/NN_.../sprint_plan.md`, one clarifying question at a time, HITL-gate,
+then build. Phase 5 remains sketch-only after that.
 
 ## Decisions log (locked)
 
@@ -143,7 +146,7 @@ to `glunk-works`; how runs are queued/rate-limited.
 ## How to run / verify
 
 ```bash
-hatch run test            # full suite (215 after P1, 226 after P2, 246 after P3a)
+hatch run test            # full suite (215 after P1, 226 after P2, 246 after P3a, 279 after P3b)
 hatch run lint && hatch run format && hatch run audit && hatch run sbom
 LOOP_ENGINE_ENGINE=langgraph  hatch run test tests/core/test_graph_engine.py
 LOOP_ENGINE_TOOLS=mcp         hatch run test tests/tools/test_mcp_provider.py
