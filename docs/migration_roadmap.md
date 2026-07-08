@@ -18,7 +18,7 @@ this file tracks *how far we've got and what's next*.
 |---|---|---|
 | 1 — State & skill externalization + LangGraph engine | ✅ complete, reviewed | `ee89718` |
 | 2 — MCP tooling (coder tools as MCP server) | ✅ complete, reviewed | `7368411` |
-| 3a — Execution isolation (per-run git worktrees) | ✅ built behind flag, tests green — **awaiting HITL review** | — |
+| 3a — Execution isolation (per-run git worktrees) | ✅ built behind flag, tests green — **awaiting HITL review** | `951e377` |
 | 3b — Execution isolation (disposable container/sandbox) | ⬜ seam-specced, deferred (`docs/phase3_execution_isolation_plan.md`) | — |
 | 4 — Flattening orchestration (declarative personas, exit-code gates) | ⬜ sketch only | — |
 | 5 — Autonomous triggers + multi-repo factory | ⬜ sketch only | — |
