@@ -22,6 +22,11 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from loop_engine.tools.isolation import IsolationUnavailableError, sandbox_runtime_mode
+from loop_engine.tools.mcp.config import (
+    CODER_TOOLS_SERVER_NAME,
+    MCPServerSpec,
+    load_mcp_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -303,17 +308,51 @@ class MCPToolProvider:
             self._loop = None
 
 
+def _coder_tools_params(spec: MCPServerSpec, cwd: str | Path | None) -> StdioServerParameters:
+    """The `coder_tools` server's launch params, isolation-aware. Under
+    `container`/`sandbox` isolation this overrides the config entry entirely
+    (mounting only the worktree, as today); otherwise it uses the config's
+    local-profile `command`/`args` with `cwd` set to the per-call worktree —
+    matching the pre-refactor `coder_tools_server_params(cwd)` contract."""
+    mode = sandbox_runtime_mode()
+    if mode == "container":
+        return container_server_params(cwd if cwd is not None else Path.cwd())
+    if mode == "sandbox":
+        return sandbox_server_params(cwd if cwd is not None else Path.cwd())
+    return StdioServerParameters(
+        command=spec.command,
+        args=spec.args,
+        cwd=str(cwd) if cwd is not None else spec.cwd,
+    )
+
+
+def build_provider_for(names: list[str], *, cwd: str | Path | None = None) -> MCPToolProvider:
+    """A provider scoped to exactly the named servers, materialized from
+    `.mcp.json` (or its built-in default). Each consumer names only the
+    servers it wants — the model's coder tool loop names `coder_tools` alone,
+    so a `.mcp.json` declaring other servers (e.g. `github`) never leaks their
+    tools into it. Selecting a name absent from config raises `KeyError`.
+
+    `coder_tools` is a recognized special case (see `_coder_tools_params`);
+    every other named server launches from its static config spec as-is.
+    """
+    config = load_mcp_config()
+    params: list[StdioServerParameters] = []
+    for name in names:
+        if name not in config:
+            raise KeyError(f"MCP server {name!r} is not declared in .mcp.json")
+        spec = config[name]
+        if name == CODER_TOOLS_SERVER_NAME:
+            params.append(_coder_tools_params(spec, cwd))
+        else:
+            params.append(StdioServerParameters(command=spec.command, args=spec.args, cwd=spec.cwd))
+    return MCPToolProvider(params)
+
+
 def build_coder_tool_provider(cwd: str | Path | None = None) -> MCPToolProvider:
     """A provider wired to the coder-tools stdio server (the runtime tool set the
     agentic Coder uses). Under `container`/`sandbox` isolation the server is
     launched inside a sandbox mounting only the worktree; otherwise it runs as a
     local subprocess. The selected sandbox mode never degrades to in-process
     execution — a missing runtime raises `IsolationUnavailableError`."""
-    mode = sandbox_runtime_mode()
-    if mode == "container":
-        params = container_server_params(cwd if cwd is not None else Path.cwd())
-    elif mode == "sandbox":
-        params = sandbox_server_params(cwd if cwd is not None else Path.cwd())
-    else:
-        params = coder_tools_server_params(cwd)
-    return MCPToolProvider([params])
+    return build_provider_for([CODER_TOOLS_SERVER_NAME], cwd=cwd)
