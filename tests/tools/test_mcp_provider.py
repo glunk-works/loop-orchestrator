@@ -9,8 +9,12 @@ import pytest
 
 from loop_engine.tools.coder_tools import grep, list_files, read_file
 from loop_engine.tools.mcp import (
+    CODER_TOOLS_SERVER_NAME,
+    GITHUB_SERVER_NAME,
     MCPToolError,
     build_coder_tool_provider,
+    build_github_provider,
+    load_mcp_config,
     use_mcp_tools,
 )
 from loop_engine.tools.mcp import config as mcp_config
@@ -107,3 +111,39 @@ def test_extra_config_server_never_reaches_coder_provider(
     with build_coder_tool_provider(cwd=_seeded_tree) as provider:
         names = {t["name"] for t in provider.tools}
     assert names == {"read_file", "list_files", "grep", "run_tests"}
+
+
+def test_committed_config_declares_github_alongside_coder_tools() -> None:
+    """The real, committed repo-root `loop_engine.mcp.json` (22b, Task 3) —
+    `load_mcp_config()` with no override reads it for real."""
+    servers = load_mcp_config()
+    assert set(servers) == {CODER_TOOLS_SERVER_NAME, GITHUB_SERVER_NAME}
+    assert servers[GITHUB_SERVER_NAME].args == ["-m", "loop_engine.mcp_servers.github_server"]
+
+
+def test_committed_github_stanza_does_not_change_coder_provider_tool_set(_provider) -> None:
+    """With the committed `github` stanza in effect (no override here), the
+    coder consumer's provider is still exactly the four coder tools."""
+    names = {t["name"] for t in _provider.tools}
+    assert names == {"read_file", "list_files", "grep", "run_tests"}
+
+
+def test_build_github_provider_discovers_exactly_four_github_verbs() -> None:
+    with build_github_provider() as provider:
+        names = {t["name"] for t in provider.tools}
+    assert names == {"create_repository", "clone_repo", "create_branch", "open_pr"}
+
+
+def test_coder_and_github_providers_are_bidirectionally_disjoint(_provider) -> None:
+    """Cross-cutting #2, encoded as an enforced invariant now that the github
+    server actually exists (22b, Task 4): with the committed
+    `loop_engine.mcp.json` in effect, the model's coder-tool provider and the
+    orchestrator's github provider expose exactly their own four tools each,
+    and neither set intersects the other."""
+    coder_names = {t["name"] for t in _provider.tools}
+    with build_github_provider() as github_provider:
+        github_names = {t["name"] for t in github_provider.tools}
+
+    assert coder_names == {"read_file", "list_files", "grep", "run_tests"}
+    assert github_names == {"create_repository", "clone_repo", "create_branch", "open_pr"}
+    assert coder_names.isdisjoint(github_names)

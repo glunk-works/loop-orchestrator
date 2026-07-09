@@ -27,6 +27,10 @@ _CONFIG_FILENAME = "loop_engine.mcp.json"
 _CODER_TOOLS_SERVER_MODULE = "loop_engine.mcp_servers.coder_tools_server"
 
 CODER_TOOLS_SERVER_NAME = "coder_tools"
+# The github factory-verb server's logical name in loop_engine.mcp.json — no
+# built-in default (unlike coder_tools): it exists only via the committed
+# repo-root config's static launch spec.
+GITHUB_SERVER_NAME = "github"
 
 
 class MCPServerSpec(BaseModel):

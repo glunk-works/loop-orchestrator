@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "github": {
+      "command": "python",
+      "args": ["-m", "loop_engine.mcp_servers.github_server"],
+      "cwd": null
+    }
+  }
+}

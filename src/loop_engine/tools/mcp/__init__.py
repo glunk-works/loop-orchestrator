@@ -9,6 +9,7 @@ that routes each call to the owning server. This replaces the in-process
 
 from loop_engine.tools.mcp.config import (
     CODER_TOOLS_SERVER_NAME,
+    GITHUB_SERVER_NAME,
     MCPServerSpec,
     load_mcp_config,
 )
@@ -16,6 +17,7 @@ from loop_engine.tools.mcp.provider import (
     MCPToolError,
     MCPToolProvider,
     build_coder_tool_provider,
+    build_github_provider,
     build_provider_for,
     container_server_params,
     sandbox_server_params,
@@ -24,10 +26,12 @@ from loop_engine.tools.mcp.provider import (
 
 __all__ = [
     "CODER_TOOLS_SERVER_NAME",
+    "GITHUB_SERVER_NAME",
     "MCPServerSpec",
     "MCPToolError",
     "MCPToolProvider",
     "build_coder_tool_provider",
+    "build_github_provider",
     "build_provider_for",
     "container_server_params",
     "load_mcp_config",

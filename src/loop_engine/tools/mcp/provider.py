@@ -23,6 +23,7 @@ from mcp.client.stdio import stdio_client
 from loop_engine.tools.isolation import IsolationUnavailableError, sandbox_runtime_mode
 from loop_engine.tools.mcp.config import (
     CODER_TOOLS_SERVER_NAME,
+    GITHUB_SERVER_NAME,
     MCPServerSpec,
     load_mcp_config,
 )
@@ -346,3 +347,13 @@ def build_coder_tool_provider(cwd: str | Path | None = None) -> MCPToolProvider:
     local subprocess. The selected sandbox mode never degrades to in-process
     execution — a missing runtime raises `IsolationUnavailableError`."""
     return build_provider_for([CODER_TOOLS_SERVER_NAME], cwd=cwd)
+
+
+def build_github_provider() -> MCPToolProvider:
+    """A provider scoped to the `github` factory-verb server alone — the
+    orchestrator's own helper, structurally separate from
+    `build_coder_tool_provider` so the model's tool loop (which names only
+    `coder_tools`) can never reach these verbs. No `cwd` sandbox override:
+    unlike coder_tools, github is not launched per-worktree — it is not the
+    isolation special case `_coder_tools_params` handles."""
+    return build_provider_for([GITHUB_SERVER_NAME])

@@ -119,4 +119,37 @@ Expected observations:
 - `declarative` × `ralph` compose: run with both flags set and confirm the
   pipeline reaches the Ralph Coder with byte-identical upstream artifacts.
 
+## 5. `github_server` live launch + factory verbs (validates Sprint 22b)
+
+The `mcp_servers/github_server` re-front is verified hermetically: real-server
+discovery (`list_tools`, offline — no `gh`/network) asserts exactly
+`{create_repository, clone_repo, create_branch, open_pr}`; the `tools/repo_io`
+delegate's argv-building and stdout parsing are verified with `_run_gh` mocked;
+and the bidirectional coder⟂github consumer-scope guard
+(`tests/tools/test_mcp_provider.py`) is proven with the real committed
+`loop_engine.mcp.json`. What none of that exercises is a **real, authenticated
+`gh`** round-trip — this devcontainer has no `gh` auth and no network. Run on a
+daemon-bearing host with `gh auth status` green:
+
+```bash
+python -m loop_engine.mcp_servers.github_server &  # or launch via build_github_provider()
+```
+
+Exercise each of the four verbs against a disposable scratch repo/org:
+
+- `create_repository` — creates a real (private) repo; confirm the returned
+  `RepoRef.url` resolves.
+- `clone_repo` — clones it to a validated `dest`; confirm the working tree lands
+  and a traversal/symlink-escaping `dest` is still rejected pre-`gh`-call.
+- `create_branch` — creates a remote ref off the repo's default branch (no
+  `base` given) and off an explicit `base`; confirm both via `gh api
+  repos/{owner}/{repo}/branches`.
+- `open_pr` — push a commit to the new branch (out of scope for `repo_io` itself
+  — do this with plain `git`/`gh` in the test harness), then `open_pr` and
+  confirm the returned `PullRef.url` resolves and **no merge verb exists** to
+  auto-merge it.
+
+Clean up the scratch repo afterward — this check has real side effects on
+GitHub, unlike every other check in this file.
+
 Delete this file once the checks have been performed and any findings are fixed.
