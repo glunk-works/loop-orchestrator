@@ -23,7 +23,7 @@ this file tracks *how far we've got and what's next*.
 | 4 · part 1 — Ralph-loop Coder (`AgenticNode`) | ✅ built behind flag, reviewed; 4 review findings hardened in 4a (below). Plan: `sprints/19_ralph_coder/sprint_plan.md` | `195f7b7` |
 | 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ complete, reviewed; 3 HITL-review findings resolved (see "Sprint-19a HITL-review settlements"). Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | `d675d5d` → review-fixes |
 | 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ✅ complete, reviewed; HITL-review findings resolved via sprint 21 review-fixes. 394 tests green. Plans: `sprints/20_declarative_generators/`, `sprints/21_declarative_review_fixes/` | `cf48b0c` → `aceb23a` → `03818d9` |
-| 5 — Autonomous triggers + multi-repo factory | 🟨 22a + 22b complete, reviewed, archived. 23 (trigger surface capability slice) implemented, HITL-reviewed; 3 findings routed to Sprint 23a review-fixes. Next: plan Sprint 24 (maintenance flow), gated behind 23a landing + re-review. Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/`, `sprints/23_trigger_surface/`, `sprints/23a_trigger_review_fixes/` | `457f675` → `71f1692` → `d0e118d` → `7b46227` → `5bc3811` → `5ff8c02` → `e0406d8` |
+| 5 — Autonomous triggers + multi-repo factory | 🟨 22a + 22b + 23 + 23a complete, reviewed, archived. 23 (trigger surface capability slice) implemented + HITL-reviewed; its 3 dispatch/webhook findings fixed in 23a and re-reviewed clean. Next: plan Sprint 24 (maintenance flow). Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/`, `sprints/23_trigger_surface/`, `sprints/23a_trigger_review_fixes/` | `457f675` → `71f1692` → `d0e118d` → `7b46227` → `5bc3811` → `5ff8c02` → `e0406d8` → `212beeb` |
 | 6 — Collapse the flags (decommission the migration scaffolding) | ⬜ sketch only | — |
 
 Phases 1–3b are detailed and executed (3b's daemon-host e2e is deferred, not
@@ -34,14 +34,13 @@ its four review findings are hardened in **part 1a** (`sprints/19a_ralph_hardeni
 **Part 2** (`GeneratorNode` + PM critic-gate, `sprints/20_declarative_generators/`)
 is **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`),
 **reviewed, and its review findings resolved** (sprint 21 review-fixes, `03818d9`).
-**▶ NEXT ACTION: plan Sprint 24** (maintenance flow), gated behind Sprint 23a
-landing + Opus re-review. Sprint 23 (trigger surface — a FastAPI webhook that
-turns a GitHub `agent-action` label or `/agent-run` comment into a real
-`runner.run_new` default-loop run via an injectable `RunDispatcher` seam) is
-**implemented, all 6 tasks green** (`sprints/23_trigger_surface/sprint_plan.md`,
-`5ff8c02`) and **HITL-reviewed** — 3 findings on the dispatch/webhook
-robustness path routed to a review-fixes sprint, **23a** (see "Sprint-23a
-HITL-review settlements" below). It is a capability slice mirroring 22b's posture: dispatch is
+**▶ NEXT ACTION: plan Sprint 24** (maintenance flow). Sprint 23 (trigger
+surface — a FastAPI webhook that turns a GitHub `agent-action` label or
+`/agent-run` comment into a real `runner.run_new` default-loop run via an
+injectable `RunDispatcher` seam) is **implemented, all 6 tasks green**
+(`sprints/23_trigger_surface/sprint_plan.md`, `5ff8c02`), **HITL-reviewed**,
+and its 3 dispatch/webhook findings **fixed in 23a (`212beeb`) and re-reviewed
+clean** (see "Sprint-23a HITL-review settlements" below). It is a capability slice mirroring 22b's posture: dispatch is
 **in-process** (a worker-thread `InProcessDispatcher`, so the sanctioned
 subprocess-surface count stays **three**, unchanged), FastAPI is pinned as
 loop-engine's first web runtime dependency while `uvicorn`/hosting stays
@@ -515,9 +514,9 @@ decisions above.
   network+`gh`-auth server launch; live verification deferred to a daemon-bearing host
   (`sprints/DEFERRED_VERIFICATION.md`).
 - **Sprint 23 — trigger surface** *(implemented, all 6 tasks green:
-  `sprints/23_trigger_surface/sprint_plan.md`; HITL-reviewed — 3 findings
-  routed to Sprint 23a review-fixes, see "Sprint-23a HITL-review
-  settlements")*.
+  `sprints/23_trigger_surface/sprint_plan.md`; HITL-reviewed — its 3 findings
+  fixed in Sprint 23a (`212beeb`) and re-reviewed clean, see "Sprint-23a
+  HITL-review settlements")*.
   Ships `src/loop_engine/runner.py` (the shared `run_new` run-starter,
   factored out of `cli.run` so both the CLI and the dispatcher call one
   source of truth) and the new `src/loop_engine/trigger/` package: `parse.py`
