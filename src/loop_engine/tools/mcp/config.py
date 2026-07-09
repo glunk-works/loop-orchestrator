@@ -64,8 +64,9 @@ def _repo_root() -> Path:
 
 
 def _default_servers() -> dict[str, MCPServerSpec]:
-    """The built-in `coder_tools` entry — equivalent to today's hard-coded
-    `coder_tools_server_params()` local-mode launch. `cwd` is left `None` here;
+    """The built-in `coder_tools` entry — the local-mode launch of the
+    coder-tools stdio server (this is the single source of truth for it; the
+    pre-22a `coder_tools_server_params()` helper it replaced is gone). `cwd` is left `None` here;
     it is supplied per-call (by `build_provider_for`/`build_coder_tool_provider`),
     not fixed at config-load time."""
     return {

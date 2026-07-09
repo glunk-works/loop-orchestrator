@@ -53,8 +53,4 @@ before or after committing, your call, but commit before archiving.
 - `.ai/context/workflow.md` — the Opus↔Sonnet handoff protocol + switch points.
 
 ## Working tree
-- **Uncommitted:** `.ai/context/modules.md`, `CLAUDE.md`, `docs/migration_roadmap.md`,
-  `tests/tools/test_mcp_provider.py` (modified); `tests/tools/fixtures/` (new dir),
-  `tests/tools/test_mcp_multiserver.py` (new file); this file. `last_commit` in
-  `.ai/state.json` (`10df727`) reflects HEAD, not this uncommitted diff — it will advance
-  once the reviewer commits.
+- Tasks 3-5 committed as `71f1692`. Working tree is clean.

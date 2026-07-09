@@ -1,4 +1,4 @@
-"""`.mcp.json` loader: default fallback, merge-over-default, validation."""
+"""`loop_engine.mcp.json` loader: default fallback, merge-over-default, validation."""
 
 import json
 import sys
@@ -19,7 +19,7 @@ def test_absent_file_yields_builtin_coder_tools_default(tmp_path) -> None:
 
 
 def test_present_file_adds_a_second_server(tmp_path) -> None:
-    config_path = tmp_path / ".mcp.json"
+    config_path = tmp_path / "loop_engine.mcp.json"
     config_path.write_text(
         json.dumps({"servers": {"github": {"command": "github-server", "args": ["--stdio"]}}}),
         encoding="utf-8",
@@ -31,7 +31,7 @@ def test_present_file_adds_a_second_server(tmp_path) -> None:
 
 
 def test_explicit_coder_tools_entry_overrides_builtin_default(tmp_path) -> None:
-    config_path = tmp_path / ".mcp.json"
+    config_path = tmp_path / "loop_engine.mcp.json"
     config_path.write_text(
         json.dumps(
             {
@@ -49,7 +49,7 @@ def test_explicit_coder_tools_entry_overrides_builtin_default(tmp_path) -> None:
 
 
 def test_unknown_key_raises_validation_error(tmp_path) -> None:
-    config_path = tmp_path / ".mcp.json"
+    config_path = tmp_path / "loop_engine.mcp.json"
     config_path.write_text(
         json.dumps({"servers": {"github": {"command": "x", "args": [], "bogus": True}}}),
         encoding="utf-8",
@@ -59,7 +59,7 @@ def test_unknown_key_raises_validation_error(tmp_path) -> None:
 
 
 def test_missing_command_raises_validation_error(tmp_path) -> None:
-    config_path = tmp_path / ".mcp.json"
+    config_path = tmp_path / "loop_engine.mcp.json"
     config_path.write_text(
         json.dumps({"servers": {"github": {"args": ["--stdio"]}}}),
         encoding="utf-8",
@@ -69,7 +69,7 @@ def test_missing_command_raises_validation_error(tmp_path) -> None:
 
 
 def test_missing_args_raises_validation_error(tmp_path) -> None:
-    config_path = tmp_path / ".mcp.json"
+    config_path = tmp_path / "loop_engine.mcp.json"
     config_path.write_text(
         json.dumps({"servers": {"github": {"command": "x"}}}),
         encoding="utf-8",
@@ -79,7 +79,7 @@ def test_missing_args_raises_validation_error(tmp_path) -> None:
 
 
 def test_top_level_unknown_key_raises_validation_error(tmp_path) -> None:
-    config_path = tmp_path / ".mcp.json"
+    config_path = tmp_path / "loop_engine.mcp.json"
     config_path.write_text(json.dumps({"servers": {}, "bogus": True}), encoding="utf-8")
     with pytest.raises(ValidationError):
         load_mcp_config(config_path)

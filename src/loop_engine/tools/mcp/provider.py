@@ -13,7 +13,6 @@ import asyncio
 import logging
 import os
 import shutil
-import sys
 import threading
 from contextlib import AsyncExitStack
 from pathlib import Path
@@ -58,16 +57,6 @@ class MCPToolError(Exception):
 def use_mcp_tools() -> bool:
     """Whether MCP tool dispatch is selected via the environment flag."""
     return os.environ.get(_TOOLS_ENV_VAR, "").strip().lower() == _MCP_VALUE
-
-
-def coder_tools_server_params(cwd: str | Path | None = None) -> StdioServerParameters:
-    """Launch parameters for the coder-tools stdio server. The server runs its
-    tools relative to its own cwd, so it inherits the run tree's directory."""
-    return StdioServerParameters(
-        command=sys.executable,
-        args=["-m", _CODER_TOOLS_SERVER_MODULE],
-        cwd=str(cwd) if cwd is not None else None,
-    )
 
 
 def _container_runtime() -> str:
@@ -313,7 +302,7 @@ def _coder_tools_params(spec: MCPServerSpec, cwd: str | Path | None) -> StdioSer
     `container`/`sandbox` isolation this overrides the config entry entirely
     (mounting only the worktree, as today); otherwise it uses the config's
     local-profile `command`/`args` with `cwd` set to the per-call worktree —
-    matching the pre-refactor `coder_tools_server_params(cwd)` contract."""
+    matching the pre-refactor coder-tools local launch contract."""
     mode = sandbox_runtime_mode()
     if mode == "container":
         return container_server_params(cwd if cwd is not None else Path.cwd())
