@@ -5,46 +5,49 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Phase 5 — Sprint 23 (`trigger_surface`) — `planning`.**
-Sprint 22b (github MCP server capability slice) is complete, reviewed, and
-archived. Next up is an Opus/Architect **planning pass** for the trigger
-surface — Phase 5 piece 2. No plan written yet.
+**Phase 5 — Sprint 23 (`trigger_surface`) — `implementing`.**
+The Opus/Architect planning pass is done and HITL-approved; the plan is written.
+Next is a Sonnet/Coder implementation session against the sprint file.
 
-## Just done (Opus/Architect — 22b close-out)
-- **HITL review of 22b** (`7b46227`): approved with one required finding —
-  `_validate_clone_dest` gated its symlink-escape check on `path.exists()`,
-  letting the normal clone case (non-existent target under a symlinked parent)
-  escape the run tree. **Fixed** in review-fix commit `5bc3811` + regression
-  test; green gate 426 passed. Low nit (bare `python` vs `sys.executable` in the
-  committed `loop_engine.mcp.json`) deferred.
-- **Archived 22b** — cursor snapshotted to
-  `.ai/archive/22b_native_github_server-next-steps.md`; roadmap status row +
-  NEXT ACTION advanced; `.ai/state.json` moved to Sprint 23 / `planning`.
+## Just done (Opus/Architect — 23 planning pass)
+- **Planned Sprint 23 — the trigger surface** (Phase 5 piece 2): a FastAPI webhook
+  server that turns an `agent-action` label / `/agent-run` comment into a real
+  default-loop run via an injectable `RunDispatcher` seam. Delivered as
+  `sprints/23_trigger_surface/sprint_plan.md` (6 tasks).
+- **Settled six gating decisions** (one question at a time, HITL-gated), all
+  recorded in the plan's Context block: capability slice (dispatch the existing
+  default loop; no factory-flow wiring); **in-process** worker-thread dispatch =
+  **no 4th subprocess surface**; **FastAPI pinned, uvicorn deferred** (hermetic
+  `TestClient`); **HMAC over raw body, env-var secret, fail-closed**; unified
+  `human_input` = issue title+body, bare trigger verbs, all else a 2xx no-op;
+  new `src/loop_engine/trigger/` package (no keyring, no writes, no subprocess).
 
 ## Next
-1. **(Opus/Architect) Plan Sprint 23 — the trigger surface.** A FastAPI webhook
-   server that triggers a graph run on a GitHub issue labeled `agent-action`
-   (or a slash command in an issue comment) — roadmap Phase 5 "Scope" piece 2
-   (`docs/migration_roadmap.md:346`). Piece 1 (github server) landed in 22b, so
-   this is the first step toward the maintenance flow (piece 3) + bootstrap flow
-   (piece 4) that actually call the github factory verbs. Planning pass: one
-   question at a time, HITL gates; deliver `sprints/23_trigger_surface/sprint_plan.md`.
-2. **Then handoff to Sonnet** for implementation.
+1. **(Sonnet/Coder) Implement Sprint 23** — Tasks 1–6 in order per
+   `sprints/23_trigger_surface/sprint_plan.md`: shared `runner.py` refactor →
+   `RunRequest`+parser → `RunDispatcher`+`InProcessDispatcher` → FastAPI app →
+   boundary static test + hermetic e2e → deps/SBOM/docs/roadmap. Run the green
+   gate (test/lint/format/audit/sbom) per task; **regenerate `sbom.json`** (first
+   web dependency).
+2. **Then handoff to Opus** for HITL review of the diff.
 
 ## Carry-forward
-- **Deferred (22b → maintenance flow):** the local-git subprocess surface
-  (`git push` inside a cloned tree) belongs to the maintenance flow, not the
-  trigger surface — don't introduce it in Sprint 23.
-- **Open low nit:** bare `python` vs `sys.executable` in the committed
-  `loop_engine.mcp.json` github stanza — pick up if convenient.
+- **Do NOT scope-creep into the factory flows** — no `tools/repo_io` call, no
+  clone, no branch/PR, no `git push` surface. The maintenance flow (piece 3,
+  Sprint 24) owns the deferred local-git subprocess-surface decision.
+- **First web dependency** — pin FastAPI (pydantic-2.13-compatible, audit-green);
+  `httpx` is dev/test only (TestClient), not runtime; regenerate + commit `sbom.json`.
+- **Open low nit (carried from 22b):** bare `python` vs `sys.executable` in the
+  committed `loop_engine.mcp.json` github stanza — pick up if convenient.
 
 ## Pointers
-- `docs/migration_roadmap.md` — Phase 5 "Scope" (four pieces) + "sprint
-  decomposition"; the ▶ NEXT ACTION line now points at Sprint 23 planning.
-- `sprints/23_trigger_surface/sprint_plan.md` — **to be written** (this planning pass).
+- `sprints/23_trigger_surface/sprint_plan.md` — the active task list (6 tasks) +
+  locked decisions. Read the Context block before starting.
+- `docs/migration_roadmap.md` — Phase 5 "Scope" (four pieces); ▶ NEXT ACTION
+  advances to Sprint 24 (maintenance flow) once 23 lands (Task 6).
 - `.ai/context/workflow.md` — the Opus↔Sonnet handoff protocol + switch points.
 
 ## Working tree
-- 22b review-fix committed at `5bc3811` on `feat/mcp-langgraph-migration`. The
-  archival edits (this cursor + roadmap) are uncommitted — commit them to make
-  the archive durable.
+- Sprint 23 plan is uncommitted (`sprints/23_trigger_surface/` untracked) on
+  `feat/mcp-langgraph-migration`. Commit it **with** this handoff cursor as one
+  unit (the 22b precedent `5a3d488` bundles "HITL-approved plan + handoff").
