@@ -36,7 +36,7 @@ is **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`),
 **reviewed, and its review findings resolved** (sprint 21 review-fixes, `03818d9`).
 **▶ NEXT ACTION: HITL-review the Sprint 22a plan** (`sprints/22a_mcp_multiserver_discovery/sprint_plan.md`),
 then hand off to Sonnet to implement it. Phase 5 planning is underway: it is
-decomposed foundation-first (github MCP server), and 22a (`.mcp.json` multi-server
+decomposed foundation-first (github MCP server), and 22a (`loop_engine.mcp.json` multi-server
 discovery) has a written plan. See the "Phase 5 planning pass" + "sprint decomposition"
 subsections below for the locked decisions.
 All Phase-4 sub-phases are now built, reviewed, and their review findings
@@ -61,7 +61,7 @@ into permanent bloat.
   when the LangGraph engine is the sole reader. This is a live follow-up.
 - **Phase 2 scope:** built only the coder-tools MCP server (the sole
   LLM-callable tool set). **Deferred:** state-io/github MCP servers (they're
-  orchestrator-invoked, not model tools) and full `.mcp.json`-file-driven
+  orchestrator-invoked, not model tools) and full `loop_engine.mcp.json`-file-driven
   multi-server discovery (the `list_tools` runtime-discovery mechanism is in
   place, pointed at a default server).
 - **Phase 4 planning pass (locked):**
@@ -360,28 +360,36 @@ decisions above.
 - **Tool surface = factory verbs only** — `{create_repository, clone_repo, create_branch,
   open_pr}`. The existing `issue_io` escalation verbs (create/read/comment) **stay on their
   current direct path** (don't destabilize `resume --from-issue`); unify onto MCP in Phase 6.
-- **Full `.mcp.json`-driven multi-server discovery** (pays down cross-cutting #3), not a
+- **Full `loop_engine.mcp.json`-driven multi-server discovery** (pays down cross-cutting #3), not a
   bespoke second provider. Two design constraints, both locked: **(a) consumer split** —
   the provider feeds the **model's** coder tool loop only; github verbs are
   **orchestrator-invoked** and must never enter that loop, so discovery is
   **consumer-scoped** (each consumer builds a provider for the servers *it* names).
   **(b) heterogeneous launch profiles** — coder-tools is sandboxed/no-network (runs
   untrusted model code, runtime-computed launch); github runs un-sandboxed with
-  network + `gh` auth (trusted first-party code, static `.mcp.json` spec). `.mcp.json`
+  network + `gh` auth (trusted first-party code, static `loop_engine.mcp.json` spec). `loop_engine.mcp.json`
   is **optional** with a built-in `coder_tools` default so absence is byte-identical to today.
+- **Config filename = `loop_engine.mcp.json` at repo root** *(revised 2026-07-09, Opus/Architect,
+  during 22a implementation)*. The planning pass originally named this file `.mcp.json`, but
+  repo-root `.mcp.json` is **already** Claude Code's own project MCP config (`{"mcpServers":
+  {"github": …}}`, the devcontainer's hosted-github wiring, committed `65ed47c`) — a different
+  schema and purpose, and a filename Claude Code reserves by convention. loop-engine takes a
+  distinct, product-namespaced file (`loop_engine.mcp.json`) for its own stdio launch specs; the
+  two never mix. (`.ai/mcp.json` was rejected: `.ai/` is the dev-workflow layer, not product
+  runtime.)
 
 ### Phase 5 sprint decomposition (Phase 4 split precedent)
 
-- **Sprint 22a — `.mcp.json` multi-server discovery** *(plan written:
+- **Sprint 22a — `loop_engine.mcp.json` multi-server discovery** *(plan written:
   `sprints/22a_mcp_multiserver_discovery/sprint_plan.md`)*. Pure client-side refactor
   of `tools/mcp` — config-driven, N-server, consumer-scoped provider. **No** new server /
   subprocess / credential / file-write surface. Load-bearing gate: **coder-tools parity**.
   `MCPToolProvider` already does multi-session routing; the gap is discovery + scoping.
   **HITL gate after 22a before 22b.**
-- **Sprint 22b — native `github_server` + `tools/repo_io` delegate + `.mcp.json` entry**
+- **Sprint 22b — native `github_server` + `tools/repo_io` delegate + `loop_engine.mcp.json` entry**
   *(outline; full plan after 22a review)*. Adds the server (factory verbs), the
   GitHub-owning delegate module (new `tools/repo_io` sibling to `issue_io`; issue_io
-  untouched), its `.mcp.json` stanza, and the orchestrator-side consumer
+  untouched), its `loop_engine.mcp.json` stanza, and the orchestrator-side consumer
   (`provider.execute("open_pr", …)`, no LLM loop). **Open design item for 22b planning:**
   cloning target repos introduces a **new git subprocess surface** — reconcile against the
   "exactly three sanctioned subprocess surfaces" invariant (extend `tools/worktree` vs.
@@ -441,7 +449,7 @@ at once?
    into Phase 6** — it can only happen after `run_loop` is deleted.
 2. **state-io + github MCP servers** (deferred from Phase 2) — Phase 5's
    bootstrapping needs the github one.
-3. **Full `.mcp.json`-driven multi-server discovery** (mechanism exists).
+3. **Full `loop_engine.mcp.json`-driven multi-server discovery** (mechanism exists).
 4. **Ralph cap-exhaustion → escalate, not fail.** Part-1 v1 hard-fails
    (`FAILED_STAGE` snapshot) when the Ralph loop hits its iteration cap while
    still making progress; a nicer behavior is to file a human issue ("did not

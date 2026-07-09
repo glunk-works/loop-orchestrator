@@ -34,7 +34,11 @@ def test_explicit_coder_tools_entry_overrides_builtin_default(tmp_path) -> None:
     config_path = tmp_path / ".mcp.json"
     config_path.write_text(
         json.dumps(
-            {"servers": {CODER_TOOLS_SERVER_NAME: {"command": "custom-python", "args": ["-m", "x"]}}}
+            {
+                "servers": {
+                    CODER_TOOLS_SERVER_NAME: {"command": "custom-python", "args": ["-m", "x"]}
+                }
+            }
         ),
         encoding="utf-8",
     )

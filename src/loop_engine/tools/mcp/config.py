@@ -1,5 +1,10 @@
-"""`.mcp.json` schema + loader — config-driven, consumer-scoped MCP server
-discovery (Phase 5, cross-cutting #3).
+"""`loop_engine.mcp.json` schema + loader — config-driven, consumer-scoped MCP
+server discovery (Phase 5, cross-cutting #3).
+
+Named `loop_engine.mcp.json` (not `.mcp.json`) because repo-root `.mcp.json` is
+already Claude Code's own project MCP config (a different schema/purpose — the
+devcontainer's hosted-github wiring); loop-engine owns a distinct, namespaced
+file for its own stdio server-launch specs.
 
 Optional, in-repo, trusted config file: `{"servers": {"<name>": {"command":
 str, "args": [str, ...], "cwd": str | None}}}`. Read-only (`Path.read_text` +
@@ -18,14 +23,14 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
-_CONFIG_FILENAME = ".mcp.json"
+_CONFIG_FILENAME = "loop_engine.mcp.json"
 _CODER_TOOLS_SERVER_MODULE = "loop_engine.mcp_servers.coder_tools_server"
 
 CODER_TOOLS_SERVER_NAME = "coder_tools"
 
 
 class MCPServerSpec(BaseModel):
-    """One logical server's static launch spec, as declared in `.mcp.json`.
+    """One logical server's static launch spec, as declared in `loop_engine.mcp.json`.
 
     `command`/`args` only (no `shell=True`, no arbitrary shell strings) —
     consistent with every existing launch in this module.
@@ -39,7 +44,7 @@ class MCPServerSpec(BaseModel):
 
 
 class MCPConfigFile(BaseModel):
-    """The `.mcp.json` top-level shape."""
+    """The `loop_engine.mcp.json` top-level shape."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -49,7 +54,7 @@ class MCPConfigFile(BaseModel):
 @cache
 def _repo_root() -> Path:
     """Repo root, found by walking up to the `pyproject.toml` marker — anchors
-    `.mcp.json` resolution independent of `Path.cwd()`, which worktree
+    `loop_engine.mcp.json` resolution independent of `Path.cwd()`, which worktree
     isolation `chdir`s elsewhere."""
     here = Path(__file__).resolve()
     for parent in here.parents:
@@ -73,7 +78,7 @@ def _default_servers() -> dict[str, MCPServerSpec]:
 
 
 def load_mcp_config(path: str | Path | None = None) -> dict[str, MCPServerSpec]:
-    """Load `.mcp.json` (repo root, unless `path` overrides — tests use this).
+    """Load `loop_engine.mcp.json` (repo root, unless `path` overrides — tests use this).
 
     Absent file -> the built-in default only (one `coder_tools` entry).
     Present file -> merged over the default by logical server name: an

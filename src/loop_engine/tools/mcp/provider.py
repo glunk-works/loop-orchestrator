@@ -328,10 +328,11 @@ def _coder_tools_params(spec: MCPServerSpec, cwd: str | Path | None) -> StdioSer
 
 def build_provider_for(names: list[str], *, cwd: str | Path | None = None) -> MCPToolProvider:
     """A provider scoped to exactly the named servers, materialized from
-    `.mcp.json` (or its built-in default). Each consumer names only the
-    servers it wants — the model's coder tool loop names `coder_tools` alone,
-    so a `.mcp.json` declaring other servers (e.g. `github`) never leaks their
-    tools into it. Selecting a name absent from config raises `KeyError`.
+    `loop_engine.mcp.json` (or its built-in default). Each consumer names only
+    the servers it wants — the model's coder tool loop names `coder_tools`
+    alone, so a `loop_engine.mcp.json` declaring other servers (e.g. `github`)
+    never leaks their tools into it. Selecting a name absent from config raises
+    `KeyError`.
 
     `coder_tools` is a recognized special case (see `_coder_tools_params`);
     every other named server launches from its static config spec as-is.
@@ -340,7 +341,7 @@ def build_provider_for(names: list[str], *, cwd: str | Path | None = None) -> MC
     params: list[StdioServerParameters] = []
     for name in names:
         if name not in config:
-            raise KeyError(f"MCP server {name!r} is not declared in .mcp.json")
+            raise KeyError(f"MCP server {name!r} is not declared in loop_engine.mcp.json")
         spec = config[name]
         if name == CODER_TOOLS_SERVER_NAME:
             params.append(_coder_tools_params(spec, cwd))
