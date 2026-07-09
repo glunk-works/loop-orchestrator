@@ -187,4 +187,36 @@ a port reachable from GitHub):
   not valid JSON) but still correctly signed should observe a `400` response
   in GitHub's webhook UI, not a `500`.
 
+## 7. Maintenance flow live clone → run → gate → push → PR (validates Sprint 24)
+
+Sprint 24's coverage is entirely hermetic: `tests/flows/maintenance/test_flow.py`
+fakes every collaborator to prove call order/gating, and
+`test_integration.py` exercises real `tools/git_io` against a `tmp_path` repo
++ a local bare remote — but `repo_io.clone_repo`/`open_pr` and the loop run
+are always faked; no real `gh repo clone`, no real default-loop run with
+`gh` auth + network, and no real push/PR happen in CI. Run on a daemon-bearing
+host with `gh` authenticated and network access:
+
+- **Clone a real disposable scratch repo** via
+  `flows.maintenance.run_maintenance` with all collaborators at their real
+  defaults (`repo_io`, `git_io`, `runner.run_in_tree`, `coder_tools.run_pytest`)
+  — confirm the clone lands at the request's `dest` and `git_io.checkout_branch`
+  actually cuts the branch in that real tree.
+- **Confirm the inner run absorbs the target's own `CLAUDE.md` +
+  `.agent/STATE.md`** — seed the scratch repo with both before the run and
+  confirm the default loop's personas see them (cwd is the clone, per
+  `run_in_tree`).
+- **Green path:** seed the scratch repo so its `src/` test suite passes,
+  confirm the flow pushes the branch to the real remote (`git ls-remote
+  --heads` against the real GitHub remote) and opens a real PR against
+  `develop` (confirm `PullRef.url` resolves) — and that no merge verb is ever
+  reachable (`repo_io` exposes none).
+- **Red path:** seed the scratch repo so its test suite fails, confirm
+  **nothing** is pushed and no PR is opened.
+- **Confirm `run_in_tree` never opens `worktree_run`** even with
+  `LOOP_ENGINE_ISOLATION=worktree` set on the host — the loop's artifacts
+  should land in the clone, not `.worktrees/<run_id>`.
+- Clean up the scratch repo (and any opened PR/branch) afterward — this check
+  has real side effects on GitHub, unlike every other check in this file.
+
 Delete this file once the checks have been performed and any findings are fixed.

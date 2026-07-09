@@ -23,7 +23,7 @@ this file tracks *how far we've got and what's next*.
 | 4 · part 1 — Ralph-loop Coder (`AgenticNode`) | ✅ built behind flag, reviewed; 4 review findings hardened in 4a (below). Plan: `sprints/19_ralph_coder/sprint_plan.md` | `195f7b7` |
 | 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ complete, reviewed; 3 HITL-review findings resolved (see "Sprint-19a HITL-review settlements"). Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | `d675d5d` → review-fixes |
 | 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ✅ complete, reviewed; HITL-review findings resolved via sprint 21 review-fixes. 394 tests green. Plans: `sprints/20_declarative_generators/`, `sprints/21_declarative_review_fixes/` | `cf48b0c` → `aceb23a` → `03818d9` |
-| 5 — Autonomous triggers + multi-repo factory | 🟨 22a + 22b + 23 + 23a complete, reviewed, archived. 23 (trigger surface capability slice) implemented + HITL-reviewed; its 3 dispatch/webhook findings fixed in 23a and re-reviewed clean. Next: plan Sprint 24 (maintenance flow). Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/`, `sprints/23_trigger_surface/`, `sprints/23a_trigger_review_fixes/` | `457f675` → `71f1692` → `d0e118d` → `7b46227` → `5bc3811` → `5ff8c02` → `e0406d8` → `212beeb` |
+| 5 — Autonomous triggers + multi-repo factory | 🟨 22a + 22b + 23 + 23a complete, reviewed, archived. Sprint 24 (maintenance flow capability slice) implemented, all 6 tasks green; landed the fourth sanctioned subprocess surface (`tools/git_io`). Next: HITL review of the 24 diff, then plan Sprint 25 (bootstrap flow). Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/`, `sprints/23_trigger_surface/`, `sprints/23a_trigger_review_fixes/`, `sprints/24_maintenance_flow/` | `457f675` → `71f1692` → `d0e118d` → `7b46227` → `5bc3811` → `5ff8c02` → `e0406d8` → `212beeb` → (24, pending commit) |
 | 6 — Collapse the flags (decommission the migration scaffolding) | ⬜ sketch only | — |
 
 Phases 1–3b are detailed and executed (3b's daemon-host e2e is deferred, not
@@ -34,7 +34,27 @@ its four review findings are hardened in **part 1a** (`sprints/19a_ralph_hardeni
 **Part 2** (`GeneratorNode` + PM critic-gate, `sprints/20_declarative_generators/`)
 is **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`),
 **reviewed, and its review findings resolved** (sprint 21 review-fixes, `03818d9`).
-**▶ NEXT ACTION: plan Sprint 24** (maintenance flow). Sprint 23 (trigger
+**▶ NEXT ACTION: HITL review of Sprint 24 (maintenance flow), then plan Sprint 25** (bootstrap
+flow). Sprint 24 (`sprints/24_maintenance_flow/sprint_plan.md`) is **implemented,
+all 6 tasks green**: a new `tools/git_io` module (local-git `checkout_branch`/
+`commit_all`/`push_branch` against a cloned tree, mirroring `tools/worktree`'s
+`_git` posture, validated via `repo_io._validate_clone_dest`) — the **fourth**
+sanctioned subprocess surface, moving the invariant from three to four (`CLAUDE.md`
++ `tests/tools/test_subprocess_surfaces.py` updated together); `runner.run_in_tree`
+(same loop-build as `run_new` but cwd pinned to the clone, deliberately **not**
+opening `worktree_run` — the clone is its own isolation boundary); the new
+`src/loop_engine/flows/maintenance/` package chaining `repo_io.clone_repo` →
+`git_io.checkout_branch` → `run_in_tree` → a green gate (`coder_tools.run_pytest`
+against the clone) → **green-only** `git_io.commit_all`/`push_branch` +
+`repo_io.open_pr` (base defaults to `develop`); a `flows/` boundary test (no
+`keyring`, no direct file write, no subprocess surface of its own — `git_io` is
+*called*, not introduced); and a hermetic green/red end-to-end proof (real
+`git_io` against a `tmp_path` repo + local bare remote, `repo_io`/the loop faked).
+**Capability slice only** — no CLI subcommand, no trigger wiring, no bootstrap
+flow; auto-merge stays impossible (no merge verb, `open_pr` terminal). No new
+dependency (`sbom.json` unchanged); live clone→push→PR verification deferred to
+a daemon-bearing host (`sprints/DEFERRED_VERIFICATION.md`). A new HITL gate is
+now open: Opus reviews the Sprint 24 diff before archival. Sprint 23 (trigger
 surface — a FastAPI webhook that turns a GitHub `agent-action` label or
 `/agent-run` comment into a real `runner.run_new` default-loop run via an
 injectable `RunDispatcher` seam) is **implemented, all 6 tasks green**
@@ -304,6 +324,50 @@ into permanent bloat.
     full dir or `Sprint N`/`#N`. Changed the deliberately-tested `beta`→sprint
     contract (test updated to a distinctive `data_layer` name + a false-positive
     negative test).
+- **Sprint 24 maintenance-flow decisions (locked 2026-07-09, Opus/Architect,
+  24 planning pass):**
+  - **Deliverable boundary = capability slice, real run against the existing
+    default loop over a real clone.** The flow clones a real target repo and
+    dispatches a genuine `run_loop`/`run_graph_loop` of the **default** loop
+    with cwd inside the clone. Ships `tools/git_io` + `runner.run_in_tree` +
+    the `flows/maintenance` package + hermetic tests + a boundary test +
+    docs. Does **not** add a CLI subcommand, does **not** wire the trigger
+    surface to dispatch this flow, and does **not** build the bootstrap flow
+    (piece 4) — those are Sprint 25+.
+  - **Git-write surface = a new dedicated `tools/git_io` module; the fourth
+    sanctioned subprocess surface.** Local git writes (`checkout -b`, `add`,
+    `commit`, `push`) in the cloned tree are the flow-forced surface deferred
+    from 22b. It lives in its own module — not bolted onto `tools/repo_io`
+    (remote `gh` API) or `tools/worktree` (the orchestrator's own per-run
+    isolation; the target clone is a foreign tree). Mirrors
+    `worktree._git`'s posture exactly and validates the tree path by reusing
+    `repo_io._validate_clone_dest`. The "exactly three sanctioned subprocess
+    surfaces" invariant becomes **four** — `CLAUDE.md` and
+    `tests/tools/test_subprocess_surfaces.py` updated together. `git push`
+    rides `gh`'s clone-established credential helper — no new credential path.
+  - **Execution model = an injectable run-step seam, wired to a new
+    `runner.run_in_tree`; absorb = run in the clone's cwd.** The concrete run
+    step is `run_in_tree`: default loop, cwd pinned to the clone, deliberately
+    **not** opening `worktree_run` (the clone is itself the isolation
+    boundary; `run_new`'s orchestrator-worktree wrapper would chdir into the
+    wrong tree under `LOOP_ENGINE_ISOLATION`). "Absorb `CLAUDE.md` +
+    `.agent/STATE.md`" = cwd inside the clone so the existing readers pick
+    them up — no new absorb code.
+  - **Green gate = `coder_tools`' pytest on the clone; push + PR are
+    green-only; red ⇒ no push, no PR.** After the inner run, the flow runs
+    the target's test suite through the existing sanctioned
+    `coder_tools.run_tests` pytest surface against the clone. Green →
+    `git_io.commit_all` → `git_io.push_branch` → `repo_io.open_pr`. Red →
+    a failing status, no commit/push/PR. `open_pr`'s base defaults to
+    `develop`, overridable. Auto-merge stays impossible — no merge verb
+    exists and `open_pr` is the terminal GitHub call.
+  - **Placement = new top-level `src/loop_engine/flows/` package (sibling of
+    `trigger/`, `cli.py`); orchestrator-level caller.** Enforced boundary,
+    asserted by `tests/flows/test_boundaries.py`: imports no `keyring`,
+    writes no files directly, and introduces no subprocess surface of its
+    own — it *calls* `tools/git_io`, the one permitted new surface.
+  - No new dependency (`sbom.json` unchanged); no `State`-schema change; the
+    local-git surface deferred from 22b is now landed.
 
 ## Feature flags introduced
 
@@ -532,11 +596,26 @@ decisions above.
   deferred to a daemon-bearing host (`sprints/DEFERRED_VERIFICATION.md` §6).
   FastAPI is loop-engine's first web runtime dependency (`httpx` dev-only for
   `TestClient`); `sbom.json` regenerated, `hatch run audit` green.
-- **Sprints 24+ — maintenance flow, then bootstrap flow** (pieces 3→4), each
-  separately planned + gated, now that the github foundation (22) and the
-  trigger surface (23) both land. The maintenance flow is also where the
-  deferred local-git subprocess surface (`git push` inside a cloned tree)
-  gets re-opened, flow-forced.
+- **Sprint 24 — maintenance flow** *(implemented, all 6 tasks green:
+  `sprints/24_maintenance_flow/sprint_plan.md`; HITL review pending)*. Ships
+  `tools/git_io` (the deferred local-git subprocess surface — `checkout_branch`/
+  `commit_all`/`push_branch` against a cloned tree — re-opened, flow-forced,
+  as the genuine **fourth** sanctioned surface, not bolted onto `repo_io`=`gh`
+  or `worktree`=orchestrator-own isolation), `runner.run_in_tree` (the default
+  loop, cwd pinned to the clone, deliberately **not** `worktree_run`), and the
+  new `src/loop_engine/flows/maintenance/` package chaining `repo_io.clone_repo`
+  → `git_io.checkout_branch` → `run_in_tree` → a green gate
+  (`coder_tools.run_pytest` against the clone) → **green-only**
+  `git_io.commit_all`/`push_branch` + `repo_io.open_pr` (base `develop`, red ⇒
+  no git write, no PR). **Capability slice** — no CLI subcommand, no trigger
+  wiring, no bootstrap flow. Coverage is hermetic: a `flows/` boundary test
+  (no `keyring`, no direct write, no subprocess surface of its own) plus a
+  real-`git_io`-against-`tmp_path` green/red end-to-end proof; live
+  clone→push→PR is deferred to a daemon-bearing host
+  (`sprints/DEFERRED_VERIFICATION.md`). No new dependency, `sbom.json` unchanged.
+- **Sprint 25+ — bootstrap flow** (piece 4), separately planned + gated, now
+  that the github foundation (22), the trigger surface (23), and the
+  maintenance flow (24) all land.
 
 **Still-open questions (deferred to their sprints, not the github foundation):**
 where the trigger server is hosted (`uvicorn`, deferred with deployment); org
@@ -593,9 +672,11 @@ at once?
 2. **state-io + github MCP servers** (deferred from Phase 2) — ✅ the github one
    **delivered as a capability** in 22b (`mcp_servers/github_server.py` +
    `tools/repo_io`, exactly `{create_repository, clone_repo, create_branch,
-   open_pr}`); no production flow caller wires it into a run yet — Sprint 23
-   (trigger surface) dispatches the default loop only and deliberately does
-   not chain it either; Sprint 24 (maintenance flow) is the first caller.
+   open_pr}`); Sprint 23 (trigger surface) dispatches the default loop only
+   and deliberately did not chain it. **✅ Sprint 24 (maintenance flow) is now
+   the first production caller** — `flows/maintenance.run_maintenance` chains
+   `clone_repo` → `git_io.checkout_branch` → the default loop → a green gate
+   → `git_io.commit_all`/`push_branch` → `open_pr`, gated on green tests.
 3. **Full `loop_engine.mcp.json`-driven multi-server discovery** — ✅ mechanism
    generalized to N servers via `loop_engine.mcp.json` (22a: `load_mcp_config` +
    `build_provider_for`, proven by `tests/tools/test_mcp_multiserver.py`'s
