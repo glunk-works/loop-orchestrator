@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from functools import cached_property
 
 from loop_engine.core.gates import ArtifactGate, GateDecision, GateResult
 from loop_engine.core.state import State
@@ -40,11 +41,12 @@ class CriticGate:
 
     artifact_key: str = "project_spec"
 
+    @cached_property
+    def _content_gate(self) -> ArtifactGate:
+        return ArtifactGate(self.artifact_key, parse_json="object", require_nonempty_parse=True)
+
     def __call__(self, state: State, stage_name: str) -> GateResult:
-        content_gate = ArtifactGate(
-            self.artifact_key, parse_json="object", require_nonempty_parse=True
-        )
-        content_result = content_gate(state, stage_name)
+        content_result = self._content_gate(state, stage_name)
         if content_result.decision is not GateDecision.ACCEPT:
             return content_result
 

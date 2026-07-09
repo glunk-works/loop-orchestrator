@@ -80,7 +80,18 @@ def build_default_loop() -> Loop:
     # issue.
     return Loop(
         stages=[
-            Stage(persona=pm, gate=pm_gate),
+            Stage(
+                persona=pm,
+                gate=pm_gate,
+                # Restores the retired PM internal loop's MAX_REVISION_CYCLES
+                # cap (the engine's implicit default of 2 silently halved it),
+                # and escalates to the human on an unconverging PM instead of
+                # hard-failing — PM's only resolver is the human, so a hard
+                # fail there is a dead end. Inert for classic: its PM gate
+                # (ArtifactGate) never returns REVISE, so neither flag fires.
+                max_revisions=4,
+                escalate_on_exhaustion=True,
+            ),
             Stage(
                 persona=architect,
                 gate=ArtifactGate("architecture_definition"),

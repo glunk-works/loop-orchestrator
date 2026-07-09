@@ -132,6 +132,63 @@ def _findings_to_questions(findings: list[critic.CriticFinding]) -> list[Questio
     ]
 
 
+def fold_answers(state: State, llm_client) -> State:
+    """Fold human-provided answers into the spec and classify impacts.
+
+    Called on resume after a GitHub issue round-trip: questions arriving
+    here have `resolution` set (by issue_io) but no `impact` yet. Shared by
+    both the classic `PMPersona` and the declarative `PMGenerator` (uses only
+    module-level constants, so it's safe as a free function).
+    """
+    answered = [q for q in state.questions if q.resolution is not None and q.impact is None]
+    if not answered:
+        return state
+
+    answers_text = "\n".join(f"- {q.id}: {q.text}\n  answer: {q.resolution}" for q in answered)
+    prompt = FOLD_ANSWERS_PROMPT_TEMPLATE.format(
+        fields=", ".join(CHECKLIST_FIELDS),
+        answers=answers_text,
+        project_spec=state.artifacts.get("project_spec", "{}"),
+    )
+    # Unlike resolve_questions' terse resolution mapping, spec_updates can
+    # rewrite full checklist field text (not just a short answer per
+    # question) — sized like extraction, not like resolution.
+    response = llm_client.call(prompt, model=DEFAULT_MODEL, max_tokens=EXTRACTION_MAX_TOKENS)
+
+    try:
+        data = json.loads(_strip_code_fence(response.text))
+    except json.JSONDecodeError:
+        data = {}
+    spec_updates = data.get("spec_updates") if isinstance(data, dict) else {}
+    impacts = data.get("impacts") if isinstance(data, dict) else {}
+    if not isinstance(spec_updates, dict):
+        spec_updates = {}
+    if not isinstance(impacts, dict):
+        impacts = {}
+
+    artifacts = state.artifacts
+    if spec_updates:
+        try:
+            spec = json.loads(state.artifacts.get("project_spec", "{}"))
+        except json.JSONDecodeError:
+            spec = {}
+        for field_name, value in spec_updates.items():
+            if field_name in CHECKLIST_FIELDS and isinstance(value, str):
+                spec[field_name] = value
+        artifacts = {**state.artifacts, "project_spec": json.dumps(spec)}
+
+    questions = [
+        q.model_copy(update={"impact": impacts[q.id]})
+        if q in answered and impacts.get(q.id) in ("task", "plan", "architecture")
+        # Default unclassified human answers to the broadest safe rework
+        # scope below architecture: re-planning is wasteful but correct,
+        # silently narrowing to "task" could skip required rework.
+        else (q.model_copy(update={"impact": "plan"}) if q in answered else q)
+        for q in state.questions
+    ]
+    return state.model_copy(update={"artifacts": artifacts, "questions": questions})
+
+
 class PMPersona(BasePersona):
     consumes = ("human_input",)
     produces = ("project_spec",)
@@ -219,55 +276,4 @@ class PMPersona(BasePersona):
         return apply_resolution_response(response.text, questions, resolved_by="pm")
 
     def fold_answers(self, state: State, llm_client) -> State:
-        """Fold human-provided answers into the spec and classify impacts.
-
-        Called on resume after a GitHub issue round-trip: questions arriving
-        here have `resolution` set (by issue_io) but no `impact` yet.
-        """
-        answered = [q for q in state.questions if q.resolution is not None and q.impact is None]
-        if not answered:
-            return state
-
-        answers_text = "\n".join(f"- {q.id}: {q.text}\n  answer: {q.resolution}" for q in answered)
-        prompt = FOLD_ANSWERS_PROMPT_TEMPLATE.format(
-            fields=", ".join(CHECKLIST_FIELDS),
-            answers=answers_text,
-            project_spec=state.artifacts.get("project_spec", "{}"),
-        )
-        # Unlike resolve_questions' terse resolution mapping, spec_updates can
-        # rewrite full checklist field text (not just a short answer per
-        # question) — sized like extraction, not like resolution.
-        response = llm_client.call(prompt, model=DEFAULT_MODEL, max_tokens=EXTRACTION_MAX_TOKENS)
-
-        try:
-            data = json.loads(_strip_code_fence(response.text))
-        except json.JSONDecodeError:
-            data = {}
-        spec_updates = data.get("spec_updates") if isinstance(data, dict) else {}
-        impacts = data.get("impacts") if isinstance(data, dict) else {}
-        if not isinstance(spec_updates, dict):
-            spec_updates = {}
-        if not isinstance(impacts, dict):
-            impacts = {}
-
-        artifacts = state.artifacts
-        if spec_updates:
-            try:
-                spec = json.loads(state.artifacts.get("project_spec", "{}"))
-            except json.JSONDecodeError:
-                spec = {}
-            for field_name, value in spec_updates.items():
-                if field_name in CHECKLIST_FIELDS and isinstance(value, str):
-                    spec[field_name] = value
-            artifacts = {**state.artifacts, "project_spec": json.dumps(spec)}
-
-        questions = [
-            q.model_copy(update={"impact": impacts[q.id]})
-            if q in answered and impacts.get(q.id) in ("task", "plan", "architecture")
-            # Default unclassified human answers to the broadest safe rework
-            # scope below architecture: re-planning is wasteful but correct,
-            # silently narrowing to "task" could skip required rework.
-            else (q.model_copy(update={"impact": "plan"}) if q in answered else q)
-            for q in state.questions
-        ]
-        return state.model_copy(update={"artifacts": artifacts, "questions": questions})
+        return fold_answers(state, llm_client)

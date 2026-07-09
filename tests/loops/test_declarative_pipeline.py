@@ -11,6 +11,7 @@ from loop_engine.core.engine import Loop, Stage, run_loop
 from loop_engine.core.gates import ArtifactGate
 from loop_engine.core.graph_engine import run_graph_loop
 from loop_engine.core.state import IssueRef, RunStatus, State
+from loop_engine.loops.default.loop import build_default_loop
 from loop_engine.personas.declarative.node import (
     ArchitectureGenerator,
     PMGenerator,
@@ -138,3 +139,33 @@ def test_declarative_pipeline_identical_across_engines() -> None:
     for key in ("project_spec", "architecture_definition", "sprint_plans", "task_manifest"):
         assert classic.artifacts[key] == graph.artifacts[key], key
     assert classic.status is graph.status is RunStatus.COMPLETED
+
+
+def test_default_loop_pm_stage_escalates_after_exhausting_revisions(monkeypatch) -> None:
+    # A non-converging PM (the critic keeps finding a shrinking-but-never-empty
+    # set of blank fields) must exhaust its 4-revision budget and escalate to a
+    # human issue (review finding #2/#3), not raise StageGateFailedError — PM's
+    # only resolver is the human, so a hard fail there is a dead end.
+    monkeypatch.setenv("LOOP_ENGINE_PERSONAS", "declarative")
+    monkeypatch.delenv("LOOP_ENGINE_CODER", raising=False)
+    loop = build_default_loop()
+    pm_stage = loop.stages[0]
+    assert pm_stage.max_revisions == 4
+    assert pm_stage.escalate_on_exhaustion is True
+
+    # Initial extraction: every field blank. Each of the 4 followup revisions
+    # fills exactly one more field, so the critic's finding set keeps shrinking
+    # (never repeats, never empties) all the way through the revision budget.
+    responses = [
+        json.dumps({}),
+        json.dumps({"problem_statement": "value"}),
+        json.dumps({"purpose_and_goals": "value"}),
+        json.dumps({"target_users": "value"}),
+        json.dumps({"in_scope": "value"}),
+    ]
+    single_stage_loop = Loop(stages=[pm_stage])
+
+    final = run_loop(single_stage_loop, _initial_state("run-pm-exhaust"), _FakeLLM(responses))
+
+    assert final.status is RunStatus.AWAITING_ISSUE
+    assert final.pending_issue is not None

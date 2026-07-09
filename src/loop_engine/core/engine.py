@@ -59,6 +59,11 @@ class Stage:
     # human as a GitHub issue.
     resolvers: list[BasePersona] = dataclass_field(default_factory=list)
     max_revisions: int = 2
+    # When True, a REVISE whose findings never stopped changing (revision
+    # budget exhausted) escalates to the resolver ladder / human instead of
+    # raising StageGateFailedError. Default False: every stage but PM has an
+    # automated resolver above it, so hard-failing stays correct there.
+    escalate_on_exhaustion: bool = False
 
 
 @dataclass
@@ -301,11 +306,23 @@ def execute_stage(
 
     if gate_result.decision is GateDecision.REVISE:
         # Revision budget exhausted with findings still changing.
-        state = _finalize(state, stage_index, RunStatus.FAILED_STAGE)
-        raise StageGateFailedError(
-            f"{stage_name} failed its gate after {stage.max_revisions + 1} attempts: "
-            f"{'; '.join(gate_result.findings)}"
-        )
+        if stage.escalate_on_exhaustion:
+            gate_result = GateResult(
+                GateDecision.ESCALATE,
+                questions=[
+                    new_question(
+                        stage_name,
+                        f"{stage_name} could not satisfy its output gate after "
+                        f"repeated attempts: {'; '.join(gate_result.findings)}",
+                    )
+                ],
+            )
+        else:
+            state = _finalize(state, stage_index, RunStatus.FAILED_STAGE)
+            raise StageGateFailedError(
+                f"{stage_name} failed its gate after {stage.max_revisions + 1} attempts: "
+                f"{'; '.join(gate_result.findings)}"
+            )
 
     if gate_result.decision is GateDecision.ESCALATE:
         counter_key = f"escalations:{stage_name}"

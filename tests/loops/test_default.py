@@ -86,6 +86,10 @@ def test_build_default_loop_classic_personas_by_default(monkeypatch) -> None:
     # PM gate is the plain content gate on the classic path.
     assert isinstance(loop.stages[0].gate, ArtifactGate)
     assert not isinstance(loop.stages[0].gate, CriticGate)
+    # The flags are wired unconditionally but inert for classic: its PM gate
+    # never returns REVISE, so neither can ever fire.
+    assert loop.stages[0].max_revisions == 4
+    assert loop.stages[0].escalate_on_exhaustion is True
 
 
 def test_build_default_loop_uses_declarative_personas_under_flag(monkeypatch) -> None:
@@ -100,6 +104,11 @@ def test_build_default_loop_uses_declarative_personas_under_flag(monkeypatch) ->
     ]
     # PM stage carries the structural CriticGate.
     assert isinstance(loop.stages[0].gate, CriticGate)
+    # PM's revision budget restores the retired internal loop's cap, and an
+    # unconverging PM escalates to the human instead of hard-failing (PM's
+    # only resolver is the human).
+    assert loop.stages[0].max_revisions == 4
+    assert loop.stages[0].escalate_on_exhaustion is True
     # Architecture/Sprint gates unchanged (declarative output is byte-identical).
     assert isinstance(loop.stages[1].gate, ArtifactGate)
     assert isinstance(loop.stages[2].gate, ArtifactGate)

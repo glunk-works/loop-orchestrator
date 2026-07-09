@@ -7,6 +7,7 @@ from loop_engine.personas.declarative import config as config_module
 from loop_engine.personas.declarative.config import (
     GeneratorConfig,
     load_generator_config,
+    load_prompt,
     repo_root,
 )
 
@@ -116,3 +117,29 @@ def test_loader_source_never_calls_unsafe_yaml_load() -> None:
 def test_repo_root_contains_pyproject() -> None:
     assert (repo_root() / "pyproject.toml").is_file()
     assert (repo_root() / _REAL_PROMPT).is_file()
+
+
+def test_load_prompt_decodes_non_ascii_as_utf8(monkeypatch, tmp_path) -> None:
+    # Review finding #5: with no explicit encoding, read_text() decodes with
+    # the platform-default codec, which raises UnicodeDecodeError under a
+    # C/POSIX locale on a file containing an em-dash (U+2014).
+    monkeypatch.setattr(config_module, "repo_root", lambda: tmp_path)
+    (tmp_path / "prompt.md").write_bytes("Some text — with an em-dash.".encode())
+    assert load_prompt("prompt.md") == "Some text — with an em-dash."
+
+
+def test_load_generator_config_decodes_non_ascii_as_utf8(tmp_path) -> None:
+    non_ascii = _VALID.replace(
+        'label: "Project Specification Document"',
+        'label: "Project Specification — Document"',
+    )
+    cfg = load_generator_config(_write(tmp_path, non_ascii))
+    assert cfg.input_context[0].label == "Project Specification — Document"
+
+
+def test_bundled_prompt_files_contain_em_dash_and_decode_cleanly() -> None:
+    # The referenced prompt files (00_pm_*, 02_*, 03_*) contain U+2014 for
+    # real — this is a regression test against the actual shipped assets, not
+    # just synthetic ones.
+    assert "—" in load_prompt("prompts/00_pm_extraction_prompt.md")
+    assert "—" in load_prompt("prompts/02_architecture_definition_prompt.md")

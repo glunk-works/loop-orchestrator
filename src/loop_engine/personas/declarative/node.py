@@ -26,6 +26,7 @@ from loop_engine.personas.declarative.config import (
     load_named_config,
     load_prompt,
 )
+from loop_engine.personas.pm.persona import fold_answers as _pm_fold_answers
 
 
 @dataclass
@@ -37,8 +38,10 @@ class _CallContext:
 
 class GeneratorNode(BasePersona):
     def __init__(self, config: GeneratorConfig) -> None:
-        # Validate the configured strategy names up front (fail at construction,
-        # not deep inside a run).
+        # output_adapter/revision_style/wrap are Pydantic Literal fields, so a
+        # config loaded via YAML already rejected a bad name — but `model_copy`
+        # doesn't re-run validators, so this guard still catches a config
+        # mutated that way (fail at construction, not deep inside a run).
         services.check_output_adapter(config.output_adapter)
         services.check_revision_style(config.revision_style)
         for ctx in config.input_context:
@@ -184,18 +187,19 @@ class GeneratorNode(BasePersona):
     # -- finalize --------------------------------------------------------- #
     def _finalize(self, state: State, raw: str, prior, is_revision: bool) -> State:
         adapter = self.config.output_adapter
-        if adapter == "markdown":
+        if adapter in ("markdown", "sprint_blocks"):
+            # json_object's `prior` is a dict, not mergeable text, so this stays
+            # scoped to the two text-document adapters.
             effective = services.merge_sections(prior, raw) if is_revision else raw
-            return services.finalize_markdown(
-                produces=self.config.produces,
-                effective_text=effective,
-                raw_response=raw,
-                extract_questions=self.config.extract_open_questions,
-                stage_name=self._stage_name,
-                state=state,
-            )
-        if adapter == "sprint_blocks":
-            effective = services.merge_sections(prior, raw) if is_revision else raw
+            if adapter == "markdown":
+                return services.finalize_markdown(
+                    produces=self.config.produces,
+                    effective_text=effective,
+                    raw_response=raw,
+                    extract_questions=self.config.extract_open_questions,
+                    stage_name=self._stage_name,
+                    state=state,
+                )
             return services.finalize_sprint_blocks(
                 produces=self.config.produces,
                 effective_text=effective,
@@ -250,3 +254,6 @@ class SprintBreakdownGenerator(GeneratorNode):
 class PMGenerator(GeneratorNode):
     def __init__(self) -> None:
         super().__init__(load_named_config("pm"))
+
+    def fold_answers(self, state: State, llm_client) -> State:
+        return _pm_fold_answers(state, llm_client)

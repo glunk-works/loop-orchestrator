@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from loop_engine.core.gates import GateDecision
-from loop_engine.core.state import State
+from loop_engine.core.state import Question, State
 from loop_engine.personas.declarative.node import PMGenerator
 from loop_engine.personas.pm.critic_gate import CriticGate
 from loop_engine.personas.pm.fields import CHECKLIST_FIELDS
@@ -81,7 +81,6 @@ def test_blank_field_revise_then_key_merge_fills_it() -> None:
 
 def test_resolver_parity() -> None:
     state = _state({"project_spec": json.dumps({"problem_statement": "reset passwords"})})
-    from loop_engine.core.state import Question
 
     questions = [Question(id="q1", origin_stage="ArchitecturePersona", text="Which SLA?")]
     verdict = '{"q1": {"resolution": "99.9%", "impact": "plan"}}'
@@ -96,3 +95,35 @@ def test_consumes_produces_match() -> None:
     node = PMGenerator()
     assert node.consumes == ("human_input",)
     assert node.produces == ("project_spec",)
+
+
+def test_fold_answers_exposed_and_byte_identical_to_classic() -> None:
+    # cli.py's resume guard checks hasattr(stage0.persona, "fold_answers");
+    # under `declarative` stage 0 is PMGenerator, which must expose it.
+    assert hasattr(PMGenerator(), "fold_answers")
+
+    state = _state(
+        {"project_spec": json.dumps({"problem_statement": "reset passwords"})}
+    ).model_copy(
+        update={
+            "questions": [
+                Question(
+                    id="q1",
+                    origin_stage="ArchitecturePersona",
+                    text="Which region?",
+                    resolution="EU only",
+                    resolved_by="human:42",
+                )
+            ]
+        }
+    )
+    verdict = (
+        '{"spec_updates": {"problem_statement": "reset passwords, EU only"}, '
+        '"impacts": {"q1": "architecture"}}'
+    )
+
+    classic = PMPersona().fold_answers(state, _mock(verdict))
+    declarative = PMGenerator().fold_answers(state, _mock(verdict))
+
+    assert declarative.artifacts["project_spec"] == classic.artifacts["project_spec"]
+    assert declarative.questions[0].impact == classic.questions[0].impact == "architecture"

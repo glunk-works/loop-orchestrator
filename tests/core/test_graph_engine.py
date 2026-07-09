@@ -149,6 +149,35 @@ def test_graph_gate_failure_with_changing_findings_raises_after_cap() -> None:
     assert (Path("state") / "run-6" / "00_failed_stage.json").exists()
 
 
+def test_graph_gate_failure_with_changing_findings_escalates_when_flag_set(
+    _stub_issue_filer,
+) -> None:
+    class AlternatingBadPersona(BasePersona):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def run(self, state, llm_client, findings=None):
+            self.calls += 1
+            value = "" if self.calls % 2 else "not json"
+            return state.model_copy(update={"artifacts": {**state.artifacts, "doc": value}})
+
+    loop = Loop(
+        stages=[
+            Stage(
+                persona=AlternatingBadPersona(),
+                gate=ArtifactGate("doc", parse_json="object"),
+                max_revisions=1,
+                escalate_on_exhaustion=True,
+            )
+        ]
+    )
+
+    final = run_graph_loop(loop, _initial_state("run-6"), _stub_llm_client())
+
+    assert final.status is RunStatus.AWAITING_ISSUE
+    assert len(_stub_issue_filer) == 1
+
+
 def test_graph_escalation_resolved_by_ladder_reenters_with_findings() -> None:
     persona = QuestionAskingPersona()
     resolver = AnsweringResolver(impact="task")

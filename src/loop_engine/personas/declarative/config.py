@@ -14,6 +14,7 @@ pins them at construction so cached `system_blocks` stay byte-stable.
 
 from __future__ import annotations
 
+from functools import cache
 from pathlib import Path
 from typing import Literal
 
@@ -26,12 +27,16 @@ PromptStyle = Literal["cached", "inline"]
 WrapStyle = Literal["none", "untrusted"]
 
 
+@cache
 def repo_root() -> Path:
     """Repo root, found by walking up to the `pyproject.toml` marker.
 
     Prompt files live at `<root>/prompts/`; config files ship inside the
     package. Anchoring on the marker (not `Path.cwd()`) keeps prompt resolution
     correct under worktree isolation, which `chdir`s the run elsewhere.
+    Cached: the repo root cannot move within a process, and this is called
+    several times per `GeneratorNode` construction (the validator + each
+    `load_prompt`).
     """
     here = Path(__file__).resolve()
     for parent in here.parents:
@@ -46,7 +51,7 @@ def resolve_prompt_path(prompt_file: str) -> Path:
 
 
 def load_prompt(prompt_file: str) -> str:
-    return resolve_prompt_path(prompt_file).read_text()
+    return resolve_prompt_path(prompt_file).read_text(encoding="utf-8")
 
 
 class InputContext(BaseModel):
@@ -124,7 +129,7 @@ class GeneratorConfig(BaseModel):
 
 def load_generator_config(path: str | Path) -> GeneratorConfig:
     """Load a `GeneratorConfig` from a YAML file (`yaml.safe_load` only)."""
-    raw = Path(path).read_text()
+    raw = Path(path).read_text(encoding="utf-8")
     data = yaml.safe_load(raw)
     if not isinstance(data, dict):
         raise ValueError(

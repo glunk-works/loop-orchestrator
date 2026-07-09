@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
+from typing import get_args
 
 from loop_engine.core.gates import extract_open_questions
 from loop_engine.core.state import State
@@ -21,6 +22,7 @@ from loop_engine.personas.agile_sprint_breakdown.manifest import build_task_mani
 # Reused verbatim from the classic personas so the declarative output is
 # byte-identical — the parity guarantee, not a re-implementation.
 from loop_engine.personas.agile_sprint_breakdown.persona import _parse_sprint_blocks
+from loop_engine.personas.declarative.config import OutputAdapter, RevisionStyle
 from loop_engine.personas.pm.persona import (
     _parse_extraction_response,
     _wrap_untrusted_artifact,
@@ -73,7 +75,10 @@ _SPRINT_REVISION_INSTRUCTION = (
     "Return ONLY the corrected sprint files, reproducing their `### FILEPATH:` headers verbatim."
 )
 
-_OUTPUT_ADAPTERS = ("markdown", "sprint_blocks", "json_object")
+# Derived from config.OutputAdapter, the single source of truth for the legal
+# strategy names (a Pydantic Literal already rejects anything else at config
+# construction — this tuple is just for the error message here).
+_OUTPUT_ADAPTERS = get_args(OutputAdapter)
 
 
 def check_output_adapter(name: str) -> None:
@@ -165,7 +170,8 @@ def finalize_json_object(
 # --------------------------------------------------------------------------- #
 # revision-styles                                                            #
 # --------------------------------------------------------------------------- #
-_REVISION_STYLES = ("section_merge", "key_merge", "full_reextract")
+# Derived from config.RevisionStyle — see _OUTPUT_ADAPTERS above.
+_REVISION_STYLES = get_args(RevisionStyle)
 
 
 def check_revision_style(name: str) -> None:

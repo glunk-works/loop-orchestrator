@@ -2,6 +2,7 @@ import json
 import re
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import typer
@@ -219,6 +220,50 @@ def test_cli_resume_from_issue_folds_answers_and_reenters(tmp_path, monkeypatch)
     # Resumes at the paused stage (no impact classified → default in fold).
     assert mock_run_loop.call_args.kwargs["start_index"] == 1
     assert any("eu-west-1" in f for f in mock_run_loop.call_args.kwargs["initial_findings"])
+
+
+def test_cli_resume_from_issue_works_under_declarative_personas(tmp_path, monkeypatch) -> None:
+    # Regression for review finding #1: under `declarative`, stage 0 is
+    # PMGenerator, which must expose fold_answers or every paused declarative
+    # run is unresumable (cli.py's resume guard raises typer.BadParameter).
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LOOP_ENGINE_PERSONAS", "declarative")
+    paused = State(
+        schema_version=2,
+        run_id="run-1",
+        status=RunStatus.AWAITING_ISSUE,
+        pending_issue=IssueRef(number=17, url="https://github.com/acme/repo/issues/17"),
+        counters={"paused_stage_index": 1},
+        questions=[Question(id="q1", origin_stage="ArchitecturePersona", text="Which region?")],
+        stage_history=[
+            {
+                "stage_name": "PMGenerator",
+                "tokens_used": 10,
+                "cost_usd": 0.0,
+                "completed_at": "2026-07-02T00:00:00Z",
+            }
+        ],
+        artifacts={"project_spec": "{}"},
+    )
+    snapshot_path = tmp_path / "01_awaiting_issue.json"
+    snapshot_path.write_text(paused.model_dump_json())
+
+    monkeypatch.setattr(
+        "loop_engine.cli.issue_io.read_issue",
+        lambda n: {
+            "state": "OPEN",
+            "body": f"Snapshot: `{snapshot_path}`",
+            "comments": [{"body": "```answers\n1: eu-west-1\n```"}],
+        },
+    )
+    monkeypatch.setattr("loop_engine.cli.run_loop", MagicMock(return_value=_completed_state()))
+    mock_llm_client = MagicMock()
+    mock_llm_client.call.return_value = SimpleNamespace(text='{"spec_updates": {}, "impacts": {}}')
+    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock(return_value=mock_llm_client))
+
+    result = runner.invoke(app, ["resume", "--from-issue", "17"])
+
+    assert result.exit_code == 0
 
 
 def test_cli_cost_summary_counts_each_stage_once_despite_terminal_snapshot(
