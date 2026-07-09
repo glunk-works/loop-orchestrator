@@ -87,8 +87,12 @@ def build_default_loop() -> Loop:
                 # cap (the engine's implicit default of 2 silently halved it),
                 # and escalates to the human on an unconverging PM instead of
                 # hard-failing — PM's only resolver is the human, so a hard
-                # fail there is a dead end. Inert for classic: its PM gate
-                # (ArtifactGate) never returns REVISE, so neither flag fires.
+                # fail there is a dead end. Deliberately NOT scoped to
+                # declarative: the classic PM gate (ArtifactGate) also returns
+                # REVISE on a missing/empty/invalid project_spec, so a classic
+                # PM that cannot converge now escalates to a human issue too,
+                # rather than hard-failing the stage (pinned by test_engine's
+                # test_classic_default_loop_pm_stage_escalates_on_exhaustion).
                 max_revisions=4,
                 escalate_on_exhaustion=True,
             ),

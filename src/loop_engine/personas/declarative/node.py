@@ -174,6 +174,11 @@ class GeneratorNode(BasePersona):
     def _revise_key_merge(self, llm_client, ctx: _CallContext, findings: list[str]) -> str:
         # Dedup preserves order: the same field flagged twice must not double the
         # prompt (and identical findings twice is the engine's no-progress guard).
+        # NB: the engine accumulates findings across cycles, so on a 2nd+ revision
+        # this list can re-name a field fixed in an earlier cycle (only exact dups
+        # are removed). Accepted non-parity vs. classic's latest-only loop — the
+        # current artifact is passed alongside, so the model reconciles. See the
+        # sprint-21 settlement in docs/migration_roadmap.md.
         deduped = list(dict.fromkeys(findings))
         wrapped_artifact = ctx.wrapped_inputs[0] if ctx.wrapped_inputs else ""
         followup = self._feedback_template.format(

@@ -86,8 +86,11 @@ def test_build_default_loop_classic_personas_by_default(monkeypatch) -> None:
     # PM gate is the plain content gate on the classic path.
     assert isinstance(loop.stages[0].gate, ArtifactGate)
     assert not isinstance(loop.stages[0].gate, CriticGate)
-    # The flags are wired unconditionally but inert for classic: its PM gate
-    # never returns REVISE, so neither can ever fire.
+    # The flags are wired unconditionally, and they are live on the classic
+    # path too: ArtifactGate returns REVISE on an invalid project_spec, so a
+    # classic PM that cannot converge escalates to a human issue rather than
+    # hard-failing (behavior pinned by test_engine's
+    # test_classic_default_loop_pm_stage_escalates_on_exhaustion).
     assert loop.stages[0].max_revisions == 4
     assert loop.stages[0].escalate_on_exhaustion is True
 

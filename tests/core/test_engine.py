@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,6 +16,7 @@ from loop_engine.core.engine import (
 )
 from loop_engine.core.gates import ArtifactGate
 from loop_engine.core.state import IssueRef, Question, RunStatus, StageRecord, State
+from loop_engine.loops.default.loop import build_default_loop
 from loop_engine.personas.base import BasePersona
 
 
@@ -255,6 +257,48 @@ def test_run_loop_gate_failure_with_changing_findings_escalates_when_flag_set(
 
     # No resolver for this stage, so the escalation pauses for a human issue
     # instead of raising StageGateFailedError.
+    assert final.status is RunStatus.AWAITING_ISSUE
+    assert final.pending_issue is not None
+    assert len(_stub_issue_filer) == 1
+
+
+def test_classic_default_loop_pm_stage_escalates_on_exhaustion(
+    _stub_issue_filer, monkeypatch
+) -> None:
+    # The classic PM stage is NOT inert to the exhaustion flags: its real
+    # ArtifactGate("project_spec", ...) returns REVISE on an invalid spec, so a
+    # classic PM that cannot converge escalates to a human issue rather than
+    # hard-failing. Exercises the exact gate + max_revisions=4 +
+    # escalate_on_exhaustion=True that build_default_loop() wires, swapping only
+    # the LLM-driven persona for a deterministic stub.
+    monkeypatch.delenv("LOOP_ENGINE_PERSONAS", raising=False)
+    pm_stage = build_default_loop().stages[0]
+    assert isinstance(pm_stage.gate, ArtifactGate)  # classic path, not CriticGate
+    assert pm_stage.max_revisions == 4
+    assert pm_stage.escalate_on_exhaustion is True
+    assert pm_stage.resolvers == []  # PM's only resolver is the human
+
+    class ChangingBadPMPersona(BasePersona):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def run(self, state: State, llm_client, findings=None) -> State:
+            self.calls += 1
+            # Alternate invalid shapes so consecutive gate findings differ and
+            # the run reaches the max_revisions exhaustion path (not the earlier
+            # identical-findings escalation).
+            value = "" if self.calls % 2 else "not json"
+            return state.model_copy(
+                update={"artifacts": {**state.artifacts, "project_spec": value}}
+            )
+
+    persona = ChangingBadPMPersona()
+    loop = Loop(stages=[replace(pm_stage, persona=persona)])
+
+    final = run_loop(loop, _initial_state("run-classic-pm"), _stub_llm_client())
+
+    # max_revisions=4 → 5 attempts, then escalate; no resolver → pause for issue.
+    assert persona.calls == 5
     assert final.status is RunStatus.AWAITING_ISSUE
     assert final.pending_issue is not None
     assert len(_stub_issue_filer) == 1

@@ -148,6 +148,31 @@ that keeps the feature flags from calcifying into permanent bloat.
     `GeneratorNode` instances would collide. `ArchitectureGenerator` /
     `SprintBreakdownGenerator` / `PMGenerator` are one-line identity subclasses
     (all logic stays in `GeneratorNode`) giving each stage its own name.
+- **Sprint-21 HITL-review settlements (owner-confirmed 2026-07-09):**
+  - **Classic PM escalate-on-exhaustion is intentional, not inert.** The PM
+    stage's `max_revisions=4` + `escalate_on_exhaustion=True` are live on the
+    *classic* path too: its `ArtifactGate` returns REVISE on a
+    missing/empty/invalid `project_spec`, so a non-converging classic PM now
+    escalates to a human issue instead of hard-failing (`FAILED_STAGE`). The
+    earlier "inert for classic — its gate never REVISEs" comment was wrong; a
+    corrected comment + a pinning test
+    (`test_classic_default_loop_pm_stage_escalates_on_exhaustion`) replace it.
+    Deliberately *not* scoped to declarative — escalating a dead-end PM (its
+    only resolver is the human) beats hard-failing on both paths.
+  - **`key_merge` findings-accumulation accepted as in-bounds non-parity
+    (review finding #4).** The engine accumulates findings across revision
+    cycles — its *uniform* contract for every revise loop (`section_merge`,
+    `full_reextract`, Coder/Ralph all share it); `_revise_key_merge` dedups only
+    exact duplicates, so a 2nd+ PM revision's followup prompt can re-list a field
+    already fixed in an earlier cycle. Classic's retired internal loop fed only
+    the *latest* critic pass. Accepted, **NOT parity-claimed** (parity is the
+    single-cycle happy path; multi-cycle is a declared replacement): a
+    latest-only fix would be a special-case carve-out on shared infra (an
+    engine-wide accumulation change → broad blast radius, or gate re-derivation
+    inside the persona → boundary violation), both worse than the redundancy —
+    and `key_merge` passes the *current artifact* alongside the findings, so a
+    re-listed already-fixed field is reconciled against the spec, not a
+    misdirection.
 
 ## Feature flags introduced
 

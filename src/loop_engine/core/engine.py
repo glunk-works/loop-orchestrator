@@ -155,6 +155,25 @@ def _resolution_findings(questions: list[Question]) -> list[str]:
     ]
 
 
+def _exhaustion_escalation(stage_name: str, findings: list[str]) -> GateResult:
+    """A REVISE that never converged, re-expressed as an ESCALATE question.
+
+    Both no-progress paths route to the resolver ladder / human with the same
+    message: findings that repeated identically twice, and a revision budget
+    exhausted with `escalate_on_exhaustion` set.
+    """
+    return GateResult(
+        GateDecision.ESCALATE,
+        questions=[
+            new_question(
+                stage_name,
+                f"{stage_name} could not satisfy its output gate after "
+                f"repeated attempts: {'; '.join(findings)}",
+            )
+        ],
+    )
+
+
 def reentry_index(loop: Loop, stage_index: int, resolved: list[Question]) -> int:
     """Worst impact among resolutions decides how far back the run re-enters."""
     impacts = {q.impact for q in resolved if q.resolution is not None}
@@ -290,16 +309,7 @@ def execute_stage(
         if gate_result.findings == previous_gate_findings:
             # The gate said the same thing twice: another attempt would
             # be an identical re-roll. Escalate instead of spending it.
-            gate_result = GateResult(
-                GateDecision.ESCALATE,
-                questions=[
-                    new_question(
-                        stage_name,
-                        f"{stage_name} could not satisfy its output gate after "
-                        f"repeated attempts: {'; '.join(gate_result.findings)}",
-                    )
-                ],
-            )
+            gate_result = _exhaustion_escalation(stage_name, gate_result.findings)
             break
         previous_gate_findings = gate_result.findings
         stage_findings = [*stage_findings, *gate_result.findings]
@@ -307,16 +317,7 @@ def execute_stage(
     if gate_result.decision is GateDecision.REVISE:
         # Revision budget exhausted with findings still changing.
         if stage.escalate_on_exhaustion:
-            gate_result = GateResult(
-                GateDecision.ESCALATE,
-                questions=[
-                    new_question(
-                        stage_name,
-                        f"{stage_name} could not satisfy its output gate after "
-                        f"repeated attempts: {'; '.join(gate_result.findings)}",
-                    )
-                ],
-            )
+            gate_result = _exhaustion_escalation(stage_name, gate_result.findings)
         else:
             state = _finalize(state, stage_index, RunStatus.FAILED_STAGE)
             raise StageGateFailedError(
