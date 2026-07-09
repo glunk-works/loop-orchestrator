@@ -23,7 +23,7 @@ this file tracks *how far we've got and what's next*.
 | 4 · part 1 — Ralph-loop Coder (`AgenticNode`) | ✅ built behind flag, reviewed; 4 review findings hardened in 4a (below). Plan: `sprints/19_ralph_coder/sprint_plan.md` | `195f7b7` |
 | 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ complete, reviewed; 3 HITL-review findings resolved (see "Sprint-19a HITL-review settlements"). Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | `d675d5d` → review-fixes |
 | 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ✅ complete, reviewed; HITL-review findings resolved via sprint 21 review-fixes. 394 tests green. Plans: `sprints/20_declarative_generators/`, `sprints/21_declarative_review_fixes/` | `cf48b0c` → `aceb23a` → `03818d9` |
-| 5 — Autonomous triggers + multi-repo factory | 🟨 22a complete, reviewed, archived. 22b (github MCP server capability slice) implemented — Tasks 1-5 green, pending HITL review. Next: plan Sprint 23 (trigger surface → maintenance flow → bootstrap flow). Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/` | `457f675` → `71f1692` → `d0e118d` → (22b, pending) |
+| 5 — Autonomous triggers + multi-repo factory | 🟨 22a + 22b complete, reviewed, archived. 22b (github MCP server capability slice) implemented, HITL-reviewed (one finding — clone-dest symlink-escape gap — fixed). Next: plan Sprint 23 (trigger surface → maintenance flow → bootstrap flow). Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/` | `457f675` → `71f1692` → `d0e118d` → `7b46227` → `5bc3811` |
 | 6 — Collapse the flags (decommission the migration scaffolding) | ⬜ sketch only | — |
 
 Phases 1–3b are detailed and executed (3b's daemon-host e2e is deferred, not
@@ -34,12 +34,16 @@ its four review findings are hardened in **part 1a** (`sprints/19a_ralph_hardeni
 **Part 2** (`GeneratorNode` + PM critic-gate, `sprints/20_declarative_generators/`)
 is **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`),
 **reviewed, and its review findings resolved** (sprint 21 review-fixes, `03818d9`).
-**▶ NEXT ACTION: Opus HITL review of Sprint 22b**, then **plan Sprint 23**
-(trigger surface → maintenance flow → bootstrap flow). Sprint 22b (native
-`github_server` + `tools/repo_io` delegate + committed `loop_engine.mcp.json`
-github entry + `build_github_provider()`) is **implemented, Tasks 1-5 green**
-(`sprints/22b_native_github_server/sprint_plan.md`) — the system's second MCP
-server and its first credentialed one. The "cloning target repos introduces a
+**▶ NEXT ACTION: plan Sprint 23** (trigger surface → maintenance flow →
+bootstrap flow). Sprint 22b (native `github_server` + `tools/repo_io` delegate
++ committed `loop_engine.mcp.json` github entry + `build_github_provider()`) is
+**complete, HITL-reviewed and approved** (`7b46227`, review-fix `5bc3811`) —
+the system's second MCP server and its first credentialed one. The review
+raised one finding — `_validate_clone_dest` gated its symlink-escape check on
+`path.exists()`, letting the normal clone case (non-existent target under a
+symlinked parent) escape the run tree — **fixed** in `5bc3811` with a
+regression test; a low-severity nit (bare `python` vs `sys.executable` in the
+committed config) was deferred. The "cloning target repos introduces a
 new git subprocess surface" open item flagged during 22a is **settled
 gh-only**: all four factory verbs ride the existing `gh` executable, so
 `repo_io` is a second `gh` consumer and adds **no** fourth subprocess surface
