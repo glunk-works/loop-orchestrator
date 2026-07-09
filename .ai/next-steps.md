@@ -5,78 +5,61 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Phase 5 — Sprint 23 (`trigger_surface`) — `awaiting_hitl_review`.**
-Sonnet/Coder implementation is done, committed, all green. Next is an
-Opus/Architect HITL review session.
+**Phase 5 — Sprint 23a (`trigger_review_fixes`) — `implementing`.**
+Opus/Architect HITL-reviewed the Sprint 23 diff and planned a review-fixes
+sprint (23a). Plan is HITL-approved; next is a Sonnet/Coder implementation session.
 
-## Just done (Sonnet/Coder — 23 implementation, `62a3de2`)
-- **Task 1 — `src/loop_engine/runner.py`**: `run_new(human_input, *, budget_usd,
-  loop_name) -> State`, the shared "start a fresh run" orchestration factored
-  out of `cli.run`'s fresh-run path (which now delegates to it). Carries its
-  own mirrored `_resolve_loop`/`_select_engine`/`NAMED_LOOPS` (independently
-  patchable from `cli.py`'s copy — two fresh-run-path tests in `test_cli.py`
-  were retargeted to patch `loop_engine.runner.*` instead of `loop_engine.cli.*`
-  accordingly). `cli.run`'s `--resume-from` path is untouched.
-- **Task 2 — `trigger/parse.py`**: `RunRequest` (pydantic, `extra="forbid"`)
-  + `parse_event(event_name, payload) -> RunRequest | None` implementing the
-  locked grammar (`agent-action` label / `/agent-run` comment; `human_input`
-  = title+body; everything else, including malformed payloads and `ping`, is
-  a defensive `None`, never a raise).
-- **Task 3 — `trigger/dispatch.py`**: `RunDispatcher` `Protocol` +
-  `InProcessDispatcher` — in-memory dedupe on `(repo, issue)`, worker-thread
-  dispatch (`asyncio.to_thread` via `asyncio.create_task`) so `dispatch()`
-  returns before the run finishes and the event loop never blocks.
-- **Task 4 — `trigger/app.py`**: `create_app(dispatcher=None) -> FastAPI`,
-  fail-closed on missing `LOOP_ENGINE_WEBHOOK_SECRET`; `POST /webhook` reads
-  the raw body, HMAC-SHA256-verifies `X-Hub-Signature-256` over those exact
-  bytes before any JSON parsing, then parses → `204` no-op or dispatch →
-  `202`; `GET /health`. The module-level `app` is built only when the secret
-  is already set in the environment, so importing the module never raises in
-  a dev/test env lacking it (still `create_app()` for eventual `uvicorn`
-  hosting).
-- **Task 5 — `tests/trigger/test_boundaries.py`**: AST-scanned (mirrors the
-  `keyring`/`state_io` boundary tests) — no `keyring`, no direct file write,
-  no subprocess surface anywhere under `trigger/`; plus a hermetic signed
-  webhook → `202` → fake-dispatcher-observed end-to-end proof.
-- **Task 6 — deps/SBOM/docs**: `fastapi==0.139.0` pinned runtime (`uvicorn`
-  deferred), `httpx==0.28.1` dev/test-only; `sbom.json` regenerated, `hatch
-  run audit` green. `CLAUDE.md`, `.ai/context/modules.md`,
-  `docs/migration_roadmap.md` (status row, NEXT ACTION → Sprint 24, decisions
-  log entry, sprint-decomposition entry) and
-  `sprints/DEFERRED_VERIFICATION.md` (§6, live webhook check) all updated.
-- Full suite green throughout (462 tests at commit time), lint/format clean.
-- Committed as `62a3de2` ("Phase 5 sprint 23: implement trigger surface (all
-  6 tasks)").
+## Just done (Opus/Architect — 23 HITL review + 23a planning)
+- **HITL-reviewed the Sprint 23 trigger-surface diff (`62a3de2`)** via `/code-review`
+  (high effort). Verdict: otherwise correct (HMAC-before-JSON ordering, fail-closed
+  secret, parser grammar, `cli.run → runner.run_new` refactor, mirrored engine
+  indirection all hold), but **3 findings** surfaced on the dispatch/webhook path.
+- **Finding #1 (high):** `InProcessDispatcher.dispatch` discards the `asyncio.create_task`
+  result and nothing holds a strong ref → the run task can be GC-cancelled mid-flight,
+  which also permanently wedges its `(repo, issue)` dedupe key in `_active`.
+- **Finding #2 (medium):** `await request.json()` is unguarded → a signed-but-non-JSON
+  body (e.g. a form-encoded webhook) raises → HTTP 500, breaking the "never 500 on a
+  malformed delivery" contract. **HITL decision: return `400`** (not 204, not 500).
+- **Finding #3 (low-med):** run failures in `_run` are never logged (no `except`).
+- **Wrote `sprints/23a_trigger_review_fixes/sprint_plan.md`** (3 tasks, all decisions
+  locked) per the user's choice to route the fixes into a dedicated review-fixes sprint
+  (mirrors 19a/21). No new dep / sbom / subprocess / State change.
+- Working tree carries the new `sprints/23a_trigger_review_fixes/` (untracked); nothing
+  committed this session.
 
 ## Next
-1. **(Opus/Architect) HITL-review the Sprint 23 diff** (`62a3de2`) —
-   `/code-review` against it. Points of interest: the deliberately-mirrored
-   (not shared) engine-selection indirection in `cli.py` vs `runner.py`; the
-   HMAC raw-body-before-JSON-parse ordering in `trigger/app.py`; the
-   guarded (not unconditional) module-level `app` construction; the
-   in-memory dedupe + worker-thread dispatch in `trigger/dispatch.py`.
-2. **On approval:** confirm `docs/migration_roadmap.md`'s NEXT ACTION (already
-   advanced to Sprint 24 as part of Task 6) reads correctly, then
-   **`/archive-sprint`** to retire 23 and begin planning Sprint 24
-   (maintenance flow).
+1. **(Sonnet/Coder) Implement Sprint 23a's 3 tasks** against
+   `sprints/23a_trigger_review_fixes/sprint_plan.md`:
+   - **Task 1 (`trigger/dispatch.py`):** retain the task in a strong-ref `self._tasks`
+     set + `add_done_callback(self._tasks.discard)` (fixes #1); add
+     `except Exception: logger.exception("run failed for %s#%s", *key)` before the
+     `finally` (fixes #3).
+   - **Task 2 (`trigger/app.py`):** guard the parse — `json.loads(raw_body)` in a
+     `try/except ValueError: return Response(status_code=400)` (fixes #2); `import json`;
+     update the docstring. 400 is deliberate — unrelated/`ping` bodies still 204.
+   - **Task 3:** docs — roadmap (mark 23 reviewed + "Sprint-23a HITL-review settlements"
+     bullet; NEXT ACTION stays Sprint 24) + `modules.md`.
+   - Green gate (`hatch run test` + `lint` + `format`); boundary tests + all existing
+     trigger tests must stay green **verbatim**. Then `/handoff` back to Opus.
+2. **(Opus/Architect) HITL re-review the 23a diff**, then `/archive-sprint` to retire
+   both 23 and 23a, and begin planning **Sprint 24 (maintenance flow)**.
 
 ## Carry-forward
-- **Sprint 24 (maintenance flow)** is the first caller to chain
-  `tools/repo_io`'s factory verbs (clone → feature-branch worktree → absorb
-  target repo's `CLAUDE.md`/`.agent/STATE.md` → green gate → push → open PR
-  against `develop`; auto-merge stays prohibited) and owns the deferred
-  local-git subprocess-surface decision (`git push` inside a cloned tree).
+- **Sprint 24 (maintenance flow)** — the first caller to chain `tools/repo_io`'s factory
+  verbs (clone → feature-branch worktree → absorb `CLAUDE.md`/`.agent/STATE.md` →
+  green gate → push → open PR against `develop`; auto-merge stays prohibited) and owns
+  the deferred local-git subprocess-surface decision (`git push` in a cloned tree).
 - **Open low nit (carried from 22b, still unresolved):** bare `python` vs
-  `sys.executable` in the committed `loop_engine.mcp.json` github stanza —
-  pick up if convenient.
+  `sys.executable` in the committed `loop_engine.mcp.json` github stanza.
 
 ## Pointers
-- `sprints/23_trigger_surface/sprint_plan.md` — the completed task list (6
-  tasks) + locked decisions, for review context.
-- `docs/migration_roadmap.md` — Phase 5 sprint-decomposition entry for 23;
-  ▶ NEXT ACTION now points at Sprint 24 (maintenance flow).
+- `sprints/23a_trigger_review_fixes/sprint_plan.md` — the 3-task review-fix plan +
+  locked decisions (root cause, retention fix, 400-vs-204 split, catch-log).
+- `sprints/23_trigger_surface/sprint_plan.md` — the reviewed sprint (context).
+- `docs/migration_roadmap.md` — Phase 5 status; ▶ NEXT ACTION → Sprint 24 (gated
+  behind 23a landing + re-review).
 - `.ai/context/workflow.md` — the Opus↔Sonnet handoff protocol + switch points.
 
 ## Working tree
-- Clean. Everything for Sprint 23 landed in `62a3de2` on
-  `feat/mcp-langgraph-migration`.
+- `sprints/23a_trigger_review_fixes/` is untracked (the new plan). Recommend committing
+  it before switching sessions so a `/resume`'s `last_commit` matches HEAD.
