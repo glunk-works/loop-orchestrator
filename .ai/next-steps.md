@@ -6,9 +6,8 @@ Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
 **Phase 5 — Sprint 24 (`maintenance_flow`) — `awaiting_hitl_review`.**
-Implementation is done and green. The next session is **Opus/Architect**
-HITL-reviewing the diff — but the diff is currently **uncommitted**; commit
-it first (see "Working tree" below).
+Implementation is done, green, and committed (`6172ad1`). The next session
+is **Opus/Architect** HITL-reviewing the diff.
 
 ## Just done (Sonnet/Coder — Sprint 24 implementation, tasks 1–6)
 - **Task 1:** `tools/git_io` — new local-git write surface (`checkout_branch`,
@@ -45,16 +44,13 @@ it first (see "Working tree" below).
   clean; `sbom.json` **unchanged** (no dependency added).
 
 ## Next
-1. **Commit the Sprint 24 diff** (see "Working tree" below for the exact
-   file list) — `last_commit` in `.ai/state.json` won't be accurate until
-   this happens.
-2. **(Opus/Architect) HITL-review the Sprint 24 diff** against
+1. **(Opus/Architect) HITL-review the Sprint 24 diff** (`6172ad1`) against
    `sprints/24_maintenance_flow/sprint_plan.md`'s locked decisions (capability
    slice; `git_io` as the 4th surface; `run_in_tree` no-`worktree_run`;
    green-only push/PR; `flows/` boundary posture). Fix any findings, re-verify
    green.
-3. `/archive-sprint` only after the review is clean and committed.
-4. After archival: plan **Sprint 25 (bootstrap flow, piece 4)**.
+2. `/archive-sprint` only after the review is clean and committed.
+3. After archival: plan **Sprint 25 (bootstrap flow, piece 4)**.
 
 ## Carry-forward
 - **Open low nit (carried from 22b, still unresolved):** bare `python` vs
@@ -69,10 +65,5 @@ it first (see "Working tree" below).
 - `.ai/context/workflow.md` — the Opus↔Sonnet handoff protocol + switch points.
 
 ## Working tree
-- **Dirty — Sprint 24's implementation is uncommitted.** `git status --short`:
-  modified `CLAUDE.md`, `.ai/context/modules.md`, `docs/migration_roadmap.md`,
-  `sprints/DEFERRED_VERIFICATION.md`, `src/loop_engine/runner.py`,
-  `tests/test_runner.py`; new `src/loop_engine/flows/`,
-  `src/loop_engine/tools/git_io/`, `tests/flows/`, `tests/tools/git_io/`,
-  `tests/tools/test_subprocess_surfaces.py`. Recommend committing before the
-  next session starts (`/resume` expects `last_commit` to match HEAD).
+- **Clean.** Sprint 24's implementation is committed at `6172ad1` (`Phase 5
+  sprint 24: implement maintenance flow, handoff to Opus`).
