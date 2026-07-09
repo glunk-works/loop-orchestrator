@@ -49,5 +49,4 @@ question at a time, HITL-gated).
 - `.ai/context/workflow.md` — the Opus↔Sonnet handoff protocol + switch points.
 
 ## Working tree
-- 22a review-fixes committed as `d0e118d`. This archival edit (roadmap + `.ai/`) is uncommitted —
-  commit it to make the archive durable.
+- Clean. 22a review-fixes committed as `d0e118d`; the archival (roadmap + `.ai/`) as `d365349` (HEAD).
