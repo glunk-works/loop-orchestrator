@@ -23,7 +23,7 @@ this file tracks *how far we've got and what's next*.
 | 4 · part 1 — Ralph-loop Coder (`AgenticNode`) | ✅ built behind flag, reviewed; 4 review findings hardened in 4a (below). Plan: `sprints/19_ralph_coder/sprint_plan.md` | `195f7b7` |
 | 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ complete, reviewed; 3 HITL-review findings resolved (see "Sprint-19a HITL-review settlements"). Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | `d675d5d` → review-fixes |
 | 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ✅ complete, reviewed; HITL-review findings resolved via sprint 21 review-fixes. 394 tests green. Plans: `sprints/20_declarative_generators/`, `sprints/21_declarative_review_fixes/` | `cf48b0c` → `aceb23a` → `03818d9` |
-| 5 — Autonomous triggers + multi-repo factory | 🟨 planning — decomposed; foundation slice = github MCP server. 22a plan written (`sprints/22a_mcp_multiserver_discovery/`), awaiting HITL gate + implementation | — |
+| 5 — Autonomous triggers + multi-repo factory | 🟨 22a implemented, all 5 tasks green; foundation slice = github MCP server (22b, outlined). Awaiting HITL review of the 22a diff before 22b planning | — |
 | 6 — Collapse the flags (decommission the migration scaffolding) | ⬜ sketch only | — |
 
 Phases 1–3b are detailed and executed (3b's daemon-host e2e is deferred, not
@@ -34,11 +34,14 @@ its four review findings are hardened in **part 1a** (`sprints/19a_ralph_hardeni
 **Part 2** (`GeneratorNode` + PM critic-gate, `sprints/20_declarative_generators/`)
 is **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`),
 **reviewed, and its review findings resolved** (sprint 21 review-fixes, `03818d9`).
-**▶ NEXT ACTION: HITL-review the Sprint 22a plan** (`sprints/22a_mcp_multiserver_discovery/sprint_plan.md`),
-then hand off to Sonnet to implement it. Phase 5 planning is underway: it is
-decomposed foundation-first (github MCP server), and 22a (`loop_engine.mcp.json` multi-server
-discovery) has a written plan. See the "Phase 5 planning pass" + "sprint decomposition"
-subsections below for the locked decisions.
+**▶ NEXT ACTION: HITL-review the Sprint 22a diff** (Opus) — all 5 tasks are
+implemented and green (`loop_engine.mcp.json` loader, `build_provider_for`,
+two-server discovery/routing test, the consumer-scope guard test, and these
+docs). On approval, archive 22a and plan 22b (the native `github_server`).
+Phase 5 planning is underway: it is decomposed foundation-first (github MCP
+server), and 22a (`loop_engine.mcp.json` multi-server discovery) is complete.
+See the "Phase 5 planning pass" + "sprint decomposition" subsections below for
+the locked decisions.
 All Phase-4 sub-phases are now built, reviewed, and their review findings
 resolved (part 1a reviewed 2026-07-09). Phase 6
 (below) is the tracked teardown that keeps the feature flags from calcifying
@@ -380,11 +383,16 @@ decisions above.
 
 ### Phase 5 sprint decomposition (Phase 4 split precedent)
 
-- **Sprint 22a — `loop_engine.mcp.json` multi-server discovery** *(plan written:
-  `sprints/22a_mcp_multiserver_discovery/sprint_plan.md`)*. Pure client-side refactor
-  of `tools/mcp` — config-driven, N-server, consumer-scoped provider. **No** new server /
-  subprocess / credential / file-write surface. Load-bearing gate: **coder-tools parity**.
-  `MCPToolProvider` already does multi-session routing; the gap is discovery + scoping.
+- **Sprint 22a — `loop_engine.mcp.json` multi-server discovery** *(implemented, all 5
+  tasks green: `sprints/22a_mcp_multiserver_discovery/sprint_plan.md`)*. Pure client-side
+  refactor of `tools/mcp` — config-driven, N-server, consumer-scoped provider. **No** new
+  server / subprocess / credential / file-write surface (confirmed — no dependency added,
+  SBOM unchanged). Load-bearing gate: **coder-tools parity**, held (existing
+  `test_mcp_provider.py` isolation assertions pass unchanged). `MCPToolProvider` already
+  did multi-session routing; the gap — discovery + scoping — is closed by
+  `load_mcp_config`/`build_provider_for` and proven by `tests/tools/test_mcp_multiserver.py`
+  (two-server discovery/routing) and `test_mcp_provider.py::test_extra_config_server_never_reaches_coder_provider`
+  (consumer-scope guard).
   **HITL gate after 22a before 22b.**
 - **Sprint 22b — native `github_server` + `tools/repo_io` delegate + `loop_engine.mcp.json` entry**
   *(outline; full plan after 22a review)*. Adds the server (factory verbs), the
@@ -449,7 +457,11 @@ at once?
    into Phase 6** — it can only happen after `run_loop` is deleted.
 2. **state-io + github MCP servers** (deferred from Phase 2) — Phase 5's
    bootstrapping needs the github one.
-3. **Full `loop_engine.mcp.json`-driven multi-server discovery** (mechanism exists).
+3. **Full `loop_engine.mcp.json`-driven multi-server discovery** — ✅ mechanism
+   generalized to N servers via `loop_engine.mcp.json` (22a: `load_mcp_config` +
+   `build_provider_for`, proven by `tests/tools/test_mcp_multiserver.py`'s
+   two-server discovery/routing test); `loop_engine.mcp.json`-declared static
+   servers (the first being `github`) land with 22b.
 4. **Ralph cap-exhaustion → escalate, not fail.** Part-1 v1 hard-fails
    (`FAILED_STAGE` snapshot) when the Ralph loop hits its iteration cap while
    still making progress; a nicer behavior is to file a human issue ("did not

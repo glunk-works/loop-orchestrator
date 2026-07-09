@@ -5,55 +5,56 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Phase 5 — Sprint 22a (`loop_engine.mcp.json` multi-server MCP discovery) — `implementing`.**
-The blocker is resolved (Architect decision made + applied, branch verified green).
-Tasks 1 & 2 done; **Tasks 3, 4, 5 remain** (Sonnet/Coder). No HITL gate open.
+**Phase 5 — Sprint 22a (`loop_engine.mcp.json` multi-server MCP discovery) — `awaiting_hitl_review`.**
+All 5 tasks implemented and green. **HITL gate open: 22a diff review (Opus/Architect).**
+Working tree has uncommitted changes for Tasks 3-5 (see "Working tree" below) — review
+before or after committing, your call, but commit before archiving.
 
-## Just done (Opus/Architect — blocker resolution session)
-- **Resolved the `.mcp.json` collision.** Decision: loop-engine's own MCP config
-  file is **`loop_engine.mcp.json`** at repo root — NOT `.mcp.json`, which is
-  already Claude Code's reserved project MCP config (`{"mcpServers": …}`, the
-  devcontainer github wiring, committed `65ed47c`). User confirmed the name.
-- **Root cause fixed:** the branch was in fact **red at HEAD** — `build_provider_for`'s
-  no-arg `load_mcp_config()` read Claude Code's `.mcp.json` and crashed `extra="forbid"`,
-  erroring all 8 `test_mcp_provider.py` tests. Renaming `_CONFIG_FILENAME` restores the
-  absent-file → built-in-default fallback.
-- **Edits:** `src/loop_engine/tools/mcp/config.py` (`_CONFIG_FILENAME` + docstrings +
-  a why-not-`.mcp.json` note), `provider.py` (docstring + `KeyError` msg),
-  `sprints/22a_.../sprint_plan.md` (path swap + dated locked-decision bullet + Task 5
-  now requires docs to distinguish from Claude Code's `.mcp.json`),
-  `docs/migration_roadmap.md` (path swap + dated revision bullet),
-  `tests/tools/test_mcp_config.py` (pre-existing E501 that was also failing lint).
-  Left untouched (correct): the *Claude Code* `.mcp.json` refs in
-  `docs/architecture_definition.md:58` & `.ai/context/modules.md:64`.
-- **Verified green:** `hatch run lint` clean, `hatch run format` clean, full suite
-  **404 passed**. No new file created (`loop_engine.mcp.json` absent = default; 22a
-  tests use `path=` overrides).
+## Just done (Sonnet/Coder — Tasks 3, 4, 5 implementation session)
+- **Task 3 — two-server discovery/routing test:** new hermetic stdio fixtures
+  `tests/tools/fixtures/{echo_server,greet_server}.py` (trivial FastMCP servers, no
+  `loop_engine` dependency) + `tests/tools/test_mcp_multiserver.py`. Asserts a
+  `MCPToolProvider` built from a two-server config discovers both tool sets, routes
+  each call to the correct owning session, raises `MCPToolError` on an unknown tool,
+  and its background thread is not alive after `__exit__`.
+- **Task 4 — consumer-scope guard:** added
+  `test_mcp_provider.py::test_extra_config_server_never_reaches_coder_provider` —
+  monkeypatches `tools/mcp/config._repo_root` to a tmp dir holding a
+  `loop_engine.mcp.json` with a `github`-like entry (bogus command, never launched)
+  alongside `coder_tools`; asserts `build_coder_tool_provider` still yields exactly
+  `{read_file, list_files, grep, run_tests}`.
+- **Task 5 — docs:** `.ai/context/modules.md` (`tools/mcp/` bullet now describes
+  config-driven, consumer-scoped discovery via `loop_engine.mcp.json`; the `.mcp.json`
+  bullet at ~line 64 now explicitly distinguishes it from `loop_engine.mcp.json`),
+  `CLAUDE.md` boundary bullet (mentions config-driven/consumer-scoped discovery + the
+  new guard test), `docs/migration_roadmap.md` (status table, ▶ NEXT ACTION, cross-cutting
+  #3 marked ✅, 22a sprint-decomposition bullet marked implemented). No dependency added —
+  SBOM confirmed unchanged (no `pyproject.toml`/`sbom.json` diff).
+- **Verified green:** `hatch run lint` clean, `hatch run format` clean (122 files
+  unchanged), full suite **406 passed** (404 → 406, the two new tests).
 
 ## Next
-1. **(Human) Commit the resolution first** — the tree is dirty and `/resume` expects
-   `last_commit` to match HEAD. Suggested message:
-   `Phase 5 sprint 22a: rename loop-engine MCP config to loop_engine.mcp.json (unblock)`.
-2. **(Sonnet / Coder) Implement Tasks 3, 4, 5** of the sprint plan:
-   - **Task 3:** two-server discovery + routing test through the real `MCPToolProvider`
-     (hermetic/offline — two trivial stdio servers or coder-tools declared twice).
-   - **Task 4:** consumer-scope guard — `build_coder_tool_provider` yields exactly
-     `{read_file, list_files, grep, run_tests}` even when the config also declares a
-     github-like server.
-   - **Task 5:** docs (`.ai/context/modules.md` — **must distinguish `loop_engine.mcp.json`
-     from Claude Code's existing `.mcp.json` at ~line 64**; `CLAUDE.md` boundary bullet;
-     roadmap cross-cutting #3 note) + confirm no SBOM change.
-   - Run the green gate before claiming any acceptance criterion.
-3. **(Opus) HITL-review the 22a diff**, then archive on approval.
+1. **(Opus/Architect) HITL-review the Sprint 22a diff** — everything above, plus the
+   already-committed Tasks 1-2 (`457f675`, `10df727`). Check: coder-tools parity held,
+   consumer-scoping is a real enforced invariant (not just a docstring), fixture servers
+   are truly hermetic/offline, docs don't conflate `loop_engine.mcp.json` with Claude
+   Code's `.mcp.json`.
+2. **On approval:** commit the Task 3-5 diff (currently uncommitted), then
+   `/archive-sprint` 22a, then plan **Sprint 22b** (native `github_server` +
+   `tools/repo_io` delegate + `loop_engine.mcp.json` github entry — outline exists in
+   `docs/migration_roadmap.md`; open design item: reconcile the new git-clone subprocess
+   surface against the "exactly three sanctioned subprocess surfaces" invariant).
 
 ## Pointers
 - `sprints/22a_mcp_multiserver_discovery/sprint_plan.md` — the active sprint task list
-  (path decision now locked to `loop_engine.mcp.json`).
-- `docs/migration_roadmap.md` — Phase 5 planning-pass + decomposition (locked decisions,
-  incl. the 2026-07-09 config-filename revision) and the ▶ NEXT ACTION line.
+  (all 5 tasks' acceptance criteria to check against during review).
+- `docs/migration_roadmap.md` — Phase 5 planning-pass + decomposition (locked decisions)
+  and the ▶ NEXT ACTION line.
 - `.ai/context/workflow.md` — the Opus↔Sonnet handoff protocol + switch points.
 
-## Working tree (uncommitted — commit before `/resume`)
-- Modified: `src/loop_engine/tools/mcp/config.py`, `src/loop_engine/tools/mcp/provider.py`,
-  `tests/tools/test_mcp_config.py`, `sprints/22a_mcp_multiserver_discovery/sprint_plan.md`,
-  `docs/migration_roadmap.md`
+## Working tree
+- **Uncommitted:** `.ai/context/modules.md`, `CLAUDE.md`, `docs/migration_roadmap.md`,
+  `tests/tools/test_mcp_provider.py` (modified); `tests/tools/fixtures/` (new dir),
+  `tests/tools/test_mcp_multiserver.py` (new file); this file. `last_commit` in
+  `.ai/state.json` (`10df727`) reflects HEAD, not this uncommitted diff — it will advance
+  once the reviewer commits.

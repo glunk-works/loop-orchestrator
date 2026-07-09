@@ -2,6 +2,7 @@
 provider discovers its tools and dispatches to the same results as the
 in-process implementations."""
 
+import json
 import os
 
 import pytest
@@ -12,6 +13,7 @@ from loop_engine.tools.mcp import (
     build_coder_tool_provider,
     use_mcp_tools,
 )
+from loop_engine.tools.mcp import config as mcp_config
 
 
 @pytest.fixture(autouse=True)
@@ -84,3 +86,24 @@ def test_traversal_path_is_rejected_by_server(_provider) -> None:
     with pytest.raises(MCPToolError):
         _provider.execute("read_file", {"path": "../../etc/passwd"})
     assert not os.path.exists("etc")
+
+
+def test_extra_config_server_never_reaches_coder_provider(
+    monkeypatch, tmp_path, _seeded_tree
+) -> None:
+    """Even when `loop_engine.mcp.json` declares a `github`-like server
+    alongside `coder_tools`, the coder consumer's provider must expose exactly
+    the four coder tools — the extra server is never selected/launched. This
+    encodes cross-cutting #2's "orchestrator-invoked, not model tools" as an
+    enforced invariant before the github server exists (22b)."""
+    config_path = tmp_path / "loop_engine.mcp.json"
+    config_path.write_text(
+        json.dumps(
+            {"servers": {"github": {"command": "github-server-not-installed", "args": ["--stdio"]}}}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mcp_config, "_repo_root", lambda: tmp_path)
+    with build_coder_tool_provider(cwd=_seeded_tree) as provider:
+        names = {t["name"] for t in provider.tools}
+    assert names == {"read_file", "list_files", "grep", "run_tests"}
