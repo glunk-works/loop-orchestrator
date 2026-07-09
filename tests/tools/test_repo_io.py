@@ -69,6 +69,22 @@ def test_clone_repo_rejects_symlink_escape(tmp_path, monkeypatch) -> None:
     run_gh.assert_not_called()
 
 
+def test_clone_repo_rejects_symlinked_parent_with_nonexistent_target(tmp_path, monkeypatch) -> None:
+    """The realistic clone case: the target itself does not exist yet, but a
+    *parent* component is a symlink escaping the run tree. `Path.resolve()`
+    resolves the symlinked prefix even for a non-existent tail, so this must be
+    rejected — the validator does not gate the check on `path.exists()`."""
+    monkeypatch.chdir(tmp_path)
+    outside = tmp_path.parent / "outside_target"
+    outside.mkdir(exist_ok=True)
+    (tmp_path / "escape_link").symlink_to(outside)
+
+    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+        with pytest.raises(ValueError, match="escapes the run tree"):
+            clone_repo("acme/widget", "escape_link/repo")
+    run_gh.assert_not_called()
+
+
 def test_create_branch_with_explicit_base_resolves_sha_then_creates_ref() -> None:
     with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
         run_gh.side_effect = ["abc123\n", ""]

@@ -63,7 +63,11 @@ def _validate_clone_dest(dest: str) -> Path:
         raise ValueError(f"Invalid clone destination: {dest!r} must not contain '..' segments")
 
     path = Path(*parts)
-    if path.exists() and not path.resolve().is_relative_to(Path.cwd().resolve()):
+    # Resolve unconditionally (not gated on `path.exists()`): a clone target
+    # normally does NOT exist yet, and `Path.resolve()` still resolves any
+    # symlinked *prefix* for a non-existent tail — so a symlinked parent
+    # (`link/repo` where `link -> /outside`) must be caught here, not skipped.
+    if not path.resolve().is_relative_to(Path.cwd().resolve()):
         raise ValueError(f"Invalid clone destination: {dest!r} escapes the run tree")
     return path
 
