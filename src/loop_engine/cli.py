@@ -1,10 +1,10 @@
 import json
-import uuid
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
+from loop_engine import runner
 from loop_engine.core.engine import (
     PAUSED_STAGE_COUNTER,
     Loop,
@@ -13,12 +13,12 @@ from loop_engine.core.engine import (
 )
 from loop_engine.core.graph_engine import run_graph_loop, use_langgraph_engine
 from loop_engine.core.state import (
-    CURRENT_SCHEMA_VERSION,
     RunStatus,
     State,
     migrate_state_payload,
 )
 from loop_engine.loops.default.loop import DEFAULT_LOOP, build_default_loop
+from loop_engine.runner import DEFAULT_BUDGET_USD
 from loop_engine.tools import issue_io
 from loop_engine.tools.llm.client import LLMClient
 from loop_engine.tools.worktree import prune_all, worktree_run
@@ -42,8 +42,6 @@ def _select_engine():
     that patch `cli.run_loop` still take effect on the default path."""
     return run_graph_loop if use_langgraph_engine() else run_loop
 
-
-DEFAULT_BUDGET_USD = 5.00
 
 _BUDGET_HELP = "Hard cap on cumulative LLM spend for the run, in USD."
 
@@ -103,27 +101,20 @@ def run(
     budget: Annotated[float, typer.Option("--budget", help=_BUDGET_HELP)] = DEFAULT_BUDGET_USD,
     resume_from: Annotated[Path | None, typer.Option("--resume-from")] = None,
 ) -> None:
-    selected_loop = _resolve_loop(loop)
-
     resuming = resume_from is not None
     if resuming:
+        selected_loop = _resolve_loop(loop)
         initial_state = _load_state(resume_from)
         start_index = _start_index_for(initial_state, selected_loop)
+
+        llm_client = LLMClient(budget_usd=budget)
+        with worktree_run(initial_state.run_id, reuse=True):
+            final_state = _select_engine()(
+                selected_loop, initial_state, llm_client, start_index=start_index
+            )
     else:
         human_input = input.read_text() if input is not None else ""
-        initial_state = State(
-            schema_version=CURRENT_SCHEMA_VERSION,
-            run_id=uuid.uuid4().hex,
-            stage_history=[],
-            artifacts={"human_input": human_input},
-        )
-        start_index = 0
-
-    llm_client = LLMClient(budget_usd=budget)
-    with worktree_run(initial_state.run_id, reuse=resuming):
-        final_state = _select_engine()(
-            selected_loop, initial_state, llm_client, start_index=start_index
-        )
+        final_state = runner.run_new(human_input, budget_usd=budget, loop_name=loop)
     _report_outcome(final_state)
 
 

@@ -38,6 +38,8 @@ dependencies = [
   # LOOP_ENGINE_PERSONAS=declarative flag). Loaded with yaml.safe_load only —
   # never yaml.load — so an in-repo config can never instantiate code.
   "PyYAML==6.0.3",
+  # Trigger surface — GitHub webhook ASGI app; uvicorn/hosting deferred.
+  "fastapi==0.139.0",
 ]
 
 [project.scripts]
@@ -58,6 +60,9 @@ dependencies = [
   "cyclonedx-bom==7.3.0",
   "cryptography==49.0.0",
   "pip-audit==2.10.1",
+  # Trigger surface tests only: Starlette's TestClient needs httpx. Dev/test
+  # dependency, not a runtime one — the app itself never imports it.
+  "httpx==0.28.1",
 ]
 
 [tool.hatch.envs.default.scripts]
@@ -81,6 +86,8 @@ select = ["E", "F", "I", "B", "S"]
 # S101: pytest's assert-based idiom is expected in test files.
 # S603/S607: tests legitimately shell out to `git` (worktree isolation) with a
 # fixed argv and no shell — the same posture the runtime code documents inline.
-"tests/**" = ["S101", "S603", "S607"]
+# S105: the trigger tests' webhook secret is an obviously-fake literal
+# ("test-webhook-secret-not-a-real-credential"), not a real credential.
+"tests/**" = ["S101", "S603", "S607", "S105"]
 # S106/S107: fixture passphrases in tests, not real secrets.
 "containers/keyring_backend/test_cryptfile_backend.py" = ["S101", "S106", "S107"]

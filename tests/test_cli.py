@@ -61,11 +61,13 @@ def test_cli_run_help_lists_expected_options() -> None:
 
 
 def test_cli_run_dispatches_to_langgraph_engine_when_flagged(tmp_path, monkeypatch) -> None:
+    # The fresh-run path delegates to `runner.run_new`, so the engine
+    # indirection patched here lives on `loop_engine.runner`, not `cli`.
     mock_graph = MagicMock(return_value=_completed_state())
     mock_classic = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_graph)
-    monkeypatch.setattr("loop_engine.cli.run_loop", mock_classic)
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_graph)
+    monkeypatch.setattr("loop_engine.runner.run_loop", mock_classic)
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
     monkeypatch.setenv("LOOP_ENGINE_ENGINE", "langgraph")
 
     result = runner.invoke(app, ["run"])
@@ -78,9 +80,9 @@ def test_cli_run_dispatches_to_langgraph_engine_when_flagged(tmp_path, monkeypat
 def test_cli_run_defaults_to_classic_engine(tmp_path, monkeypatch) -> None:
     mock_graph = MagicMock(return_value=_completed_state())
     mock_classic = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_graph)
-    monkeypatch.setattr("loop_engine.cli.run_loop", mock_classic)
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_graph)
+    monkeypatch.setattr("loop_engine.runner.run_loop", mock_classic)
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
     monkeypatch.delenv("LOOP_ENGINE_ENGINE", raising=False)
 
     result = runner.invoke(app, ["run"])
@@ -339,8 +341,8 @@ def test_cli_run_under_worktree_isolation_runs_engine_in_worktree(tmp_path, monk
         seen["cwd"] = Path.cwd()
         return _completed_state()
 
-    monkeypatch.setattr("loop_engine.cli.run_loop", fake_run_loop)
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_engine.runner.run_loop", fake_run_loop)
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
 
     origin = Path.cwd()
     result = runner.invoke(app, ["run"])

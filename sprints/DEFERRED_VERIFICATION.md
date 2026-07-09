@@ -152,4 +152,35 @@ Exercise each of the four verbs against a disposable scratch repo/org:
 Clean up the scratch repo afterward — this check has real side effects on
 GitHub, unlike every other check in this file.
 
+## 6. Trigger surface live webhook → real run (validates Sprint 23)
+
+Sprint 23's coverage is entirely hermetic: `TestClient` deliveries against
+`create_app(dispatcher=fake)` prove HMAC verify → parse → dispatch end to end,
+but `InProcessDispatcher` is only ever exercised with `runner.run_new` patched
+(no real loop ever runs in CI), and no port is bound. What none of that shows
+is a real GitHub delivery reaching a real, listening server and driving a real
+default-loop run. Run on a daemon-bearing host (this devcontainer cannot bind
+a port reachable from GitHub):
+
+- **Stand up the server.** No `uvicorn` pin shipped in 23 (deferred with
+  hosting) — install it ad hoc for this check (`pip install uvicorn`) and run:
+  ```bash
+  LOOP_ENGINE_WEBHOOK_SECRET=<real random secret> \
+    uvicorn loop_engine.trigger.app:app --host 0.0.0.0 --port 8000
+  ```
+- **Register a real webhook** on a disposable scratch repo pointed at the
+  host's reachable address (tunnel it — e.g. `ngrok` — if the host has no
+  public IP), content type `application/json`, secret matching
+  `LOOP_ENGINE_WEBHOOK_SECRET`, subscribed to the `issues` and
+  `issue_comment` events.
+- **Deliver a real signed `agent-action` label event** — label an issue
+  `agent-action` — and confirm: GitHub's webhook UI shows a `202` response;
+  the server log shows `run starting for <repo>#<issue>`; a `state/<run_id>/`
+  directory appears with the run's snapshots; the run actually executes the
+  default loop against the issue's title+body as `human_input`.
+- **Deliver a real `/agent-run` comment** on a second issue and confirm the
+  same, plus that a redelivery (GitHub's "Redeliver" button) while the first
+  run is still active is dropped (no second run), per the in-memory dedupe.
+- Tear down the tunnel/server and delete the scratch webhook afterward.
+
 Delete this file once the checks have been performed and any findings are fixed.

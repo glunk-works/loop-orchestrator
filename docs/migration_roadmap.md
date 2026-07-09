@@ -23,7 +23,7 @@ this file tracks *how far we've got and what's next*.
 | 4 · part 1 — Ralph-loop Coder (`AgenticNode`) | ✅ built behind flag, reviewed; 4 review findings hardened in 4a (below). Plan: `sprints/19_ralph_coder/sprint_plan.md` | `195f7b7` |
 | 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ complete, reviewed; 3 HITL-review findings resolved (see "Sprint-19a HITL-review settlements"). Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | `d675d5d` → review-fixes |
 | 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ✅ complete, reviewed; HITL-review findings resolved via sprint 21 review-fixes. 394 tests green. Plans: `sprints/20_declarative_generators/`, `sprints/21_declarative_review_fixes/` | `cf48b0c` → `aceb23a` → `03818d9` |
-| 5 — Autonomous triggers + multi-repo factory | 🟨 22a + 22b complete, reviewed, archived. 22b (github MCP server capability slice) implemented, HITL-reviewed (one finding — clone-dest symlink-escape gap — fixed). Next: plan Sprint 23 (trigger surface → maintenance flow → bootstrap flow). Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/` | `457f675` → `71f1692` → `d0e118d` → `7b46227` → `5bc3811` |
+| 5 — Autonomous triggers + multi-repo factory | 🟨 22a + 22b complete, reviewed, archived. 23 (trigger surface capability slice) implemented, pending Opus HITL review. Next: plan Sprint 24 (maintenance flow). Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/`, `sprints/23_trigger_surface/` | `457f675` → `71f1692` → `d0e118d` → `7b46227` → `5bc3811` → `5ff8c02` |
 | 6 — Collapse the flags (decommission the migration scaffolding) | ⬜ sketch only | — |
 
 Phases 1–3b are detailed and executed (3b's daemon-host e2e is deferred, not
@@ -34,25 +34,36 @@ its four review findings are hardened in **part 1a** (`sprints/19a_ralph_hardeni
 **Part 2** (`GeneratorNode` + PM critic-gate, `sprints/20_declarative_generators/`)
 is **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`),
 **reviewed, and its review findings resolved** (sprint 21 review-fixes, `03818d9`).
-**▶ NEXT ACTION: plan Sprint 23** (trigger surface → maintenance flow →
-bootstrap flow). Sprint 22b (native `github_server` + `tools/repo_io` delegate
-+ committed `loop_engine.mcp.json` github entry + `build_github_provider()`) is
+**▶ NEXT ACTION: plan Sprint 24** (maintenance flow). Sprint 23 (trigger
+surface — a FastAPI webhook that turns a GitHub `agent-action` label or
+`/agent-run` comment into a real `runner.run_new` default-loop run via an
+injectable `RunDispatcher` seam) is **implemented, all 6 tasks green**
+(`sprints/23_trigger_surface/sprint_plan.md`, `5ff8c02`), pending Opus HITL
+review. It is a capability slice mirroring 22b's posture: dispatch is
+**in-process** (a worker-thread `InProcessDispatcher`, so the sanctioned
+subprocess-surface count stays **three**, unchanged), FastAPI is pinned as
+loop-engine's first web runtime dependency while `uvicorn`/hosting stays
+deferred (hermetic `TestClient` coverage only, `httpx` dev-only), the webhook
+secret is an env var (`LOOP_ENGINE_WEBHOOK_SECRET`, HMAC over the raw body,
+fail-closed) — not a keyring credential — and it does **not** chain into the
+factory verbs (no `tools/repo_io` call, no clone/branch/PR) — that's Sprint
+24's job. Sprint 22b (native `github_server` + `tools/repo_io` delegate +
+committed `loop_engine.mcp.json` github entry + `build_github_provider()`) is
 **complete, HITL-reviewed and approved** (`7b46227`, review-fix `5bc3811`) —
 the system's second MCP server and its first credentialed one. The review
 raised one finding — `_validate_clone_dest` gated its symlink-escape check on
 `path.exists()`, letting the normal clone case (non-existent target under a
 symlinked parent) escape the run tree — **fixed** in `5bc3811` with a
 regression test; a low-severity nit (bare `python` vs `sys.executable` in the
-committed config) was deferred. The "cloning target repos introduces a
-new git subprocess surface" open item flagged during 22a is **settled
-gh-only**: all four factory verbs ride the existing `gh` executable, so
-`repo_io` is a second `gh` consumer and adds **no** fourth subprocess surface
-(the genuine local-git surface — `git push` inside a cloned tree — is
-deferred to Sprint 23's maintenance flow). 22b ships the capability slice only
-(server + delegate + committed config + provider helper + hermetic tests +
-docs) — no production flow caller yet; that is Sprint 23's job. See the
-"Phase 5 planning pass" + "sprint decomposition" subsections below for the
-locked decisions.
+committed config) was deferred, still open. The "cloning target repos
+introduces a new git subprocess surface" open item flagged during 22a is
+**settled gh-only**: all four factory verbs ride the existing `gh`
+executable, so `repo_io` is a second `gh` consumer and adds **no** fourth
+subprocess surface (the genuine local-git surface — `git push` inside a
+cloned tree — is deferred to Sprint 24's maintenance flow, which is also
+where the trigger surface's `RunRequest` will eventually chain into the
+factory verbs). See the "Phase 5 planning pass" + "sprint decomposition"
+subsections below for the locked decisions.
 All Phase-4 sub-phases are now built, reviewed, and their review findings
 resolved (part 1a reviewed 2026-07-09). Phase 6
 (below) is the tracked teardown that keeps the feature flags from calcifying
@@ -194,6 +205,46 @@ into permanent bloat.
     and `key_merge` passes the *current artifact* alongside the findings, so a
     re-listed already-fixed field is reconciled against the spec, not a
     misdirection.
+- **Sprint 23 trigger-surface decisions (locked 2026-07-09, Opus/Architect,
+  23 planning pass):**
+  - **Deliverable boundary = capability slice, real run against the existing
+    default loop.** The webhook dispatches a genuine `run_new`/`run_loop`
+    (or `run_graph_loop`) run of the **default** loop, `human_input` = the
+    issue's title+body. Ships app + parser + dispatcher + shared runner +
+    FastAPI dep + hermetic tests + docs. Does **not** deploy (no `uvicorn`/hosting
+    decision) and does **not** wire the maintenance/bootstrap flow (Sprint 24+
+    remain the callers that chain `tools/repo_io`).
+  - **Dispatch = an injectable `RunDispatcher` seam, one in-process
+    implementation; no fourth subprocess surface.** `InProcessDispatcher` runs
+    the loop **in-process** on a worker thread (`asyncio.to_thread`), never as a
+    `loop-engine run` subprocess. The "exactly three sanctioned subprocess
+    surfaces" invariant is unchanged — the dispatched loop's own
+    worktree/`gh`/pytest calls are those existing surfaces reached from a new
+    caller, not a new surface.
+  - **Web dependency = FastAPI (pinned); `uvicorn` deferred with hosting.**
+    FastAPI is a pinned **runtime** dependency (loop-engine's first web
+    dependency); the ASGI app is tested hermetically via `TestClient`.
+    `uvicorn` is **not** pinned — the ASGI runner/port-binding decision lands
+    with deployment. `httpx` (for `TestClient`) is a **dev/test** dependency
+    only.
+  - **Webhook auth = HMAC over the raw body, secret from an env var,
+    fail-closed.** `X-Hub-Signature-256` (HMAC-SHA256 over the raw request
+    bytes, `hmac.compare_digest`) is mandatory. The shared secret is
+    `LOOP_ENGINE_WEBHOOK_SECRET`; unset → the app refuses to construct/start
+    (fail-closed, never falls open). Not a keyring credential — `trigger/`
+    imports no `keyring`.
+  - **Trigger grammar = two bare-verb triggers; requirements = issue
+    title+body (unified).** An `issues`/`labeled` event with label
+    `agent-action`, or an `issue_comment`/`created` event whose first
+    non-empty line is `/agent-run` — both carry no payload of their own;
+    `human_input = issue["title"] + "\n\n" + issue["body"]`. Everything else,
+    including `ping`, is a 2xx no-op.
+  - **Placement = new top-level `src/loop_engine/trigger/` package;
+    orchestrator-level caller** (sibling to `cli.py`, not a `tools/` module,
+    not an MCP server). Enforced boundary: no `keyring`, no direct file
+    write, no subprocess surface (`tests/trigger/test_boundaries.py`). No CLI
+    `serve` subcommand in 23 — the deliverable is the importable ASGI `app`
+    + the dispatcher.
 - **Sprint-19a HITL-review settlements (owner-confirmed 2026-07-09):** the
   Ralph-hardening pass (`d675d5d`) was reviewed; 3 findings, all fixed (flag-scoped
   to `LOOP_ENGINE_CODER=ralph`):
@@ -407,7 +458,8 @@ decisions above.
   **HITL gate after 22a before 22b.**
 - **Sprint 22b — native `github_server` + `tools/repo_io` delegate + `loop_engine.mcp.json` entry**
   *(implemented, all 5 tasks green: `sprints/22b_native_github_server/sprint_plan.md`;
-  pending Opus HITL review)*. Ships the server (factory verbs), the GitHub-owning
+  HITL-reviewed and approved, `7b46227` → review-fix `5bc3811`)*. Ships the
+  server (factory verbs), the GitHub-owning
   delegate module (new `tools/repo_io` sibling to `issue_io`; issue_io untouched), a
   **committed** repo-root `loop_engine.mcp.json` github stanza (the first real instance
   of that file), and the consumer-scoped `build_github_provider()` orchestrator helper
@@ -417,17 +469,42 @@ decisions above.
   via `gh api …/git/refs`, a remote ref) — `repo_io` is a **second `gh` consumer**, not
   a new subprocess surface; the "exactly three sanctioned surfaces" invariant holds,
   only its `gh` clause widens. The genuine local-git surface (`git push` inside a
-  cloned tree) isn't needed by these four verbs and is deferred to Sprint 23's
+  cloned tree) isn't needed by these four verbs and is deferred to Sprint 24's
   maintenance flow. **Capability slice only** — no production flow caller (no CLI
-  subcommand, no loop wiring) until Sprint 23 chains the verbs. First real
+  subcommand, no loop wiring); Sprint 23 (trigger surface) dispatches only the
+  existing default loop and deliberately does not chain these verbs either —
+  Sprint 24 is the first caller. First real
   network+`gh`-auth server launch; live verification deferred to a daemon-bearing host
   (`sprints/DEFERRED_VERIFICATION.md`).
-- **Sprints 23+ — trigger surface, then maintenance flow, then bootstrap flow** (pieces
-  2→3→4), each separately planned + gated after the github foundation lands.
+- **Sprint 23 — trigger surface** *(implemented, all 6 tasks green:
+  `sprints/23_trigger_surface/sprint_plan.md`; pending Opus HITL review)*.
+  Ships `src/loop_engine/runner.py` (the shared `run_new` run-starter,
+  factored out of `cli.run` so both the CLI and the dispatcher call one
+  source of truth) and the new `src/loop_engine/trigger/` package: `parse.py`
+  (`RunRequest` + the locked trigger grammar), `dispatch.py` (`RunDispatcher`
+  seam + `InProcessDispatcher`, worker-thread dispatch, in-memory dedupe),
+  `app.py` (the FastAPI ASGI app — HMAC-verify raw body → parse → dispatch).
+  **Capability slice, real run against the existing default loop** — no
+  `tools/repo_io` call, no clone/branch/PR, no deploy (no `uvicorn` pin, no
+  hosting decision, no CLI `serve` subcommand). Coverage is entirely
+  hermetic (`TestClient` + injected fake dispatcher + patched `runner.run_new`
+  + a package boundary static test asserting no `keyring`, no direct file
+  write, no subprocess surface); live webhook→real-run verification is
+  deferred to a daemon-bearing host (`sprints/DEFERRED_VERIFICATION.md` §6).
+  FastAPI is loop-engine's first web runtime dependency (`httpx` dev-only for
+  `TestClient`); `sbom.json` regenerated, `hatch run audit` green.
+- **Sprints 24+ — maintenance flow, then bootstrap flow** (pieces 3→4), each
+  separately planned + gated, now that the github foundation (22) and the
+  trigger surface (23) both land. The maintenance flow is also where the
+  deferred local-git subprocess surface (`git push` inside a cloned tree)
+  gets re-opened, flow-forced.
 
-**Still-open questions (deferred to their sprints, not the github foundation):** webhook
-auth model + where the server is hosted; org access to `glunk-works`; how runs are
-queued/rate-limited.
+**Still-open questions (deferred to their sprints, not the github foundation):**
+where the trigger server is hosted (`uvicorn`, deferred with deployment); org
+access to `glunk-works`; how runs are queued/rate-limited durably (23 ships
+only best-effort in-memory dedupe behind the `RunDispatcher` seam). **Settled
+in 23:** the webhook auth model — HMAC-SHA256 over the raw body,
+`LOOP_ENGINE_WEBHOOK_SECRET` env var, fail-closed.
 
 ## Phase 6 — Collapse the flags (decommission the scaffolding) *(sketch)*
 
@@ -477,7 +554,9 @@ at once?
 2. **state-io + github MCP servers** (deferred from Phase 2) — ✅ the github one
    **delivered as a capability** in 22b (`mcp_servers/github_server.py` +
    `tools/repo_io`, exactly `{create_repository, clone_repo, create_branch,
-   open_pr}`); no production flow caller wires it into a run yet — Sprint 23.
+   open_pr}`); no production flow caller wires it into a run yet — Sprint 23
+   (trigger surface) dispatches the default loop only and deliberately does
+   not chain it either; Sprint 24 (maintenance flow) is the first caller.
 3. **Full `loop_engine.mcp.json`-driven multi-server discovery** — ✅ mechanism
    generalized to N servers via `loop_engine.mcp.json` (22a: `load_mcp_config` +
    `build_provider_for`, proven by `tests/tools/test_mcp_multiserver.py`'s
