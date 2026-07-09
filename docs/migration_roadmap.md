@@ -22,7 +22,7 @@ this file tracks *how far we've got and what's next*.
 | 3b — Execution isolation (disposable container/sandbox) — **inert seam** | ✅ built behind flag, reviewed (docker/podman primary, bwrap secondary; real `docker run` + sandboxed gate pytest deferred to a daemon host). Plan: `sprints/18_execution_isolation_container/sprint_plan.md` | `cdc7c8f` |
 | 4 · part 1 — Ralph-loop Coder (`AgenticNode`) | ✅ built behind flag, reviewed; 4 review findings hardened in 4a (below). Plan: `sprints/19_ralph_coder/sprint_plan.md` | `195f7b7` |
 | 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ built behind flag, 319 tests green — awaiting HITL review. Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | `d675d5d` |
-| 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ✅ built behind flag, 385 tests green — awaiting HITL review. Plan: `sprints/20_declarative_generators/sprint_plan.md` | `cf48b0c` |
+| 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ✅ complete, reviewed; HITL-review findings resolved via sprint 21 review-fixes. 394 tests green. Plans: `sprints/20_declarative_generators/`, `sprints/21_declarative_review_fixes/` | `cf48b0c` → `aceb23a` → `03818d9` |
 | 5 — Autonomous triggers + multi-repo factory | ⬜ sketch only | — |
 | 6 — Collapse the flags (decommission the migration scaffolding) | ⬜ sketch only | — |
 
@@ -32,10 +32,12 @@ separately-gated sub-phases, Ralph-Coder-first** (see the Phase 4 section and
 decisions log below). Part 1 (Ralph Coder, `195f7b7`) is built + reviewed, and
 its four review findings are hardened in **part 1a** (`sprints/19a_ralph_hardening/`).
 **Part 2** (`GeneratorNode` + PM critic-gate, `sprints/20_declarative_generators/`)
-is now **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`).
-**▶ NEXT ACTION: HITL-review part 2** (and part 1a if not yet reviewed), then
-Phase 5. Phase 5 remains sketch-only; Phase 6 (below) is the tracked teardown
-that keeps the feature flags from calcifying into permanent bloat.
+is **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`),
+**reviewed, and its review findings resolved** (sprint 21 review-fixes, `03818d9`).
+**▶ NEXT ACTION: plan Phase 5** (autonomous triggers + multi-repo factory) —
+part 1a (`19a`) HITL review is the only other Phase-4 item still open, if not yet
+done. Phase 5 remains sketch-only; Phase 6 (below) is the tracked teardown that
+keeps the feature flags from calcifying into permanent bloat.
 
 ## Decisions log (locked)
 
