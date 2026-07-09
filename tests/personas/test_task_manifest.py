@@ -132,12 +132,33 @@ def test_bare_digit_in_dependencies_does_not_forge_a_dep() -> None:
 def test_sprint_qualified_and_named_dependencies_resolve() -> None:
     blocks = [
         _sprint("/sprints/01_alpha/sprint_plan.md", "None"),
-        _sprint("/sprints/02_beta/sprint_plan.md", "None"),
-        _sprint("/sprints/03_gamma/sprint_plan.md", "Depends on Sprint 1 and the beta module."),
+        _sprint("/sprints/02_data_layer/sprint_plan.md", "None"),
+        _sprint(
+            "/sprints/03_gamma/sprint_plan.md",
+            "Depends on Sprint 1 and the data_layer module.",
+        ),
     ]
     by_id = {task.id: task for task in build_task_manifest(blocks)}
-    # "Sprint 1" resolves by number; "beta" resolves by sprint name token.
-    assert set(by_id["03_gamma::t01"].deps) == {"01_alpha::t01", "02_beta::t01"}
+    # "Sprint 1" resolves by number; "data_layer" resolves by its distinctive
+    # (multi-word, underscored) name token. A bare single word would not — see
+    # test_bare_single_word_sprint_name_does_not_forge_a_dep.
+    assert set(by_id["03_gamma::t01"].deps) == {"01_alpha::t01", "02_data_layer::t01"}
+
+
+def test_bare_single_word_sprint_name_does_not_forge_a_dep() -> None:
+    # A single-word sprint name ("api") must not be matched from incidental prose
+    # ("the public api") — only its full `NN_name` dir or a `Sprint N`/`#N`
+    # number references it. Here nothing matches, so the conservative fallback is
+    # the immediately preceding sprint (02_beta), NOT the non-adjacent 01_api the
+    # bare word happened to name.
+    blocks = [
+        _sprint("/sprints/01_api/sprint_plan.md", "None"),
+        _sprint("/sprints/02_beta/sprint_plan.md", "None"),
+        _sprint("/sprints/03_gamma/sprint_plan.md", "Consumes the public api surface."),
+    ]
+    by_id = {task.id: task for task in build_task_manifest(blocks)}
+    assert set(by_id["03_gamma::t01"].deps) == {"02_beta::t01"}
+    assert "01_api::t01" not in by_id["03_gamma::t01"].deps
 
 
 def test_task_entry_rejects_malformed_input() -> None:

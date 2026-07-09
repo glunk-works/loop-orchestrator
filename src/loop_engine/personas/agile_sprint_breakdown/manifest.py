@@ -117,12 +117,15 @@ def _dependency_sprint_paths(
 ) -> list[str]:
     """Which earlier sprint paths this sprint's `Dependencies:` field names.
 
-    Matched by sprint-qualified number tokens (`Sprint 3`, `#3`) or by a sprint
-    directory/name token (`01_ci_cd_foundation` / `ci_cd_foundation`) appearing
-    whole in the field. Bare digits are ignored so an incidental number never
-    forges a dependency. If the field is non-empty and not "None" but nothing
-    matches, conservatively depend on the immediately preceding sprint so plan
-    order is never violated.
+    Matched by sprint-qualified number tokens (`Sprint 3`, `#3`) or by a
+    *distinctive* sprint name token appearing whole in the field: the full
+    `NN_name` dir (`01_ci_cd_foundation`) or a multi-word, underscored name
+    (`ci_cd_foundation`). A bare single-word name (`api`, `beta`) is NOT matched
+    — it would forge a dependency from incidental prose ("the public api"), so
+    such a sprint must be named by its full dir or a `Sprint N`/`#N` number.
+    Bare digits are likewise ignored. If the field is non-empty and not "None"
+    but nothing matches, conservatively depend on the immediately preceding
+    sprint so plan order is never violated.
     """
     match = _DEPENDENCIES_RE.search(content)
     if not match or not earlier_paths:
@@ -139,7 +142,9 @@ def _dependency_sprint_paths(
             continue
         dir_name = sprint_dirs.get(path, "").lower()
         name_only = re.sub(r"^\d+_", "", dir_name)
-        tokens = [tok for tok in (dir_name, name_only) if tok]
+        # Only distinctive (underscore-bearing) tokens: the `NN_name` dir or a
+        # multi-word name. Single words are too collision-prone in prose.
+        tokens = [tok for tok in (dir_name, name_only) if "_" in tok]
         if any(re.search(rf"\b{re.escape(tok)}\b", lowered) for tok in tokens):
             matched.append(path)
     if matched:

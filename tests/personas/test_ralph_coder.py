@@ -155,6 +155,31 @@ def test_rerunning_a_task_replaces_its_report_section() -> None:
     assert "Attempt 1." not in body  # the stale section was replaced
 
 
+def test_rerun_replaces_a_section_whose_body_contains_h3_subheaders() -> None:
+    # A model report body routinely contains its own `### ` subheadings. The
+    # upsert terminator must key off *this module's* section headers (`### Task `
+    # / `### Regression fix`), not any `### ` — otherwise the re-run stops
+    # mid-body and orphans the tail, leaking stale content across iterations.
+    first = RalphCoderPersona().run(
+        _state(),
+        _llm(
+            "Attempt 1.\n\n### Internal notes\n\nstale internals here.\n\n"
+            "## Open Questions\n\n1. Which datastore?"
+        ),
+    )
+    second = RalphCoderPersona().run(first, _llm("Attempt 2 — final implementation."))
+
+    body = json.loads(second.artifacts["implementation_reports"])[
+        "/sprints/01_foundation/sprint_plan.md"
+    ]
+    assert body.count("### Task 01_foundation::t01:") == 1
+    assert "Attempt 2 — final implementation." in body
+    # The whole prior section — including content *after* its `### ` subheader —
+    # is gone, not orphaned. (Pre-fix, "### Internal notes" truncated the match.)
+    assert "stale internals here." not in body
+    assert "### Internal notes" not in body
+
+
 # --- (a) regression repair increment: self-heal a red suite when all tasks done ---
 
 
@@ -208,3 +233,24 @@ def test_repeated_repairs_keep_a_single_regression_section() -> None:
     assert body.count("### Regression fix") == 1
     assert "fix two" in body
     assert "fix one" not in body
+
+
+def test_repair_that_escalates_does_not_record_a_fix_it_did_not_make() -> None:
+    # A genuinely ambiguous regression makes the repair increment raise a
+    # question instead of fixing the suite. The ledger must reflect the
+    # escalation, not claim a repair that never happened.
+    client = _llm("Investigating.\n\n## Open Questions\n\n1. Is the flaky test load-bearing?")
+    finding = [f"{RALPH_REGRESSION_PREFIX} still red"]
+
+    result = RalphCoderPersona().run(_all_done_state(), client, findings=finding)
+
+    # The question escalates (surfaced on state; the content gate routes it).
+    assert [q.text for q in result.questions] == ["Is the flaky test load-bearing?"]
+    assert result.questions[0].origin_stage == "RalphCoderPersona"
+    # No task is marked/unmarked by a repair.
+    all_ids = [t.id for t in build_task_manifest([_SPRINT_A, _SPRINT_B])]
+    assert read_scratchpad().completed_tasks == all_ids
+    # The lesson records the escalation, not a false "repaired" claim.
+    lesson = read_memory()[-1].body
+    assert "escalated" in lesson.lower()
+    assert "Repaired a cross-task test regression" not in lesson

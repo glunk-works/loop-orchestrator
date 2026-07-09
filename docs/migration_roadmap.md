@@ -21,7 +21,7 @@ this file tracks *how far we've got and what's next*.
 | 3a — Execution isolation (per-run git worktrees) | ✅ built behind flag, reviewed | `951e377` |
 | 3b — Execution isolation (disposable container/sandbox) — **inert seam** | ✅ built behind flag, reviewed (docker/podman primary, bwrap secondary; real `docker run` + sandboxed gate pytest deferred to a daemon host). Plan: `sprints/18_execution_isolation_container/sprint_plan.md` | `cdc7c8f` |
 | 4 · part 1 — Ralph-loop Coder (`AgenticNode`) | ✅ built behind flag, reviewed; 4 review findings hardened in 4a (below). Plan: `sprints/19_ralph_coder/sprint_plan.md` | `195f7b7` |
-| 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ built behind flag, 319 tests green — awaiting HITL review. Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | `d675d5d` |
+| 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ complete, reviewed; 3 HITL-review findings resolved (see "Sprint-19a HITL-review settlements"). Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | `d675d5d` → review-fixes |
 | 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ✅ complete, reviewed; HITL-review findings resolved via sprint 21 review-fixes. 394 tests green. Plans: `sprints/20_declarative_generators/`, `sprints/21_declarative_review_fixes/` | `cf48b0c` → `aceb23a` → `03818d9` |
 | 5 — Autonomous triggers + multi-repo factory | ⬜ sketch only | — |
 | 6 — Collapse the flags (decommission the migration scaffolding) | ⬜ sketch only | — |
@@ -34,10 +34,11 @@ its four review findings are hardened in **part 1a** (`sprints/19a_ralph_hardeni
 **Part 2** (`GeneratorNode` + PM critic-gate, `sprints/20_declarative_generators/`)
 is **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`),
 **reviewed, and its review findings resolved** (sprint 21 review-fixes, `03818d9`).
-**▶ NEXT ACTION: plan Phase 5** (autonomous triggers + multi-repo factory) —
-part 1a (`19a`) HITL review is the only other Phase-4 item still open, if not yet
-done. Phase 5 remains sketch-only; Phase 6 (below) is the tracked teardown that
-keeps the feature flags from calcifying into permanent bloat.
+**▶ NEXT ACTION: plan Phase 5** (autonomous triggers + multi-repo factory).
+All Phase-4 sub-phases are now built, reviewed, and their review findings
+resolved (part 1a reviewed 2026-07-09). Phase 5 remains sketch-only; Phase 6
+(below) is the tracked teardown that keeps the feature flags from calcifying
+into permanent bloat.
 
 ## Decisions log (locked)
 
@@ -175,6 +176,28 @@ keeps the feature flags from calcifying into permanent bloat.
     and `key_merge` passes the *current artifact* alongside the findings, so a
     re-listed already-fixed field is reconciled against the spec, not a
     misdirection.
+- **Sprint-19a HITL-review settlements (owner-confirmed 2026-07-09):** the
+  Ralph-hardening pass (`d675d5d`) was reviewed; 3 findings, all fixed (flag-scoped
+  to `LOOP_ENGINE_CODER=ralph`):
+  - **`_upsert_task_section` orphaning (correctness).** Its terminator matched any
+    `\n### `, so a model report body's own `### ` subheadings truncated the match
+    mid-body and orphaned the tail — leaking stale content (including a resolved
+    `## Edit Application Failures`, which could wedge the gate) across re-runs and
+    defeating the idempotency finding (c) added. Fixed to key only off the section
+    headers this module writes (`### Task ` / `### Regression fix`); pinned by a
+    `### `-in-body test.
+  - **`_repair` false-success ledger.** An escalating repair (one that raised Open
+    Questions instead of fixing the suite) recorded a "Repaired…" memory lesson and
+    a `### Regression fix` claim. Now branches its outcome on `new_questions` like
+    `_task_increment`.
+  - **Dependency name-matching precision (owner chose to tighten).** Bare
+    single-word sprint names (`api`, `beta`) matched from incidental prose ("the
+    public api"), reintroducing a milder version of the false-dep problem finding
+    (b) fixed. Tightened to *distinctive* (underscore-bearing) tokens only — the
+    full `NN_name` dir or a multi-word name; single words must be referenced by
+    full dir or `Sprint N`/`#N`. Changed the deliberately-tested `beta`→sprint
+    contract (test updated to a distinctive `data_layer` name + a false-positive
+    negative test).
 
 ## Feature flags introduced
 

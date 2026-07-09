@@ -84,14 +84,23 @@ def _compose_findings(resolutions: list[str], latest_status: str | None) -> str 
 
 
 def _upsert_task_section(existing: str, header: str, body: str) -> str:
-    """Replace the block starting with `header` (up to the next `### ` header or
+    """Replace the block starting with `header` (up to the next section header or
     end) with a fresh one, or append it if absent — so re-running an escalated
     task, or a repeated repair increment, never duplicates its report section.
+
+    The terminator matches only the section headers *this* module writes
+    (`### Task ` / `### Regression fix`), NOT any `### ` — a model report body
+    routinely contains its own `### ` subheadings, and a bare-`### ` terminator
+    would stop mid-body and orphan the tail (leaking stale content, including a
+    resolved `## Edit Application Failures`, across re-runs).
     """
     section = f"{header}\n\n{body}"
     if not existing:
         return section
-    pattern = re.compile(rf"^{re.escape(header)}.*?(?=\n### |\Z)", re.DOTALL | re.MULTILINE)
+    pattern = re.compile(
+        rf"^{re.escape(header)}.*?(?=\n### Task |\n{re.escape(_REGRESSION_SECTION_HEADER)}|\Z)",
+        re.DOTALL | re.MULTILINE,
+    )
     if pattern.search(existing):
         return pattern.sub(lambda _match: section, existing, count=1)
     return f"{existing}\n\n{section}"
@@ -306,12 +315,16 @@ class RalphCoderPersona(BasePersona):
         new_questions = _new_questions(state, report, origin_detail=None)
         questions = [*state.questions, *new_questions]
         write_scratchpad(scratch.model_copy(update={"active_task": None}))
-        append_memory(
-            MemoryEntry(
-                title="Ralph regression fix",
-                body="Repaired a cross-task test regression (no new task).",
+        # An escalating repair raised questions instead of fixing the suite — the
+        # ledger must not claim a fix that did not happen (the gate re-runs and
+        # the questions escalate via the content gate).
+        if new_questions:
+            outcome = (
+                f"Regression repair escalated {len(new_questions)} question(s); not yet fixed."
             )
-        )
+        else:
+            outcome = "Repaired a cross-task test regression (no new task)."
+        append_memory(MemoryEntry(title="Ralph regression fix", body=outcome))
 
         artifacts = {**state.artifacts, "implementation_reports": json.dumps(reports)}
         return state.model_copy(update={"artifacts": artifacts, "questions": questions})
