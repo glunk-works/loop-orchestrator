@@ -5,48 +5,46 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Phase 5 — Sprint 22b (`native github_server`) — `planning`.**
-Sprint 22a is complete, reviewed, and **archived**. 22b is the foundation slice of
-Phase 5 proper: the system's *second* MCP server, built native re-front. **No plan
-written yet** — the next action is to write it (Opus/Architect, planning pass, one
-question at a time, HITL-gated).
+**Phase 5 — Sprint 22b (`native github_server`) — `implementing`.**
+Plan written and **HITL-approved**. Ready for a Sonnet/Coder session to implement it.
+This is the foundation slice of Phase 5 proper: the system's *second* MCP server.
 
-## Just done (Opus/Architect — 22a HITL review + archive)
-- **Reviewed the Sprint 22a diff** (`457f675` → `71f1692`): coder-tools parity held,
-  consumer-scoping confirmed as a real enforced invariant (not a docstring), fixture
-  servers hermetic/offline, docs distinguish `loop_engine.mcp.json` from Claude Code's
-  `.mcp.json`. **Approved.**
-- **Fixed 2 quality findings** (review-fixes, `d0e118d`): deleted the now-dead
-  `coder_tools_server_params()` (+ export + unused `sys` import) — `config.py::_default_servers()`
-  is now the single source of truth for the coder-tools local launch; renamed the
-  `.mcp.json`-named config fixture in `tests/tools/test_mcp_config.py` to
-  `loop_engine.mcp.json`. Lint clean, format unchanged, **406 passed**.
-- **Archived 22a**: snapshot at `.ai/archive/22a_mcp_multiserver_discovery-next-steps.md`;
-  roadmap Phase 5 row + ▶ NEXT ACTION advanced to 22b; `.ai/state.json` → `22b_native_github_server` / `planning`.
+## Just done (Opus/Architect — 22b planning pass)
+- **Settled the two gating design decisions** and wrote the plan
+  (`sprints/22b_native_github_server/sprint_plan.md`, HITL-approved):
+  1. **gh-only; local-git surface deferred to Sprint 23.** All four factory verbs
+     ride the existing `gh` executable (`gh repo create` / `gh repo clone` /
+     `gh api …/git/refs` / `gh pr create`), so `tools/repo_io` is a **second `gh`
+     consumer** and adds **NO fourth subprocess surface** — the invariant stays at
+     three (its `gh` clause widens to name `issue_io` + `repo_io`).
+  2. **Capability slice + committed config.** Ships server + `tools/repo_io` delegate
+     + a **committed** repo-root `loop_engine.mcp.json` github stanza + consumer-scoped
+     `build_github_provider()` + hermetic tests + docs; **no** production flow caller
+     (that's Sprint 23).
+- **Pre-verified** the committed-config risk: every `test_mcp_config.py` case uses a
+  `tmp_path` override; the only no-arg `load_mcp_config()` is inside consumer-scoped
+  `build_provider_for` — so committing the first real `loop_engine.mcp.json` cannot
+  perturb the coder path.
 
 ## Next
-1. **(Opus/Architect) Plan Sprint 22b** — write `sprints/22b_native_github_server/sprint_plan.md`.
-   Scope (from the roadmap decisions log): the native `github_server` MCP server (factory
-   verbs `{create_repository, clone_repo, create_branch, open_pr}`), a new `tools/repo_io`
-   delegate (GitHub-owning sibling to `issue_io`; `issue_io` stays on its current direct
-   path, untouched), its `loop_engine.mcp.json` github stanza (static launch spec), and the
-   **orchestrator-side** consumer (`provider.execute("open_pr", …)`, no LLM loop — github
-   verbs must never enter the model's tool loop; the 22a consumer-scope guard already enforces
-   this pre-emptively).
-2. **Settle the open design item first** (it gates the plan): cloning target repos introduces
-   a **new git subprocess surface**. Reconcile against the "exactly three sanctioned subprocess
-   surfaces" invariant — extend `tools/worktree` vs. add a fourth sanctioned surface. This is an
-   Architect decision, explicitly deferred out of 22a.
-3. **Note:** 22b's first real network + `gh`-auth server launch has **no live verification on
-   this branch** (no daemon host, no second real server e2e). Plan for unit/hermetic coverage
-   and append the live check to `sprints/DEFERRED_VERIFICATION.md`.
+1. **(Sonnet/Coder) Implement Sprint 22b** — Tasks 1–5 in order from the sprint_plan:
+   (1) `tools/repo_io` delegate, (2) `mcp_servers/github_server` re-front,
+   (3) committed `loop_engine.mcp.json` + `build_github_provider()`, (4) bidirectional
+   consumer-scope guard, (5) docs + roadmap→Sprint 23 + `DEFERRED_VERIFICATION.md`.
+   **Do not re-open the two locked decisions** (Context section of the plan).
+2. **Mirror precedents exactly:** `mcp_servers/coder_tools_server.py` (re-front shape),
+   `tools/issue_io/github.py` (gh-shelling delegate + `patch("...._run_gh")` test style).
+3. **All tests hermetic** (no `gh`/network on this branch); append the live
+   `github_server`-launch check to `sprints/DEFERRED_VERIFICATION.md`. Run the green
+   gate (lint/format/test) before handing back for **Opus HITL review**.
 
 ## Pointers
-- `docs/migration_roadmap.md` — Phase 5 planning-pass + sprint-decomposition (locked decisions),
-  the 22b outline, and the ▶ NEXT ACTION line.
-- `sprints/22a_mcp_multiserver_discovery/sprint_plan.md` — the completed 22a plan (precedent
-  for the 22b plan's shape; the discovery/scoping substrate 22b builds on).
+- `sprints/22b_native_github_server/sprint_plan.md` — the approved plan (5 tasks +
+  the two locked-decision Context block).
+- `docs/migration_roadmap.md` — Phase 5 planning-pass + sprint decomposition; the
+  22b outline and the ▶ NEXT ACTION line.
 - `.ai/context/workflow.md` — the Opus↔Sonnet handoff protocol + switch points.
 
 ## Working tree
-- Clean. 22a review-fixes committed as `d0e118d`; the archival (roadmap + `.ai/`) as `d365349` (HEAD).
+- **Clean.** The approved plan + this cursor are committed on
+  `feat/mcp-langgraph-migration` (see `.ai/state.json` `last_commit` for the exact HEAD).
