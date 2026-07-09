@@ -5,46 +5,41 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Phase 5 — Sprint 24 (`maintenance_flow`) — `planning`.**
-Sprints 23 + 23a are archived (23a re-reviewed clean, `212beeb`). No Sprint 24
-plan exists yet — the next session is a fresh Opus/Architect planning pass.
+**Phase 5 — Sprint 24 (`maintenance_flow`) — `implementing`.**
+The plan is written and HITL-approved (Opus planning pass, this session). The next
+session is **Sonnet/Coder** implementing tasks 1–6.
 
-## Just done (Opus/Architect — 23a re-review + archival)
-- **HITL re-reviewed the Sprint 23a diff (`212beeb`)** via `/code-review` (high
-  effort). Verdict: **clean** — all 3 prior findings correctly closed (task
-  retention + done-callback, `400`-not-`500` on unparseable body, `_run`
-  failure logging), and the non-object-JSON edge is already defended by
-  `parse_event`'s `isinstance(payload, dict)` guard (routes to `204`).
-- **Archived Sprints 23 and 23a.** Snapshotted the 23a cursor to
-  `.ai/archive/23a_trigger_review_fixes-next-steps.md`; advanced `.ai/state.json`
-  to Sprint 24 (`planning`, Opus/Architect); updated `docs/migration_roadmap.md`
-  (status row + NEXT ACTION + Sprint 23 detail line now mark 23a landed +
-  re-reviewed clean, commit chain extended to `212beeb`).
+## Just done (Opus/Architect — Sprint 24 planning pass)
+- **Ran the Sprint 24 planning pass** (one question at a time, HITL gates) and locked
+  the four dominant decisions:
+  1. **Scope = capability slice** (mirrors 22b/23) — no CLI, no trigger wiring, no bootstrap flow.
+  2. **Git-write surface = a NEW `tools/git_io` module** — honestly the **4th** sanctioned
+     subprocess surface (not bolted onto `repo_io`=gh or `worktree`=orchestrator-own).
+  3. **Exec model = injectable `RunStep` seam → `runner.run_in_tree`** (default loop, cwd
+     pinned to the clone, **no** `worktree_run`); "absorb" = run in the clone's cwd.
+  4. **Green gate = `coder_tools` pytest on the clone; green-ONLY push+PR against `develop`;
+     red ⇒ no push/PR**; auto-merge stays impossible (`open_pr` terminal, no merge verb).
+- **Wrote `sprints/24_maintenance_flow/sprint_plan.md`** — 6 tasks, Context section records
+  all four locked decisions ("do not re-open").
 
 ## Next
-1. **(Opus/Architect) Plan Sprint 24 (maintenance flow).** Planning pass, one
-   question at a time, HITL gates. Write `sprints/24_maintenance_flow/sprint_plan.md`.
-   Scope (from carry-forward): the first caller to chain `tools/repo_io`'s factory
-   verbs — clone -> feature-branch worktree -> absorb `CLAUDE.md`/`.agent/STATE.md`
-   -> green gate -> push -> open PR against `develop`; **auto-merge stays prohibited**.
-2. Resolve the **deferred local-git subprocess-surface decision** (`git push` in a
-   cloned tree) as part of that plan — it would be a potential 4th sanctioned
-   subprocess surface, so decide deliberately (reuse `tools/worktree`'s posture vs.
-   a new fixed-argv `shell=False` surface).
-3. `/handoff` to Sonnet/Coder once the plan is HITL-approved.
+1. **(Sonnet/Coder) Implement Sprint 24, tasks 1–6 in order** per the sprint plan. Do NOT
+   re-open the locked decisions. Green gate each task; **`sbom.json` unchanged** (no dep added).
+2. `/handoff` back to **Opus/Architect** for HITL review of the Sprint 24 diff when green.
+3. `/archive-sprint` only after the review is clean and committed.
 
 ## Carry-forward
-- **Open low nit (carried from 22b, still unresolved):** bare `python` vs
-  `sys.executable` in the committed `loop_engine.mcp.json` github stanza.
+- **Open low nit (carried from 22b, still unresolved):** bare `python` vs `sys.executable`
+  in the committed `loop_engine.mcp.json` github stanza — orthogonal to this flow, not touched in 24.
 
 ## Pointers
-- `docs/migration_roadmap.md` — Phase 5 status; ▶ NEXT ACTION → plan Sprint 24.
-- `sprints/24_maintenance_flow/sprint_plan.md` — **to be written** (this sprint).
-- `sprints/23_trigger_surface/`, `sprints/23a_trigger_review_fixes/` — the just-archived
-  sprints (context for the trigger surface Sprint 24 builds on).
+- `sprints/24_maintenance_flow/sprint_plan.md` — **the task list for this sprint** (read first).
+- `docs/migration_roadmap.md` — Phase 5 status; ▶ NEXT ACTION → Sprint 24 (maintenance flow).
+- `sprints/22b_native_github_server/`, `sprints/23_trigger_surface/` — the foundation (repo_io
+  factory verbs) + precedent (top-level caller + injectable seam + boundary test) 24 builds on.
 - `.ai/context/workflow.md` — the Opus↔Sonnet handoff protocol + switch points.
 
 ## Working tree
-- **Clean.** The archival is committed as `5e99f1f` (tracked files:
-  `.ai/next-steps.md`, `docs/migration_roadmap.md`); `.ai/state.json` and
-  `.ai/archive/` are git-ignored local cursor files. HEAD == `last_commit`.
+- **Clean.** The plan + this cursor are committed on the handoff commit at HEAD
+  (tracked files: `sprints/24_maintenance_flow/sprint_plan.md`, `.ai/next-steps.md`);
+  `.ai/state.json` is the git-ignored machine cursor and pins the exact `last_commit`.
