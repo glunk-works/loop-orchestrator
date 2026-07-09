@@ -5,28 +5,24 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Phase 4 · part 2 review-fixes (sprint `21_declarative_review_fixes`) — `awaiting_hitl_review`.**
-All 5 sprint-21 tasks are implemented and the green gate is passing. Next session is
-**Opus / Architect** for the HITL review + the deferred finding #4 decision.
+**Phase 4 · part 2 (sprint `21_declarative_review_fixes`) — `done`.** Sprint 21 is
+implemented, HITL-reviewed, and its review findings are resolved + committed. The
+HITL gate is **closed**. Nothing is in flight; the next action is archiving.
 
 ## Just done
-- **(Sonnet / Coder) Implemented sprint 21 tasks 1–5:**
-  1. Extracted `fold_answers` to a module-level function in `personas/pm/persona.py`; `PMPersona.fold_answers` and the new `PMGenerator.fold_answers` (`personas/declarative/node.py`) both delegate to it — restores `resume --from-issue` under `declarative`.
-  2. Added `Stage.escalate_on_exhaustion: bool = False` (`core/engine.py`) — an exhausted REVISE converts to ESCALATE instead of raising `StageGateFailedError` when set. Default off; the two existing hard-fail tests pass unedited.
-  3. Wired the PM stage in `loops/default/loop.py`: `max_revisions=4`, `escalate_on_exhaustion=True` (inert for classic — its PM gate never REVISEs).
-  4. Added `encoding="utf-8"` to both `read_text()` calls in `personas/declarative/config.py`.
-  5. Cleanups: `_OUTPUT_ADAPTERS`/`_REVISION_STYLES` now derived via `typing.get_args` from `config.py`'s Literals (dedup); `repo_root()` cached with `@functools.cache`; hoisted the duplicated `effective = merge_sections(...)` computation; `CriticGate`'s inner `ArtifactGate` is now a `cached_property`.
-- **Deviation from plan:** did NOT remove the `GeneratorNode.__init__` strategy-name guards (task 5's "or drop the redundant guards" option) — an existing test (`test_construction_validates_strategy_names`) proved they're reachable via `model_copy` (which skips Pydantic validation), so only the tuple dedup was applied, guards kept.
-- **Green gate passing:** `hatch run test` (393 passed), `lint` (clean), `format` (clean), `audit` (no known vulnerabilities).
-- **Committed:** `aceb23a` — "Phase 4 part 2: sprint 21 review-fix implementation" (15 files changed).
+- **(Opus / Architect) HITL-reviewed the sprint-21 implementation (`aceb23a`)** — high-effort `/code-review` scoped to that commit. Three findings surfaced and were all resolved this session in `03818d9`:
+  1. **Finding #1 — false "inert for classic" guarantee.** The PM stage's `max_revisions=4` + `escalate_on_exhaustion=True` are live on the *classic* path too (its `ArtifactGate` returns REVISE on a missing/empty/invalid `project_spec`), so a non-converging classic PM now escalates to a human issue instead of hard-failing. **Owner chose to make it intentional (option 1):** corrected the `loop.py` + `test_default.py` comments and added `test_classic_default_loop_pm_stage_escalates_on_exhaustion` pinning the real classic PM stage.
+  2. **Finding #2 — duplicated ESCALATE synthesis.** Extracted the identical no-progress / budget-exhausted escalation block into `core/engine.py::_exhaustion_escalation()`.
+  3. **Finding #4 — key_merge findings accumulation.** **Settled: accepted as in-bounds non-parity (docs-only, no code change).** Accumulation is the engine's uniform revise-loop contract; a latest-only carve-out would be worse than the redundancy. Recorded in the roadmap decisions log + sprint-plan note + a comment at `_revise_key_merge`.
+- **Committed:** `03818d9` — "Phase 4 part 2: sprint 21 HITL-review resolution" (7 files).
+- **Green gate passing:** `hatch run test` (394 passed), `lint` (clean), `format` (clean).
 
 ## Next
-1. **(Opus / Architect) HITL-review the diff** (`aceb23a`) against `sprint_plan.md`'s 5 tasks and their acceptance criteria (new tests are in `tests/core/test_engine.py`, `test_graph_engine.py`, `tests/loops/test_declarative_pipeline.py`, `test_default.py`, `tests/personas/declarative/test_config.py`, `test_pm_parity.py`, `tests/test_cli.py`).
-2. **(Opus / Architect) Settle review finding #4** (accumulation: re-derive latest-only for `key_merge` vs. document as accepted non-parity) — a small decision before it becomes a task. See the "Deferred" note at the bottom of the sprint plan.
-3. After sprint 21 is reviewed → `/archive-sprint` for 20 **and** 21, then plan Phase 5 (FastAPI webhook triggers + multi-repo factory).
+1. **(Opus / Architect) `/archive-sprint`** — sprint 21 is complete, HITL-approved, and committed. Archive **20 and 21** (each is a separate archive step).
+2. **(Opus / Architect) Begin Phase 5 planning** — FastAPI webhook triggers + the multi-repo factory (currently a sketch in the roadmap). Planning pass, one question at a time, HITL-gated.
 
 ## Pointers
-- `docs/migration_roadmap.md` — deep status + decisions log (resume point of record).
-- `sprints/21_declarative_review_fixes/sprint_plan.md` — the active sprint (review fixes).
-- `sprints/20_declarative_generators/sprint_plan.md` — the reviewed/approved sprint the fixes derive from.
+- `docs/migration_roadmap.md` — deep status + decisions log (resume point of record); see the new "Sprint-21 HITL-review settlements" bullet.
+- `sprints/21_declarative_review_fixes/sprint_plan.md` — the just-completed sprint (finding #4 note now marked RESOLVED).
+- `sprints/20_declarative_generators/sprint_plan.md` — the reviewed/approved sprint the fixes derive from (also pending archive).
 - `.ai/context/workflow.md` — the Opus↔Sonnet handoff protocol + switch points.
