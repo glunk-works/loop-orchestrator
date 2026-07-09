@@ -182,5 +182,9 @@ a port reachable from GitHub):
   same, plus that a redelivery (GitHub's "Redeliver" button) while the first
   run is still active is dropped (no second run), per the in-memory dedupe.
 - Tear down the tunnel/server and delete the scratch webhook afterward.
+- **(23a) Also confirm the bad-body path**: a delivery whose content type is
+  misconfigured as `application/x-www-form-urlencoded` (so the raw body is
+  not valid JSON) but still correctly signed should observe a `400` response
+  in GitHub's webhook UI, not a `500`.
 
 Delete this file once the checks have been performed and any findings are fixed.

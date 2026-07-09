@@ -5,44 +5,49 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Phase 5 — Sprint 23a (`trigger_review_fixes`) — `implementing`.**
-Opus/Architect HITL-reviewed the Sprint 23 diff and planned a review-fixes
-sprint (23a). Plan is HITL-approved; next is a Sonnet/Coder implementation session.
+**Phase 5 — Sprint 23a (`trigger_review_fixes`) — `awaiting_hitl_review`.**
+Sonnet/Coder implemented all 3 tasks and the green gate passes. Working tree
+is **dirty, not committed**. Next is an Opus/Architect HITL re-review.
 
-## Just done (Opus/Architect — 23 HITL review + 23a planning)
-- **HITL-reviewed the Sprint 23 trigger-surface diff (`62a3de2`)** via `/code-review`
-  (high effort). Verdict: otherwise correct (HMAC-before-JSON ordering, fail-closed
-  secret, parser grammar, `cli.run → runner.run_new` refactor, mirrored engine
-  indirection all hold), but **3 findings** surfaced on the dispatch/webhook path.
-- **Finding #1 (high):** `InProcessDispatcher.dispatch` discards the `asyncio.create_task`
-  result and nothing holds a strong ref → the run task can be GC-cancelled mid-flight,
-  which also permanently wedges its `(repo, issue)` dedupe key in `_active`.
-- **Finding #2 (medium):** `await request.json()` is unguarded → a signed-but-non-JSON
-  body (e.g. a form-encoded webhook) raises → HTTP 500, breaking the "never 500 on a
-  malformed delivery" contract. **HITL decision: return `400`** (not 204, not 500).
-- **Finding #3 (low-med):** run failures in `_run` are never logged (no `except`).
-- **Wrote `sprints/23a_trigger_review_fixes/sprint_plan.md`** (3 tasks, all decisions
-  locked) per the user's choice to route the fixes into a dedicated review-fixes sprint
-  (mirrors 19a/21). No new dep / sbom / subprocess / State change.
-- Working tree carries the new `sprints/23a_trigger_review_fixes/` (untracked); nothing
-  committed this session.
+## Just done (Sonnet/Coder — 23a implementation)
+- **Task 1 (`trigger/dispatch.py`):** added `self._tasks: set[asyncio.Task]`;
+  `dispatch` now does `task = asyncio.create_task(...)`,
+  `self._tasks.add(task)`, `task.add_done_callback(self._tasks.discard)` —
+  closes the GC-cancellation window (finding #1). Added
+  `except Exception: logger.exception("run failed for %s#%s", *key)` in
+  `_run` before the `finally` (finding #3), swallowed so the dedupe key is
+  still released for retry.
+- **Task 2 (`trigger/app.py`):** replaced `await request.json()` with
+  `try: payload = json.loads(raw_body) except ValueError: return
+  Response(status_code=400)`, parsed from the already-read raw body;
+  `import json` added; docstring updated to state the `400`-never-`500`
+  contract (finding #2).
+- **Tests:** added `test_in_flight_task_is_strongly_referenced_and_released_on_completion`
+  + `test_run_failure_is_logged_and_releases_the_dedupe_key` to
+  `test_dispatch.py`; added `test_signed_but_unparseable_body_returns_400_not_500`
+  to `test_app.py`. All pre-existing trigger tests pass **unchanged**.
+- **Docs:** `docs/migration_roadmap.md` — status table + NEXT ACTION narrative
+  updated (Sprint 23 now "HITL-reviewed"), new **"Sprint-23a HITL-review
+  settlements"** decisions-log bullet naming all 3 findings + resolutions.
+  `.ai/context/modules.md` — `trigger/dispatch.py`/`app.py` paragraph
+  refined with the retained-task and 400-on-bad-body behavior.
+  `sprints/DEFERRED_VERIFICATION.md` §6 — added a one-line note to also
+  check the bad-body-returns-400 path during the live webhook check.
+- **Green gate: full pass.** `hatch run test` → 465 passed (0 failed);
+  `hatch run lint` → all checks passed; `hatch run format` → 138 files
+  unchanged; `hatch run audit` → no known vulnerabilities, no dep change.
+- Nothing committed this session — see "Working tree" below.
 
 ## Next
-1. **(Sonnet/Coder) Implement Sprint 23a's 3 tasks** against
-   `sprints/23a_trigger_review_fixes/sprint_plan.md`:
-   - **Task 1 (`trigger/dispatch.py`):** retain the task in a strong-ref `self._tasks`
-     set + `add_done_callback(self._tasks.discard)` (fixes #1); add
-     `except Exception: logger.exception("run failed for %s#%s", *key)` before the
-     `finally` (fixes #3).
-   - **Task 2 (`trigger/app.py`):** guard the parse — `json.loads(raw_body)` in a
-     `try/except ValueError: return Response(status_code=400)` (fixes #2); `import json`;
-     update the docstring. 400 is deliberate — unrelated/`ping` bodies still 204.
-   - **Task 3:** docs — roadmap (mark 23 reviewed + "Sprint-23a HITL-review settlements"
-     bullet; NEXT ACTION stays Sprint 24) + `modules.md`.
-   - Green gate (`hatch run test` + `lint` + `format`); boundary tests + all existing
-     trigger tests must stay green **verbatim**. Then `/handoff` back to Opus.
-2. **(Opus/Architect) HITL re-review the 23a diff**, then `/archive-sprint` to retire
-   both 23 and 23a, and begin planning **Sprint 24 (maintenance flow)**.
+1. **Commit the Sprint 23a diff.** Touched: `src/loop_engine/trigger/dispatch.py`,
+   `src/loop_engine/trigger/app.py`, `tests/trigger/test_dispatch.py`,
+   `tests/trigger/test_app.py`, `docs/migration_roadmap.md`,
+   `.ai/context/modules.md`, `sprints/DEFERRED_VERIFICATION.md`.
+2. **(Opus/Architect) HITL re-review the 23a diff** via `/code-review` (high
+   effort, mirroring the 23 review). All 3 prior findings are addressed per
+   locked decisions — expect a clean pass, but confirm rather than assume.
+3. **(Opus/Architect) `/archive-sprint`** to retire both 23 and 23a once
+   re-review is approved, then begin planning **Sprint 24 (maintenance flow)**.
 
 ## Carry-forward
 - **Sprint 24 (maintenance flow)** — the first caller to chain `tools/repo_io`'s factory
@@ -61,5 +66,6 @@ sprint (23a). Plan is HITL-approved; next is a Sonnet/Coder implementation sessi
 - `.ai/context/workflow.md` — the Opus↔Sonnet handoff protocol + switch points.
 
 ## Working tree
-- `sprints/23a_trigger_review_fixes/` is untracked (the new plan). Recommend committing
-  it before switching sessions so a `/resume`'s `last_commit` matches HEAD.
+- **Dirty — nothing from this session is committed.** Recommend committing
+  the 23a diff (listed under "Next" above) before switching sessions so a
+  `/resume`'s `last_commit` matches HEAD.

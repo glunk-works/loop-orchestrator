@@ -26,6 +26,7 @@ class RunDispatcher(Protocol):
 class InProcessDispatcher:
     def __init__(self) -> None:
         self._active: set[tuple[str, int]] = set()
+        self._tasks: set[asyncio.Task] = set()
 
     async def dispatch(self, request: RunRequest) -> None:
         key = (request.repo_full_name, request.issue_number)
@@ -33,7 +34,9 @@ class InProcessDispatcher:
             logger.info("dispatch skipped, already running for %s#%s", *key)
             return
         self._active.add(key)
-        asyncio.create_task(self._run(request, key))
+        task = asyncio.create_task(self._run(request, key))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     async def _run(self, request: RunRequest, key: tuple[str, int]) -> None:
         try:
@@ -45,5 +48,7 @@ class InProcessDispatcher:
                 loop_name=request.loop_name,
             )
             logger.info("run finished for %s#%s", *key)
+        except Exception:
+            logger.exception("run failed for %s#%s", *key)
         finally:
             self._active.discard(key)

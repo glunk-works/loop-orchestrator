@@ -5,11 +5,14 @@ model-driven code — so signature verification is the trust boundary and must
 be airtight: the raw body is read and HMAC-verified *before* any JSON
 parsing. No secret is ever logged. `create_app` reads
 `LOOP_ENGINE_WEBHOOK_SECRET` at construction and fails closed (raises) if it
-is unset — the app must never fall open to unsigned requests.
+is unset — the app must never fall open to unsigned requests. An
+authenticated request whose body is not valid JSON returns `400` — it is
+never allowed to 500.
 """
 
 import hashlib
 import hmac
+import json
 import os
 
 from fastapi import FastAPI, Request
@@ -55,7 +58,10 @@ def create_app(dispatcher: RunDispatcher | None = None) -> FastAPI:
         if not _signature_is_valid(secret, raw_body, request.headers.get(_SIGNATURE_HEADER)):
             return Response(status_code=401)
 
-        payload = await request.json()
+        try:
+            payload = json.loads(raw_body)
+        except ValueError:
+            return Response(status_code=400)
         event_name = request.headers.get(_EVENT_HEADER, "")
         run_request = parse_event(event_name, payload)
         if run_request is None:

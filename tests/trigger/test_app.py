@@ -135,6 +135,25 @@ def test_valid_signature_over_exact_raw_body_passes(monkeypatch) -> None:
     assert len(fake.received) == 1
 
 
+def test_signed_but_unparseable_body_returns_400_not_500(monkeypatch) -> None:
+    client, fake = _client(monkeypatch)
+    body = b"payload=%7Bnot+json%7D"
+    signature = _sign(body)
+
+    resp = client.post(
+        "/webhook",
+        content=body,
+        headers={
+            "X-GitHub-Event": "issues",
+            "X-Hub-Signature-256": signature,
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+    )
+
+    assert resp.status_code == 400
+    assert fake.received == []
+
+
 def test_construct_app_without_secret_raises(monkeypatch) -> None:
     monkeypatch.delenv("LOOP_ENGINE_WEBHOOK_SECRET", raising=False)
 
