@@ -23,7 +23,7 @@ this file tracks *how far we've got and what's next*.
 | 4 · part 1 — Ralph-loop Coder (`AgenticNode`) | ✅ built behind flag, reviewed; 4 review findings hardened in 4a (below). Plan: `sprints/19_ralph_coder/sprint_plan.md` | `195f7b7` |
 | 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ complete, reviewed; 3 HITL-review findings resolved (see "Sprint-19a HITL-review settlements"). Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | `d675d5d` → review-fixes |
 | 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ✅ complete, reviewed; HITL-review findings resolved via sprint 21 review-fixes. 394 tests green. Plans: `sprints/20_declarative_generators/`, `sprints/21_declarative_review_fixes/` | `cf48b0c` → `aceb23a` → `03818d9` |
-| 5 — Autonomous triggers + multi-repo factory | ⬜ sketch only | — |
+| 5 — Autonomous triggers + multi-repo factory | 🟨 planning — decomposed; foundation slice = github MCP server. 22a plan written (`sprints/22a_mcp_multiserver_discovery/`), awaiting HITL gate + implementation | — |
 | 6 — Collapse the flags (decommission the migration scaffolding) | ⬜ sketch only | — |
 
 Phases 1–3b are detailed and executed (3b's daemon-host e2e is deferred, not
@@ -34,9 +34,13 @@ its four review findings are hardened in **part 1a** (`sprints/19a_ralph_hardeni
 **Part 2** (`GeneratorNode` + PM critic-gate, `sprints/20_declarative_generators/`)
 is **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`),
 **reviewed, and its review findings resolved** (sprint 21 review-fixes, `03818d9`).
-**▶ NEXT ACTION: plan Phase 5** (autonomous triggers + multi-repo factory).
+**▶ NEXT ACTION: HITL-review the Sprint 22a plan** (`sprints/22a_mcp_multiserver_discovery/sprint_plan.md`),
+then hand off to Sonnet to implement it. Phase 5 planning is underway: it is
+decomposed foundation-first (github MCP server), and 22a (`.mcp.json` multi-server
+discovery) has a written plan. See the "Phase 5 planning pass" + "sprint decomposition"
+subsections below for the locked decisions.
 All Phase-4 sub-phases are now built, reviewed, and their review findings
-resolved (part 1a reviewed 2026-07-09). Phase 5 remains sketch-only; Phase 6
+resolved (part 1a reviewed 2026-07-09). Phase 6
 (below) is the tracked teardown that keeps the feature flags from calcifying
 into permanent bloat.
 
@@ -321,19 +325,74 @@ decisions above.
   `CriticGate` decisions, cross-engine `run_loop`≡LangGraph). Live-run
   parity/cost deferred to `sprints/DEFERRED_VERIFICATION.md` §4.
 
-## Phase 5 — Autonomous Triggers & Multi-Repo Factory *(sketch)*
+## Phase 5 — Autonomous Triggers & Multi-Repo Factory *(planning underway)*
 
-- **FastAPI webhook server** alongside the engine; trigger a graph run on an
-  issue labeled `agent-action` or a slash command in an issue comment.
-- **Bootstrapping:** GitHub MCP `create_repository` in `glunk-works` → scaffold
-  (`hatch new` / OpenTofu boilerplate) in a fresh worktree → inject global
-  `CLAUDE.md` → commit/push. *(Pulls forward the deferred github MCP server.)*
-- **Maintenance:** clone + feature-branch worktree → absorb target repo's
-  `CLAUDE.md` + `.agent/STATE.md` → on green gate, push branch and open a PR
-  against `develop`. **Auto-merge stays prohibited.**
+**Scope (four separable pieces, dependency-ordered):**
+- **(1) github MCP server** — the deferred cross-cutting #2; both flows below need it.
+- **(2) Trigger surface** — FastAPI webhook server; trigger a graph run on an issue
+  labeled `agent-action` or a slash command in an issue comment.
+- **(3) Maintenance flow** — clone + feature-branch worktree → absorb target repo's
+  `CLAUDE.md` + `.agent/STATE.md` → on green gate, push branch and open a PR against
+  `develop`. **Auto-merge stays prohibited.**
+- **(4) Bootstrap flow** — `create_repository` in `glunk-works` → scaffold
+  (`hatch new` / OpenTofu boilerplate) in a fresh worktree → inject global `CLAUDE.md`
+  → commit/push.
 
-**Open questions:** webhook auth model + where the server is hosted; org access
-to `glunk-works`; how runs are queued/rate-limited.
+### Phase 5 planning pass (locked 2026-07-09, Opus/Architect)
+
+- **Foundation-first: the github MCP server is the first slice** (piece 1), built
+  before the trigger/flows. Both flows stack on it; it is the lowest-risk, best-understood
+  piece.
+- **Native re-front, not the official GitHub MCP server.** Build `mcp_servers/github_server`
+  mirroring `coder_tools_server`: it delegates to a `tools/` module (never calls `gh`
+  directly), so the "only the GitHub-owning `tools/` module talks to GitHub" boundary
+  holds. Rationale: this repo enforces *exact* tool-set invariants by static test —
+  a native server can assert "exposes exactly `{create_repository, clone_repo,
+  create_branch, open_pr}`"; the official server is a large, evolving, ~60-tool surface
+  (incl. `merge_pull_request`, contradicting "auto-merge prohibited") that we don't
+  control and can't fake offline in CI. We pay more code for the enforced-minimal,
+  testable boundary the migration exists to protect.
+- **Credential = `gh` CLI's own auth** (as `tools/issue_io` already does) — no new secret
+  path, nothing touches the `tools/llm/client.py`-only-imports-keyring invariant. Infisical
+  (available) is an **orthogonal** secrets-provider decision, **deferred** until the factory
+  host needs non-interactive PAT auth. Note: a github server is nonetheless the system's
+  **first credentialed MCP server** (unlike credential-free `coder_tools_server`).
+- **Tool surface = factory verbs only** — `{create_repository, clone_repo, create_branch,
+  open_pr}`. The existing `issue_io` escalation verbs (create/read/comment) **stay on their
+  current direct path** (don't destabilize `resume --from-issue`); unify onto MCP in Phase 6.
+- **Full `.mcp.json`-driven multi-server discovery** (pays down cross-cutting #3), not a
+  bespoke second provider. Two design constraints, both locked: **(a) consumer split** —
+  the provider feeds the **model's** coder tool loop only; github verbs are
+  **orchestrator-invoked** and must never enter that loop, so discovery is
+  **consumer-scoped** (each consumer builds a provider for the servers *it* names).
+  **(b) heterogeneous launch profiles** — coder-tools is sandboxed/no-network (runs
+  untrusted model code, runtime-computed launch); github runs un-sandboxed with
+  network + `gh` auth (trusted first-party code, static `.mcp.json` spec). `.mcp.json`
+  is **optional** with a built-in `coder_tools` default so absence is byte-identical to today.
+
+### Phase 5 sprint decomposition (Phase 4 split precedent)
+
+- **Sprint 22a — `.mcp.json` multi-server discovery** *(plan written:
+  `sprints/22a_mcp_multiserver_discovery/sprint_plan.md`)*. Pure client-side refactor
+  of `tools/mcp` — config-driven, N-server, consumer-scoped provider. **No** new server /
+  subprocess / credential / file-write surface. Load-bearing gate: **coder-tools parity**.
+  `MCPToolProvider` already does multi-session routing; the gap is discovery + scoping.
+  **HITL gate after 22a before 22b.**
+- **Sprint 22b — native `github_server` + `tools/repo_io` delegate + `.mcp.json` entry**
+  *(outline; full plan after 22a review)*. Adds the server (factory verbs), the
+  GitHub-owning delegate module (new `tools/repo_io` sibling to `issue_io`; issue_io
+  untouched), its `.mcp.json` stanza, and the orchestrator-side consumer
+  (`provider.execute("open_pr", …)`, no LLM loop). **Open design item for 22b planning:**
+  cloning target repos introduces a **new git subprocess surface** — reconcile against the
+  "exactly three sanctioned subprocess surfaces" invariant (extend `tools/worktree` vs.
+  add a fourth). First real network+`gh`-auth server launch; live verification deferred to
+  a daemon-bearing host (`sprints/DEFERRED_VERIFICATION.md`).
+- **Sprints 23+ — trigger surface, then maintenance flow, then bootstrap flow** (pieces
+  2→3→4), each separately planned + gated after the github foundation lands.
+
+**Still-open questions (deferred to their sprints, not the github foundation):** webhook
+auth model + where the server is hosted; org access to `glunk-works`; how runs are
+queued/rate-limited.
 
 ## Phase 6 — Collapse the flags (decommission the scaffolding) *(sketch)*
 
