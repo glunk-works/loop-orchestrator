@@ -80,11 +80,15 @@ Expected observations:
   actually diagnoses and fixes a genuine regression at acceptable cost — verify
   this on the host run (introduce a deliberate cross-task regression and confirm
   the loop recovers rather than escalating to a human issue).
-- **Deferred with the sprint-18 host work:** routing the Ralph gate's pytest and
-  the `run_tests` tool through a sandbox under `LOOP_ENGINE_ISOLATION=container`
-  (until then the gate raises `IsolationUnavailableError` rather than run model
-  code in-process), and per-task test selection (v1 gates on global green, not the
-  single task's tests).
+- **Sandboxing — CLOSED by sprint 28.** Both Coder gates' verification pytest now
+  routes through the MCP container sandbox via `tools/mcp.run_gate_pytest`, the
+  same mechanism the `run_tests` *tool* already used (Phase 3b); `_raise_if_sandboxed`
+  is deleted. This was finding **F-GATE-SANDBOX** below. The remaining obligation is
+  *host* re-verification — a real container-sandboxed gate run reaching ACCEPT →
+  `COMPLETED` — carried by sprint 27's V1(complete)/V2, not a code gap.
+- **Per-task test selection — still OPEN.** The gate still gates on the whole
+  `src/` suite going green, not the single task's tests. Unaffected by sprint 28;
+  remains a future improvement.
 
 ## 4. Declarative personas parity + cost (validates Sprint 20, `LOOP_ENGINE_PERSONAS=declarative`)
 
@@ -407,21 +411,39 @@ Not run (budget/side-effect scope not authorized this session). Independent of t
 gate-sandbox gap below (V3 forces a *pause*, it does not need a Coder ACCEPT), but
 it has real GitHub side effects, so it is left for a future host session.
 
-## Finding F-GATE-SANDBOX — the flip block's container-isolated verification is gated on unimplemented work
+## Finding F-GATE-SANDBOX — RESOLVED IN CODE by sprint 28
 
-**What:** the Coder gates (`CoderGate` + `RalphCoderGate`) refuse to run under
-`LOOP_ENGINE_ISOLATION=container`/`sandbox` — `core/coder_gate.py::_raise_if_sandboxed`
-raises because the gate's verification pytest executes **in-process**, and routing
-it through the sandbox is deferred sprint-18 work (§3). The coder's `run_tests`
-*tool* was sandboxed in Phase 3b (via MCP); the gate's *own* pytest was not.
+**Status: resolved-in-code (sprint 28, `sprints/28_gate_pytest_sandbox/`).** The
+Coder gates (`CoderGate` + `RalphCoderGate`) no longer refuse to run under
+`LOOP_ENGINE_ISOLATION=container`/`sandbox`. `core/coder_gate.py::_raise_if_sandboxed`
+is deleted; `_run_gate_pytest` now delegates to `tools/mcp.run_gate_pytest`, which
+dispatches the gate's verification pytest through the same MCP sandboxed
+coder-tools provider the `run_tests` *tool* already used (Phase 3b), instead of
+running it in-process. The stale claim below ("no run of any kind can reach a
+Coder ACCEPT → `COMPLETED` under container isolation") no longer holds in code —
+what remains is the **host** proof.
 
-**Impact on sprint 27 (the flip block):** the plan treats V1/V2/V3 as runnable to
-`COMPLETED` on a daemon-bearing host under `ISOLATION=container`. That assumption
-is **false today** — no run of any kind can reach a Coder ACCEPT → `COMPLETED`
-under container isolation, because the gate that must go green refuses to execute.
-This is a **prerequisite implementation task the flip block did not account for**,
-not a defect in any of the four flags being flipped (the gate refusal is
-flag-invariant and predates Phase 6).
+**Remaining obligation — host re-verification, not a code gap:** a real
+container-sandboxed gate run reaching Coder ACCEPT → `COMPLETED` has not yet been
+observed on a daemon-bearing host. That observation is sprint 27's
+**V1(complete)/V2**, previously blocked by this finding and now unblocked.
+
+**What the gap originally was (history, kept for context):** the gate's
+verification pytest executed **in-process**; under `container`/`sandbox` isolation
+that would run untrusted model code in the orchestrator, so `_raise_if_sandboxed`
+refused rather than do that. Routing it through the sandbox was deferred sprint-18
+work (§3). The coder's `run_tests` *tool* was sandboxed in Phase 3b (via MCP); the
+gate's *own* pytest was not — until sprint 28.
+
+**Impact on sprint 27 (the flip block) — as originally assessed (now closed):** the
+plan treats V1/V2/V3 as runnable to `COMPLETED` on a daemon-bearing host under
+`ISOLATION=container`. That assumption was false at the time this finding was
+recorded — no run of any kind could reach a Coder ACCEPT → `COMPLETED` under
+container isolation, because the gate that must go green refused to execute. This
+was a **prerequisite implementation task the flip block did not account for**, not
+a defect in any of the four flags being flipped (the gate refusal was
+flag-invariant and predated Phase 6). Sprint 28 closes it; sprint 27's V1/V2 now
+carry the host-proof obligation.
 
 **Sequencing decision for the planning session (not decided here):**
 - **Option A — build the gate-sandbox wiring first.** Route the Coder/Ralph gate's
