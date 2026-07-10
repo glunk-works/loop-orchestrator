@@ -20,6 +20,11 @@ from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from loop_engine.tools.coder_tools.run_tests import (
+    PYTEST_NO_TESTS_COLLECTED,
+    parse_run_tests_result,
+    run_pytest,
+)
 from loop_engine.tools.isolation import IsolationUnavailableError, sandbox_runtime_mode
 from loop_engine.tools.mcp.config import (
     CODER_TOOLS_SERVER_NAME,
@@ -348,6 +353,28 @@ def build_coder_tool_provider(cwd: str | Path | None = None) -> MCPToolProvider:
     local subprocess. The selected sandbox mode never degrades to in-process
     execution — a missing runtime raises `IsolationUnavailableError`."""
     return build_provider_for([CODER_TOOLS_SERVER_NAME], cwd=cwd)
+
+
+def run_gate_pytest(path: str, cwd: str | Path) -> tuple[int, str]:
+    """Isolation-aware pytest run for a Coder gate's evidence check.
+
+    Mirrors `_CoderToolBackend.resolve`'s branch on `sandbox_runtime_mode()`:
+    in-process on `none`/`worktree` (unchanged behavior), dispatched through
+    the same sandboxed coder-tools server the model's `run_tests` tool
+    already uses on `container`/`sandbox`. The missing-tree sentinel check
+    stays orchestrator-side (valid under every mode: the worktree is a
+    host-FS tree the orchestrator itself created and bind-mounts) — only the
+    pytest *execution* moves into the sandbox. Never silently falls back to
+    in-process execution under a sandbox mode: a missing runtime/image
+    propagates as `IsolationUnavailableError` from `build_coder_tool_provider`.
+    """
+    if not Path(cwd, path).exists():
+        return PYTEST_NO_TESTS_COLLECTED, f"no {path}/ tree was produced"
+    if sandbox_runtime_mode() is None:
+        return run_pytest(path)
+    with build_coder_tool_provider(cwd=cwd) as provider:
+        text = provider.execute("run_tests", {"path": path})
+    return parse_run_tests_result(text)
 
 
 def build_github_provider() -> MCPToolProvider:

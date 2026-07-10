@@ -22,6 +22,7 @@ from loop_engine.tools.mcp.provider import (
     build_issue_provider,
     build_provider_for,
     container_server_params,
+    run_gate_pytest,
     sandbox_server_params,
     use_mcp_tools,
 )
@@ -39,6 +40,7 @@ __all__ = [
     "build_provider_for",
     "container_server_params",
     "load_mcp_config",
+    "run_gate_pytest",
     "sandbox_server_params",
     "use_mcp_tools",
 ]
