@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -41,6 +42,20 @@ def _select_engine():
     else the classic `run_loop`. Resolved through the module global so tests
     that patch `cli.run_loop` still take effect on the default path."""
     return run_graph_loop if use_langgraph_engine() else run_loop
+
+
+# The `resume --from-issue` read seam: `None` (the default) keeps the classic
+# `issue_io.read_issue` path — no new feature flag, no default flip. Tests
+# inject an MCP-backed reader (e.g. `mcp_read_issue` bound to a fake provider)
+# by monkeypatching this module global, mirroring `_select_engine`'s
+# `cli.run_loop` pattern.
+_issue_reader: Callable[[int], dict] | None = None
+
+
+def _resolve_issue_reader() -> Callable[[int], dict]:
+    """The issue reader for `resume --from-issue`. Classic `issue_io.read_issue`
+    by default; an injected `_issue_reader` (test-only today) takes over."""
+    return _issue_reader or issue_io.read_issue
 
 
 _BUDGET_HELP = "Hard cap on cumulative LLM spend for the run, in USD."
@@ -131,7 +146,7 @@ def resume(
     """Resume a run paused on a GitHub issue, folding in the human's answers."""
     selected_loop = _resolve_loop(loop)
 
-    issue_data = issue_io.read_issue(from_issue)
+    issue_data = _resolve_issue_reader()(from_issue)
     snapshot_path = snapshot or (
         Path(p) if (p := issue_io.parse_snapshot_path(issue_data)) else None
     )

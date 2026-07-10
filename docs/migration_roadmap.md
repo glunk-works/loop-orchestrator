@@ -24,7 +24,7 @@ this file tracks *how far we've got and what's next*.
 | 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ complete, reviewed; 3 HITL-review findings resolved (see "Sprint-19a HITL-review settlements"). Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | `d675d5d` → review-fixes |
 | 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ✅ complete, reviewed; HITL-review findings resolved via sprint 21 review-fixes. 394 tests green. Plans: `sprints/20_declarative_generators/`, `sprints/21_declarative_review_fixes/` | `cf48b0c` → `aceb23a` → `03818d9` |
 | 5 — Autonomous triggers + multi-repo factory | 🟨 22a + 22b + 23 + 23a + 24 + 25 complete, reviewed, archived. Sprint 25 (bootstrap flow capability slice) landed the second sanctioned file-write surface (`tools/scaffold`), HITL-reviewed by Opus and approved. Next: plan Phase 6 (collapse the flags). Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/`, `sprints/23_trigger_surface/`, `sprints/23a_trigger_review_fixes/`, `sprints/24_maintenance_flow/`, `sprints/25_bootstrap_flow/` | `457f675` → `71f1692` → `d0e118d` → `7b46227` → `5bc3811` → `5ff8c02` → `e0406d8` → `212beeb` → `6172ad1` → `f8d388a` → `79b535d` |
-| 6 — Collapse the flags (decommission the migration scaffolding) | ⬜ sketch only | — |
+| 6 — Collapse the flags (decommission the migration scaffolding) | 🟨 planning pass done (locked 2026-07-10); Sprint 26 (`issue_io`→MCP unification, capability+seams) is the first, verification-independent slice — implemented, green, awaiting HITL review. Plan: `sprints/26_issue_io_mcp_unification/` | — |
 
 Phases 1–3b are detailed and executed (3b's daemon-host e2e is deferred, not
 lost — see its plan). Phase 4's planning pass is done and it **split into two
@@ -34,7 +34,10 @@ its four review findings are hardened in **part 1a** (`sprints/19a_ralph_hardeni
 **Part 2** (`GeneratorNode` + PM critic-gate, `sprints/20_declarative_generators/`)
 is **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`),
 **reviewed, and its review findings resolved** (sprint 21 review-fixes, `03818d9`).
-**▶ NEXT ACTION: Plan Phase 6 (collapse the flags).** Sprint 25
+**▶ NEXT ACTION: HITL review of Sprint 26 (Opus), then plan the host-gated
+Phase 6 block** (the four flag deletions + `artifacts` strip + `loop.py`
+collapse + the issue-path default-flip/classic-deletion — all deferred until
+a daemon-bearing host is available). Sprint 25
 (`sprints/25_bootstrap_flow/sprint_plan.md`) is **complete, all 6 tasks green,
 HITL-reviewed by Opus and approved (`79b535d`), and archived**: a new `tools/scaffold` module (`write_skeleton`,
 validated via `repo_io._validate_clone_dest`, `pkg_name` sanitized to a safe Python
@@ -689,7 +692,72 @@ only best-effort in-memory dedupe behind the `RunDispatcher` seam). **Settled
 in 23:** the webhook auth model — HMAC-SHA256 over the raw body,
 `LOOP_ENGINE_WEBHOOK_SECRET` env var, fail-closed.
 
-## Phase 6 — Collapse the flags (decommission the scaffolding) *(sketch)*
+## Phase 6 — Collapse the flags (decommission the scaffolding)
+
+### Phase 6 planning pass (locked 2026-07-10, Opus/Architect)
+
+- **LD1 — Scope = the `issue_io`→MCP unification is the verification-independent
+  first slice.** The four flag deletions, the `artifacts` strip, and the
+  `loop.py` flag-branch collapse are all host-gated or downstream of a
+  deletion, so they are a **later block**, not Sprint 26. Building a server +
+  provider + seams + hermetic tests needs no host — doing it first, offline,
+  is the correct sequencing. The roadmap already scoped the issue-verb
+  unification into Phase 6 (see cross-cutting follow-up #2 below) and
+  `next-steps.md` flagged "CLI unification onto MCP (`resume --from-issue`)"
+  as a prerequisite gating parts of the collapse.
+- **LD2 — Unification scope = FULL, both read and write sides** (user-confirmed).
+  Both `cli.py`'s `resume --from-issue` (read) and `core/engine.py`'s
+  escalation-ladder issue filing (write) get MCP-backed adapters + injectable
+  seams.
+- **LD3 — Runtime posture = capability + seams now; classic stays the DEFAULT;
+  default-flip + classic deletion deferred to the host-gated block**
+  (user-confirmed). Mirrors 22b's github posture exactly: the MCP route is
+  proven as a capability, but the classic direct `gh` calls remain what
+  actually runs until the MCP↔`gh` round-trip is live-verified on a
+  daemon-bearing host.
+- **LD4 — Server = a thin `gh` shell over primitive args; domain
+  rendering/parsing stays pure lib in `tools/issue_io`.** `State`/`Question`
+  never cross the MCP boundary — only strings/JSON, matching `github_server`'s
+  posture.
+- **LD5 — Injection mechanism = an `issue_filer` collaborator threaded like
+  `llm_client`.** Added to `execute_stage`/`_pause_for_issue` and forwarded
+  by both `run_loop` and `run_graph_loop` (one seam covers both engines, since
+  `run_graph_loop` is built on the same `execute_stage` primitive).
+- **LD6 — No new subprocess surface, no new dependency, no `State` change, no
+  keyring.** The issue server delegates to `tools/issue_io`'s already-sanctioned
+  `gh` surface; the server subprocess is `stdio_client`-spawned (not a fifth
+  surface, per the existing Phase 3b precedent); `mcp` is already a dependency.
+
+### Sprint 26 — `issue_io` → MCP unification (implemented)
+
+Landed the third native MCP server (`mcp_servers/issue_io_server.py`, mirroring
+`github_server.py`) exposing exactly `{create_issue, read_issue}`;
+`build_issue_provider()` + `mcp_issue_filer`/`mcp_read_issue` client adapters
+(`tools/issue_io/mcp_client.py`); the `tools/issue_io` pure/`gh` split
+(`render_question_issue`/`create_issue` on the write side,
+`parse_issue_answers`/`read_issue` on the read side — `file_question_issue`/
+`read_issue_answers` remain behavior-preserving thin wrappers); the injectable
+`issue_filer` write seam threaded through `execute_stage`/`_pause_for_issue`/
+`run_loop`/`run_graph_loop` (default `None` resolves to the classic
+`file_question_issue` via module-global lookup at call time, so existing
+`monkeypatch.setattr("loop_engine.core.engine.file_question_issue", ...)`
+tests keep working unmodified — binding the classic filer as a literal
+default-argument value would have snapshotted it at import time and broken
+that monkeypatch pattern); an analogous injectable read seam in `cli.py`'s
+`resume --from-issue` (`_resolve_issue_reader()`, same module-global pattern);
+and the three-way pairwise-disjoint tool-set assertion in
+`tests/tools/test_mcp_provider.py`. Sanctioned subprocess surfaces stay
+**four**; no new dependency (`sbom.json` unchanged); no new feature flag; no
+`State` change; no new `keyring` import. **Capability + seams only** — the
+classic direct `issue_io` calls remain the runtime default per LD3; nothing
+flipped, nothing deleted. Live MCP↔`gh` round-trip verification (real
+`create_issue`/`read_issue` through the server subprocess with real `gh` auth)
+is deferred to a daemon-bearing host, recorded in
+`sprints/DEFERRED_VERIFICATION.md`, gating together with the eventual
+default-flip and classic-path deletion (both still part of the host-gated
+block below). Plan: `sprints/26_issue_io_mcp_unification/sprint_plan.md`.
+
+*(sketch — the remaining, host-gated block)*
 
 **Why this phase exists.** Every phase adds a feature flag so earlier behavior
 stays runnable and each phase boundary is checkout-able — the right call *during*

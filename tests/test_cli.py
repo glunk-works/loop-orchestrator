@@ -224,6 +224,69 @@ def test_cli_resume_from_issue_folds_answers_and_reenters(tmp_path, monkeypatch)
     assert any("eu-west-1" in f for f in mock_run_loop.call_args.kwargs["initial_findings"])
 
 
+def test_cli_resume_from_issue_via_injected_mcp_reader(tmp_path, monkeypatch) -> None:
+    """Read-side seam: with an MCP-backed reader injected (a fake provider,
+    no real gh/subprocess), `resume --from-issue` resolves questions
+    identically to the classic path. Default stays classic; this only proves
+    the injection wiring works end to end."""
+    from loop_engine.tools.issue_io import mcp_read_issue
+
+    monkeypatch.chdir(tmp_path)
+    paused = State(
+        schema_version=2,
+        run_id="run-1",
+        status=RunStatus.AWAITING_ISSUE,
+        pending_issue=IssueRef(number=17, url="https://github.com/acme/repo/issues/17"),
+        counters={"paused_stage_index": 1},
+        questions=[Question(id="q1", origin_stage="ArchitecturePersona", text="Which region?")],
+        stage_history=[
+            {
+                "stage_name": "PMPersona",
+                "tokens_used": 10,
+                "cost_usd": 0.0,
+                "completed_at": "2026-07-02T00:00:00Z",
+            }
+        ],
+        artifacts={"project_spec": "{}"},
+    )
+    snapshot_path = tmp_path / "01_awaiting_issue.json"
+    snapshot_path.write_text(paused.model_dump_json())
+
+    class _FakeProvider:
+        def execute(self, name: str, arguments: dict) -> str:
+            assert name == "read_issue"
+            assert arguments == {"issue_number": 17}
+            return json.dumps(
+                {
+                    "state": "OPEN",
+                    "body": f"Snapshot: `{snapshot_path}`",
+                    "comments": [{"body": "```answers\n1: eu-west-1\n```"}],
+                }
+            )
+
+    monkeypatch.setattr(
+        "loop_engine.cli._issue_reader",
+        lambda n: mcp_read_issue(_FakeProvider(), n),
+    )
+    mock_run_loop = MagicMock(return_value=_completed_state())
+    monkeypatch.setattr("loop_engine.cli.run_loop", mock_run_loop)
+    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+
+    fold_result_holder = {}
+
+    def fake_fold(self, state, llm_client):
+        fold_result_holder["questions"] = state.questions
+        return state
+
+    monkeypatch.setattr(type(DEFAULT_LOOP.stages[0].persona), "fold_answers", fake_fold)
+
+    result = runner.invoke(app, ["resume", "--from-issue", "17"])
+
+    assert result.exit_code == 0
+    assert fold_result_holder["questions"][0].resolution == "eu-west-1"
+    assert fold_result_holder["questions"][0].resolved_by == "human:17"
+
+
 def test_cli_resume_from_issue_works_under_declarative_personas(tmp_path, monkeypatch) -> None:
     # Regression for review finding #1: under `declarative`, stage 0 is
     # PMGenerator, which must expose fold_answers or every paused declarative

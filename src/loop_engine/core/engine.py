@@ -6,6 +6,7 @@ Every exit path — success or any failure — persists a snapshot whose stage
 name says what happened, so no paid work is ever lost to a traceback.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from datetime import UTC, datetime
@@ -19,13 +20,19 @@ from loop_engine.core.gates import (
     GateResult,
     new_question,
 )
-from loop_engine.core.state import Question, RunStatus, StageRecord, State
+from loop_engine.core.state import IssueRef, Question, RunStatus, StageRecord, State
 from loop_engine.personas.base import BasePersona
 from loop_engine.tools.artifact_store import has_artifact, mirror_to_disk
 from loop_engine.tools.issue_io import file_question_issue
 from loop_engine.tools.llm.client import BudgetExceededError, LLMClient, TruncatedResponseError
 from loop_engine.tools.logging_config import log_stage_completion
 from loop_engine.tools.state_io.writer import write_state_snapshot
+
+# The write-side seam (mirrors the `llm_client` collaborator threading): the
+# classic direct `file_question_issue` (shells `gh`) stays the runtime
+# default. An MCP-backed filer (`tools.issue_io.mcp_issue_filer`) can be
+# injected — by tests now, by the orchestrator once the host-gated flip lands.
+IssueFiler = Callable[[State, list[Question], str], IssueRef]
 
 # Hard caps on feedback edges so no cycle can run unboundedly: hitting a cap
 # escalates to the human issue rather than looping again.
@@ -192,12 +199,17 @@ def unresolved_questions(state: State) -> list[Question]:
     return [q for q in state.questions if q.resolution is None]
 
 
-def _pause_for_issue(state: State, stage_index: int, questions: list[Question]) -> State:
+def _pause_for_issue(
+    state: State,
+    stage_index: int,
+    questions: list[Question],
+    issue_filer: IssueFiler | None = None,
+) -> State:
     state = state.model_copy(
         update={"counters": {**state.counters, PAUSED_STAGE_COUNTER: stage_index}}
     )
     snapshot_hint = f"state/{state.run_id}/{stage_index:02d}_{RunStatus.AWAITING_ISSUE.value}.json"
-    issue = file_question_issue(state, questions, snapshot_hint)
+    issue = (issue_filer or file_question_issue)(state, questions, snapshot_hint)
     state = state.model_copy(update={"pending_issue": issue})
     return _finalize(state, stage_index, RunStatus.AWAITING_ISSUE)
 
@@ -245,6 +257,7 @@ def execute_stage(
     carried_findings: list[str],
     carried_until: int,
     llm_client: LLMClient,
+    issue_filer: IssueFiler | None = None,
 ) -> StageOutcome:
     """Run one bounded propose → gate → accept/revise/escalate cycle.
 
@@ -334,14 +347,14 @@ def execute_stage(
 
         if escalations >= MAX_ESCALATIONS_PER_STAGE:
             state = _merge_questions(state, gate_result.questions)
-            paused = _pause_for_issue(state, stage_index, unresolved_questions(state))
+            paused = _pause_for_issue(state, stage_index, unresolved_questions(state), issue_filer)
             return StageOutcome(paused, stage_index, carried_findings, carried_until, terminal=True)
 
         resolved = _run_resolver_ladder(stage, gate_result.questions, state, llm_client)
         state = _merge_questions(state, resolved)
 
         if unresolved_questions(state):
-            paused = _pause_for_issue(state, stage_index, unresolved_questions(state))
+            paused = _pause_for_issue(state, stage_index, unresolved_questions(state), issue_filer)
             return StageOutcome(paused, stage_index, carried_findings, carried_until, terminal=True)
 
         # Everything was resolved within the ladder: deliver resolutions
@@ -352,7 +365,7 @@ def execute_stage(
         if reentry < stage_index:
             replans = state.counters.get("replans", 0)
             if replans >= MAX_REPLANS_PER_RUN:
-                paused = _pause_for_issue(state, stage_index, resolved)
+                paused = _pause_for_issue(state, stage_index, resolved, issue_filer)
                 return StageOutcome(
                     paused, stage_index, carried_findings, carried_until, terminal=True
                 )
@@ -386,6 +399,7 @@ def run_loop(
     llm_client: LLMClient,
     start_index: int = 0,
     initial_findings: list[str] | None = None,
+    issue_filer: IssueFiler | None = None,
 ) -> State:
     state = initial_state.model_copy(update={"status": RunStatus.RUNNING, "pending_issue": None})
     stage_index = start_index
@@ -399,7 +413,7 @@ def run_loop(
 
     while stage_index < len(loop.stages):
         outcome = execute_stage(
-            loop, stage_index, state, carried_findings, carried_until, llm_client
+            loop, stage_index, state, carried_findings, carried_until, llm_client, issue_filer
         )
         state = outcome.state
         if outcome.terminal:

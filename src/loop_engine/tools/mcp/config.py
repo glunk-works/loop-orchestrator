@@ -31,6 +31,10 @@ CODER_TOOLS_SERVER_NAME = "coder_tools"
 # built-in default (unlike coder_tools): it exists only via the committed
 # repo-root config's static launch spec.
 GITHUB_SERVER_NAME = "github"
+# The issue escalation-verb server's logical name in loop_engine.mcp.json — same
+# posture as GITHUB_SERVER_NAME: no built-in default, exists only via the
+# committed repo-root config's static launch spec.
+ISSUE_SERVER_NAME = "issue"
 
 
 class MCPServerSpec(BaseModel):

@@ -270,4 +270,42 @@ check):
 - Clean up the scratch repo afterward — this check has real side effects on
   GitHub, unlike every other check in this file.
 
+## 9. Issue-server live `create_issue`/`read_issue` round-trip (validates Sprint 26)
+
+Sprint 26's coverage is entirely hermetic: `tests/tools/test_issue_io.py` proves
+the `render_question_issue`/`create_issue`/`parse_issue_answers` pure/`gh`
+split is behavior-preserving with `_run_gh` monkeypatched; `tests/tools/
+test_issue_io_server.py` launches the real `issue_io_server` stdio subprocess
+for discovery/schema only (no `gh` call — a live `gh` call at import time
+would hang or fail in this network-off sandbox) and separately exercises the
+`@mcp.tool()`-decorated verbs in-process with `tools/issue_io.create_issue`/
+`read_issue` monkeypatched; `tests/tools/test_issue_provider.py` and
+`tests/core/test_engine.py`/`test_graph_engine.py`'s injected-filer tests use
+a fake in-process provider. **No test in this sprint shells a real `gh` through
+the `issue` MCP server subprocess.** Run on a daemon-bearing host with `gh`
+authenticated against a disposable scratch repo:
+
+- **Real `create_issue` through the server.** Enter `build_issue_provider()`
+  for real, dispatch `create_issue` with a throwaway title/body/label, and
+  confirm a real GitHub Issue is created (check its URL/number) and carries
+  the `loop-engine/needs-human` label.
+- **Real `read_issue` through the server.** Post a `` ```answers `` comment on
+  that issue, dispatch `read_issue` through the same provider, and confirm the
+  returned JSON's `state`/`body`/`comments` match what `gh issue view` reports
+  directly (i.e. the server round-trips `gh`'s JSON faithfully, not just the
+  monkeypatched shape the unit tests assert).
+- **Confirm `mcp_issue_filer`/`mcp_read_issue` round-trip against the real
+  server** (not just a fake provider): file via `mcp_issue_filer(provider)`,
+  read the answers back via `mcp_read_issue(provider, n)`, and confirm the
+  `IssueRef`/answers map match what the classic `file_question_issue`/
+  `read_issue_answers` would have produced against the same issue.
+- **This check gates together with the still-pending host-gated Phase 6
+  block** (the four flag deletions + `artifacts` strip + `loop.py` collapse) —
+  specifically the issue-path **default-flip** (making the MCP filer/reader
+  the runtime default) and the **classic-path deletion**, per LD3 in
+  `docs/migration_roadmap.md`'s "Phase 6 planning pass". Neither should happen
+  until this live check has passed.
+- Clean up the scratch issue/repo afterward — this check has real side
+  effects on GitHub, unlike every other check in this file.
+
 Delete this file once the checks have been performed and any findings are fixed.

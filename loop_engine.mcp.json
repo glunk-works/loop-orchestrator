@@ -4,6 +4,11 @@
       "command": "python",
       "args": ["-m", "loop_engine.mcp_servers.github_server"],
       "cwd": null
+    },
+    "issue": {
+      "command": "python",
+      "args": ["-m", "loop_engine.mcp_servers.issue_io_server"],
+      "cwd": null
     }
   }
 }

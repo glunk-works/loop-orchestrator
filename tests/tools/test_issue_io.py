@@ -7,9 +7,12 @@ from loop_engine.core.state import Question, State
 from loop_engine.tools.issue_io import (
     IssueClosedWithoutAnswersError,
     apply_answers_to_questions,
+    create_issue,
     file_question_issue,
+    parse_issue_answers,
     parse_snapshot_path,
     read_issue_answers,
+    render_question_issue,
 )
 
 
@@ -85,3 +88,57 @@ def test_gh_output_with_json_body_parses() -> None:
     # Sanity-check the gh JSON shape contract used by read_issue.
     payload = json.dumps({"state": "OPEN", "body": "b", "comments": []})
     assert json.loads(payload)["state"] == "OPEN"
+
+
+def test_render_question_issue_matches_filed_issue_body_byte_for_byte() -> None:
+    state, questions = _state(), _questions()
+
+    title, body, label = render_question_issue(
+        state, questions, "state/run-1/01_awaiting_issue.json"
+    )
+
+    with patch("loop_engine.tools.issue_io.github._run_gh") as run_gh:
+        run_gh.return_value = "https://github.com/acme/repo/issues/17\n"
+        file_question_issue(state, questions, "state/run-1/01_awaiting_issue.json")
+        args = run_gh.call_args.args[0]
+
+    assert title == args[args.index("--title") + 1]
+    assert body == args[args.index("--body") + 1]
+    assert label == args[args.index("--label") + 1]
+
+
+def test_create_issue_shells_expected_argv_and_parses_ref() -> None:
+    with patch("loop_engine.tools.issue_io.github._run_gh") as run_gh:
+        run_gh.return_value = "https://github.com/acme/repo/issues/42\n"
+        ref = create_issue("t", "b", "l")
+
+    run_gh.assert_called_once_with(
+        ["issue", "create", "--title", "t", "--body", "b", "--label", "l"]
+    )
+    assert ref.number == 42
+    assert ref.url == "https://github.com/acme/repo/issues/42"
+
+
+def test_file_question_issue_is_create_issue_over_render_question_issue() -> None:
+    with patch("loop_engine.tools.issue_io.github._run_gh") as run_gh:
+        run_gh.return_value = "https://github.com/acme/repo/issues/17\n"
+        ref = file_question_issue(_state(), _questions(), "state/run-1/01_awaiting_issue.json")
+    assert ref.number == 17
+
+
+def test_parse_issue_answers_matches_read_issue_answers() -> None:
+    issue_data = {
+        "state": "OPEN",
+        "comments": [
+            {"body": "first attempt\n```answers\n1: us-east-1\n```"},
+            {"body": "corrected:\n```answers\n1: eu-west-1\n2: OIDC\n```"},
+        ],
+    }
+    assert parse_issue_answers(issue_data) == read_issue_answers(17, issue_data)
+    assert parse_issue_answers(issue_data) == {1: "eu-west-1", 2: "OIDC"}
+
+
+def test_parse_issue_answers_closed_without_answers_raises() -> None:
+    issue_data = {"state": "CLOSED", "comments": [{"body": "won't fix"}]}
+    with pytest.raises(IssueClosedWithoutAnswersError):
+        parse_issue_answers(issue_data)

@@ -21,6 +21,7 @@ from tests.core.test_engine import (
     AnsweringResolver,
     AppendArtifactPersona,
     QuestionAskingPersona,
+    _FakeIssueProvider,
     _initial_state,
     _simple_loop,
     _stage,
@@ -202,6 +203,24 @@ def test_graph_unresolved_questions_file_issue_and_pause(_stub_issue_filer) -> N
     )
     assert [q.text for q in _stub_issue_filer[0]] == ["Which region?"]
     assert (Path("state") / "run-8" / "00_awaiting_issue.json").exists()
+
+
+def test_graph_injected_mcp_issue_filer_routes_through_provider() -> None:
+    from loop_engine.tools.issue_io import mcp_issue_filer
+
+    persona = QuestionAskingPersona()
+    loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"))])
+    provider = _FakeIssueProvider()
+
+    final = run_graph_loop(
+        loop, _initial_state("run-8b"), _stub_llm_client(), issue_filer=mcp_issue_filer(provider)
+    )
+
+    assert final.status is RunStatus.AWAITING_ISSUE
+    assert final.pending_issue == IssueRef(
+        number=99, url="https://github.com/example/repo/issues/99"
+    )
+    assert provider.calls[0][0] == "create_issue"
 
 
 def test_graph_plan_impact_reenters_earlier_stage() -> None:

@@ -364,6 +364,38 @@ def test_run_loop_unresolved_questions_file_issue_and_pause(_stub_issue_filer) -
     assert (Path("state") / "run-8" / "00_awaiting_issue.json").exists()
 
 
+class _FakeIssueProvider:
+    """Stands in for an entered MCPToolProvider scoped to the `issue` server —
+    no subprocess, no real `gh`."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict]] = []
+
+    def execute(self, name: str, arguments: dict) -> str:
+        self.calls.append((name, arguments))
+        return IssueRef(
+            number=99, url="https://github.com/example/repo/issues/99"
+        ).model_dump_json()
+
+
+def test_run_loop_injected_mcp_issue_filer_routes_through_provider() -> None:
+    from loop_engine.tools.issue_io import mcp_issue_filer
+
+    persona = QuestionAskingPersona()
+    loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"))])
+    provider = _FakeIssueProvider()
+
+    final = run_loop(
+        loop, _initial_state("run-8b"), _stub_llm_client(), issue_filer=mcp_issue_filer(provider)
+    )
+
+    assert final.status is RunStatus.AWAITING_ISSUE
+    assert final.pending_issue == IssueRef(
+        number=99, url="https://github.com/example/repo/issues/99"
+    )
+    assert provider.calls[0][0] == "create_issue"
+
+
 def test_run_loop_plan_impact_reenters_earlier_stage() -> None:
     executed: list[str] = []
 

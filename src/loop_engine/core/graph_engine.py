@@ -16,7 +16,14 @@ from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from loop_engine.core.engine import Loop, StageOutcome, _finalize, _prime_resume, execute_stage
+from loop_engine.core.engine import (
+    IssueFiler,
+    Loop,
+    StageOutcome,
+    _finalize,
+    _prime_resume,
+    execute_stage,
+)
 from loop_engine.core.state import RunStatus, State
 from loop_engine.tools.llm.client import LLMClient
 
@@ -52,7 +59,7 @@ def use_langgraph_engine() -> bool:
     return os.environ.get(ENGINE_ENV_VAR, "").strip().lower() == _LANGGRAPH_ENGINE
 
 
-def _make_stage_node(loop: Loop, index: int, llm_client: LLMClient):
+def _make_stage_node(loop: Loop, index: int, llm_client: LLMClient, issue_filer: IssueFiler | None):
     def node(gs: GraphState) -> dict:
         outcome: StageOutcome = execute_stage(
             loop,
@@ -61,6 +68,7 @@ def _make_stage_node(loop: Loop, index: int, llm_client: LLMClient):
             gs["carried_findings"],
             gs["carried_until"],
             llm_client,
+            issue_filer,
         )
         return {
             "state": outcome.state,
@@ -89,12 +97,12 @@ def _next_target(loop: Loop, gs: GraphState) -> str:
     return _node_name(gs["stage_index"])
 
 
-def build_state_graph(loop: Loop, llm_client: LLMClient):
+def build_state_graph(loop: Loop, llm_client: LLMClient, issue_filer: IssueFiler | None = None):
     """Compile the stage graph: one node per stage, a completion node, and
     conditional edges that advance, re-enter (blast radius), or terminate."""
     graph = StateGraph(GraphState)
     for index in range(len(loop.stages)):
-        graph.add_node(_node_name(index), _make_stage_node(loop, index, llm_client))
+        graph.add_node(_node_name(index), _make_stage_node(loop, index, llm_client, issue_filer))
     graph.add_node(_COMPLETE_NODE, _make_complete_node(loop))
 
     stage_targets = {_node_name(i): _node_name(i) for i in range(len(loop.stages))}
@@ -114,13 +122,14 @@ def run_graph_loop(
     llm_client: LLMClient,
     start_index: int = 0,
     initial_findings: list[str] | None = None,
+    issue_filer: IssueFiler | None = None,
 ) -> State:
     """LangGraph-driven equivalent of `run_loop`, with the same signature and
     return contract (the final, already-persisted `State`)."""
     state = initial_state.model_copy(update={"status": RunStatus.RUNNING, "pending_issue": None})
     state, carried_findings, carried_until = _prime_resume(loop, state, initial_findings)
 
-    compiled = build_state_graph(loop, llm_client)
+    compiled = build_state_graph(loop, llm_client, issue_filer)
     init: GraphState = {
         "state": state,
         "stage_index": start_index,

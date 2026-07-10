@@ -70,8 +70,18 @@ def _issue_body(state: State, questions: list[Question], snapshot_path: str) -> 
     return "\n".join(lines)
 
 
-def file_question_issue(state: State, questions: list[Question], snapshot_path: str) -> IssueRef:
+def render_question_issue(
+    state: State, questions: list[Question], snapshot_path: str
+) -> tuple[str, str, str]:
+    """Pure: the (title, body, label) an issue-filing call needs. No `gh`."""
     title = f"loop-engine: {len(questions)} question(s) for run {state.run_id}"
+    return title, _issue_body(state, questions, snapshot_path), ISSUE_LABEL
+
+
+def create_issue(title: str, body: str, label: str) -> IssueRef:
+    """The one `gh`-write primitive: shells `gh issue create` and parses the
+    resulting URL into an `IssueRef`. Takes only strings, so this is the verb
+    an MCP boundary can carry without a rich domain object crossing it."""
     url = _run_gh(
         [
             "issue",
@@ -79,13 +89,17 @@ def file_question_issue(state: State, questions: list[Question], snapshot_path: 
             "--title",
             title,
             "--body",
-            _issue_body(state, questions, snapshot_path),
+            body,
             "--label",
-            ISSUE_LABEL,
+            label,
         ]
     ).strip()
     number = int(url.rstrip("/").rsplit("/", 1)[-1])
     return IssueRef(number=number, url=url)
+
+
+def file_question_issue(state: State, questions: list[Question], snapshot_path: str) -> IssueRef:
+    return create_issue(*render_question_issue(state, questions, snapshot_path))
 
 
 def read_issue(issue_number: int) -> dict:
@@ -106,16 +120,15 @@ def parse_snapshot_path(issue_data: dict) -> str | None:
     return match.group(1) if match else None
 
 
-def read_issue_answers(issue_number: int, issue_data: dict | None = None) -> dict[int, str]:
-    """Return {question number: answer} from the issue's latest answers comment.
+def parse_issue_answers(issue_data: dict) -> dict[int, str]:
+    """Pure: {question number: answer} from an already-fetched issue view's
+    latest answers comment. No `gh`.
 
     Raises IssueClosedWithoutAnswersError if the issue is closed with no
     parseable answers — the human's signal to abort the run.
     """
-    data = issue_data if issue_data is not None else read_issue(issue_number)
-
     answers: dict[int, str] = {}
-    for comment in data.get("comments", []):
+    for comment in issue_data.get("comments", []):
         block = _ANSWERS_BLOCK_RE.search(comment.get("body", ""))
         if block is None:
             continue
@@ -127,12 +140,21 @@ def read_issue_answers(issue_number: int, issue_data: dict | None = None) -> dic
         if parsed:
             answers = parsed  # later comments supersede earlier ones
 
-    if not answers and data.get("state") == "CLOSED":
+    if not answers and issue_data.get("state") == "CLOSED":
         raise IssueClosedWithoutAnswersError(
-            f"Issue #{issue_number} was closed without an answers comment; "
-            "treating the run as aborted by the human."
+            "Issue was closed without an answers comment; treating the run as aborted by the human."
         )
     return answers
+
+
+def read_issue_answers(issue_number: int, issue_data: dict | None = None) -> dict[int, str]:
+    """Return {question number: answer} from the issue's latest answers comment.
+
+    Raises IssueClosedWithoutAnswersError if the issue is closed with no
+    parseable answers — the human's signal to abort the run.
+    """
+    data = issue_data if issue_data is not None else read_issue(issue_number)
+    return parse_issue_answers(data)
 
 
 def apply_answers_to_questions(
