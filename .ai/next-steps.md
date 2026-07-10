@@ -5,39 +5,61 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Phase 5 — Sprint 25 (`bootstrap_flow`, piece 4) — `implementing`.**
-Plan is written and **HITL-approved**. The next session is a **Sonnet/Coder**
-implementation pass over `sprints/25_bootstrap_flow/sprint_plan.md` (tasks 1–6 in order).
+**Phase 5 — Sprint 25 (`bootstrap_flow`, piece 4) — `awaiting_hitl_review`.**
+Implementation is done and green. The next session is an **Opus/Architect**
+HITL review pass over the diff at `79b535d`.
 
-## Just done (Sprint 25 — planning pass, Opus/Architect)
-- Wrote + got HITL approval for `sprints/25_bootstrap_flow/sprint_plan.md` (the
-  bootstrap flow — Phase 5 piece 4). Five decisions locked in the planning pass:
-  1. **Skeleton only, no inner loop** — bootstrap makes a ready-to-work repo *exist*;
-     maintenance/trigger does the feature work. No `run_in_tree`, no green gate, no LLM run.
-  2. **New `tools/scaffold` = the 2nd sanctioned FILE-WRITE surface** (not a 5th
-     subprocess surface) — writes bundled templates via `write_text`, tree validated
-     via `repo_io._validate_clone_dest`. Mirrors 24's `git_io` carve-out. **No `hatch new`.**
-  3. **Templates bundled as package data; injected `CLAUDE.md` byte-identical to
-     `.ai/context/conventions.md`**, enforced by a sync-guard test.
-  4. **Python-only skeleton, `kind`-parametrized** — IaC/OpenTofu set deferred behind the seam.
-  5. **Push `main` (first commit) → create `develop` → no PR** — nothing to PR into on a
-     brand-new repo; leaves the repo conformant + maintenance-ready.
-- Net boundary delta: file-write owners **1→2**; subprocess surfaces **unchanged (four)**;
-  no new dependency (SBOM unchanged); no credential into process; no `open_pr`/merge.
+## Just done (Sprint 25 — implementation pass, Sonnet/Coder)
+- Implemented all 6 tasks from `sprints/25_bootstrap_flow/sprint_plan.md`:
+  1. **`tools/scaffold`** (`src/loop_engine/tools/scaffold/writer.py`) — the
+     second sanctioned file-write surface. `write_skeleton(tree, *, kind, pkg_name,
+     repo_name)` validates `tree` via `repo_io._validate_clone_dest`, sanitizes
+     `pkg_name` to a safe Python identifier, renders bundled `templates/python/*.tmpl`
+     + the shared `templates/CLAUDE.md` via plain `str.replace` token substitution
+     (no template-engine dependency).
+  2. **Boundary invariants widened**: `tests/tools/test_state_io_boundary.py`'s
+     allow-set is now `{state_io, scaffold}`; `tests/tools/test_subprocess_surfaces.py`
+     still asserts exactly four surfaces + an explicit "scaffold is not a fifth"
+     assertion; new conventions sync-guard (`tests/tools/scaffold/test_conventions_sync.py`)
+     asserts the bundled `CLAUDE.md` stays byte-identical to `.ai/context/conventions.md`.
+  3. **`flows/bootstrap`** (`src/loop_engine/flows/bootstrap/flow.py`) — chains
+     `create_repository` -> `clone_repo` -> `checkout_branch(main)` -> `scaffold.
+     write_skeleton` -> `commit_all` -> `push_branch(main)` -> `create_branch(develop,
+     base=main)`. Skeleton-only: no inner loop, no green gate, no `open_pr`.
+  4. `tests/flows/test_boundaries.py` extended with an explicit membership
+     assertion provably enumerating `flows/bootstrap`.
+  5. Hermetic e2e proof (`tests/flows/bootstrap/test_integration.py`): real
+     `tools/scaffold` + real `tools/git_io` against a `tmp_path` repo seeded on a
+     non-`main` initial branch (proving the unborn-HEAD handling) + a local bare
+     remote, with `repo_io` faked.
+  6. Docs updated: `CLAUDE.md` (file-write clause -> two modules, new `flows/bootstrap`
+     bullet), `.ai/context/modules.md` (`tools/scaffold/` + `flows/bootstrap/` entries),
+     `docs/migration_roadmap.md` (status row, NEXT ACTION, decisions log), and
+     `sprints/DEFERRED_VERIFICATION.md` §8 (the deferred live create->clone->
+     scaffold->push->`develop` check on a daemon-bearing host).
+- **Bug caught + fixed during implementation**: the sprint plan's suggested
+  `[tool.hatch.build.targets.wheel.force-include]` for the template files
+  actually **breaks** `hatch build` (duplicate-path conflict with hatchling's
+  default `packages` inclusion, which already ships non-`.py` files). Verified
+  via a real `hatch build -t wheel` + archive inspection that the templates ship
+  correctly **without** any force-include entry; removed it from `pyproject.toml`
+  and corrected the docs/deferred-verification wording accordingly.
+- Green gate: **525 tests pass**, `ruff check`/`ruff format --check` clean,
+  `pip-audit` clean, `sbom.json` unchanged (no new dependency). Committed at
+  `79b535d` (on top of the approved plan commit `46b82f5`).
 
 ## Next
-1. **(Sonnet/Coder) Implement Sprint 25** per the sprint_plan, tasks 1–6:
-   `tools/scaffold` + bundled templates → boundary invariants (widen
-   `test_state_io_boundary.py` to `{state_io, scaffold}`, keep subprocess at four,
-   conventions sync-guard) → `flows/bootstrap` chain → `flows/` boundary coverage →
-   hermetic e2e proof (real scaffold + real `git_io` to a bare remote, faked `repo_io`) →
-   docs/roadmap/deferred-verification.
-2. Run the green gate (`hatch run test` / `lint` / `format` / `audit`; SBOM unchanged).
-3. `/handoff` back to Opus for HITL review of the diff once green.
+1. **(Opus/Architect) HITL review** the diff at `79b535d` against
+   `sprints/25_bootstrap_flow/sprint_plan.md`'s locked decisions and risks.
+2. If approved: `/archive-sprint` (retire 25, advance the cursor), then update
+   `docs/migration_roadmap.md`'s NEXT ACTION to **Phase 6 planning** (collapse
+   the flags — see the Phase 6 sketch section of the roadmap).
+3. If findings: route review-fixes back to a Sonnet/Coder session (mirroring
+   how sprint 24's 2 HITL findings were fixed in `f8d388a`).
 
 ## HITL gate
-NONE open right now — the plan is approved, cleared to implement. The next gate opens
-**after** implementation: Opus HITL review of the coding diff.
+**OPEN** — Sprint 25 is implemented and green; awaiting Opus/Architect review
+of `79b535d` before archiving.
 
 ## Carry-forward
 - **Sprint-24 review nit (still open):** no unit test over
@@ -46,11 +68,9 @@ NONE open right now — the plan is approved, cleared to implement. The next gat
   `loop_engine.mcp.json` github stanza. Orthogonal — not touched in 25.
 
 ## Pointers
-- `sprints/25_bootstrap_flow/sprint_plan.md` — the approved plan to implement.
-- `docs/migration_roadmap.md` — Phase 5 status; ▶ NEXT ACTION → Sprint 25.
+- `sprints/25_bootstrap_flow/sprint_plan.md` — the plan this session implemented.
+- `docs/migration_roadmap.md` — Phase 5 status; ▶ NEXT ACTION → Opus review of 25.
 - `.ai/context/workflow.md` — the Opus↔Sonnet handoff protocol + switch points.
 
 ## Working tree
-- Plan committed? **Not yet** — `sprints/25_bootstrap_flow/` is untracked at HEAD
-  `add275d`. Commit the plan before switching sessions so `/resume`'s `last_commit`
-  matches HEAD.
+- Clean at HEAD `79b535d` — all Sprint 25 implementation changes committed.
