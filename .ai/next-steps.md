@@ -6,62 +6,74 @@ Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
 **Phase 6 — Collapse the flags — the host-gated flip block
-(`27_phase6_flip_block`) — `implementing`.** The host-provisioning block is
-**CLEARED**: the DinD daemon is up, the dev image is built, `gh`/keyring are
-restored, and the known-good `devcontainer.json` is committed. The next work is
-the verification gates (Opus/Architect, budget-spending). No HITL gate open.
+(`27_phase6_flip_block`) — `blocked_pending_planning`.** The host verification
+runs (V1/V2) ran and surfaced a **blocking finding, F-GATE-SANDBOX**: no run can
+reach `COMPLETED` under `LOOP_ENGINE_ISOLATION=container` because the Coder gates'
+verification pytest is not sandboxed. A **planning/sequencing decision (Opus/
+Architect)** is required before any more host runs or deletions. **HITL gate OPEN
+(planning).**
 
-## Just done (Opus/Architect — host provisioning + security review)
-- **Brought up the container runtime.** Second devcontainer rebuild landed the
-  `containerUser: root` fix; `docker info` → `29.6.1` (daemon boots as root,
-  dev session stays `app`). Built `loop-engine-dev:latest` and confirmed
-  `import loop_engine` inside it.
-- **Committed the known-good `devcontainer.json`** (`1449d65`) — DinD feature +
-  `--privileged` + `containerUser: root`, with an inline JSONC scoping comment.
-- **Security review of the privileged devcontainer.** No new *application* hole:
-  the `--privileged`/`root` grants are confined to `.devcontainer/` and touch no
-  enforced boundary. The untrusted-code boundary (inner isolation container:
-  `--cap-drop ALL`, `no-new-privileges`, `--network none`, `--read-only`, single
-  worktree bind) is unchanged and guarded by an exact-argv test
-  (`tests/tools/test_sandbox_params.py`, 13 passed). The one real cost —
-  `--privileged` widens the *outer* container's host-escape path — is documented
-  as LOCAL-VERIFICATION-HOST-ONLY in the commit + the file.
-- **Restored `gh`/keyring.** Auto-restore did NOT fire on the last rebuild
-  (postStart didn't complete); re-ran `infisical-start.sh` (idempotent) → `gh`
-  authenticated, keyring seeded. Root cause was the interrupted rebuild, not a
-  script bug.
+## Just done (Opus/Architect — host verification session, 2026-07-10)
+- **V1 (ENGINE+TOOLS+PERSONAS) — PASS (qualified).** 4 real runs in target config
+  (`langgraph`+`mcp`+`declarative`+`container`). All three flags verified functional
+  + parity through PM→Arch→Sprint + the in-container MCP coder tool loop (25–33
+  sandboxed tool calls/run) + the escalation/pause/snapshot ladder. Cost ~$0.38/run
+  upstream. **Terminal `COMPLETED` not observed** — the classic `CoderIacPersona`
+  escalated in all 4 (worktree-of-self collision; the `docs/sprints/src`
+  artifact-write allowlist vs. generated root-file tasks; multi-sprint
+  file-application; over-escalation) — all **orthogonal to the three flags** and
+  identical on a classic run. Recorded in `sprints/DEFERRED_VERIFICATION.md`.
+- **User decision:** classic `CoderIacPersona` is being **fully retired/replaced by
+  Ralph** — don't invest in making the classic Coder reach `COMPLETED`.
+- **V2 (Ralph) — BLOCKED on finding F-GATE-SANDBOX.** Ralph's algorithm engaged
+  correctly (manifest emitted, `.agent/STATE.md` checklist, checked off
+  `01_input_validation_foundation::t01`, 11 sandboxed tool calls) but the run
+  crashed at the gate: `core/coder_gate.py::_raise_if_sandboxed` raises under
+  `container`/`sandbox` isolation because the gate's verification pytest runs
+  in-process (deferred sprint-18 work; the `run_tests` *tool* was sandboxed in
+  Phase 3b, the gate's *own* pytest was not). **Neither Coder can reach ACCEPT →
+  `COMPLETED` under container isolation** — this gates all of V1(terminal)/V2/V3.
+- **Non-migration items** (from the repo owner): confirmed GPG signing works via a
+  forwarded host agent (do NOT add the passphrase to infisical — it stays
+  host-side; rebuild lever is `gpg-forward.sh`); added `docs/backlog.md` (BL-1
+  in-loop Architect/QA code-review stage, BL-2 Slack) — committed `9072b41`.
 
 ## Next
-1. **Run the verification gates (Opus/Architect judgement, budget-spending).**
-   First `export LOOP_ENGINE_DEV_IMAGE=loop-engine-dev:latest
-   LOOP_ENGINE_ISOLATION=container`. Then **V1** (big ENGINE+TOOLS+PERSONAS
-   factory run, parity-checked), **V2** (Ralph convergence/cost, §3), **V3**
-   (forced issue-escalation round-trip, §9) — recording PASS/FAIL in
-   `sprints/DEFERRED_VERIFICATION.md`.
-2. **After a gate is PASSED (Sonnet/Coder):** execute the deletion Task(s) it
-   gates, each a green reviewable commit, in `run_loop`-first order (Task 0 tag
-   first → 1 ENGINE → 2 TOOLS → 3 PERSONAS → 4 CODER=ralph → 5 artifacts strip
-   v3→v4 → 6 loop.py collapse → 7 docs → 8 issue-path flip (R1–R7) → 9 delete
-   `DEFERRED_VERIFICATION.md`). **No deletion before its gating V-run is PASSED.**
-   Opus HITL-reviews per deletion/group.
-3. **If a future rebuild leaves `gh` unauthenticated:** re-run
-   `sh /workspace/.devcontainer/infisical-start.sh` before V1.
+1. **PLANNING DECISION (Opus/Architect) — sequencing around F-GATE-SANDBOX:**
+   - **Option A — build the gate-sandbox wiring first:** route the Coder/Ralph
+     gate's verification pytest through the MCP container sandbox (mirror Phase 3b's
+     `run_tests` sandboxing; finishes Phase 3b), THEN run V1(complete)/V2/V3 under
+     container. Makes the container end-state completable before any deletion.
+   - **Option B — decouple deletions from the gate gap:** the three V1-target flags
+     are already verified functional+parity through the in-container MCP tool loop;
+     the gate refusal is flag-invariant. Consider proceeding with Tasks 1–3
+     (ENGINE/TOOLS/PERSONAS) on that decomposed evidence, tracking the
+     terminal-`COMPLETED`/container-gate proof as its own gate, and holding
+     `CODER`/Ralph Task 4 until V2 + the gate wiring land.
+   - See `sprints/DEFERRED_VERIFICATION.md` → "Finding F-GATE-SANDBOX" for the full
+     write-up + evidence.
+2. **Do NOT run more budget-spending host runs** until sequencing is decided.
+3. **Commit the characterization** if not already: `sprints/DEFERRED_VERIFICATION.md`
+   + this `.ai/next-steps.md` are uncommitted on the working tree.
 
 ## HITL gate
-**CLOSED.** No gate open. Gates re-open on the deletion work (per-deletion Opus
-review, each gated on its V-run passing first).
+**OPEN (planning).** The sequencing decision (A vs B) is an Architect judgement
+call. No deletion task lands until sequencing is chosen AND its gating V-run is
+recorded PASSED. F-GATE-SANDBOX blocks any container-isolated `COMPLETED`.
 
 ## Pointers
+- `sprints/DEFERRED_VERIFICATION.md` — V1/V2/V3 host-run results + **finding
+  F-GATE-SANDBOX** (the blocking gate-sandbox gap + the A/B sequencing options).
+- `src/loop_engine/core/coder_gate.py::_raise_if_sandboxed` — the container-isolation
+  gate refusal (lines ~31–43).
 - `sprints/27_phase6_flip_block/sprint_plan.md` — the flip-block plan (Task 0,
-  V1–V3, Tasks 1–9) + locked FD1/FD2 context.
-- `docs/migration_roadmap.md` — "Phase 6 — Collapse the flags": the flag-fate
-  table + "Open questions — RESOLVED" (FD1/FD2).
-- `sprints/DEFERRED_VERIFICATION.md` — §3 (Ralph/V2), §9 (issue/V3); V1 is the
-  ENGINE+TOOLS+PERSONAS big run.
-- `.ai/context/workflow.md` — the Opus↔Sonnet handoff protocol.
+  V1–V3, Tasks 1–9) + FD1/FD2.
+- `docs/migration_roadmap.md` — "Phase 6 — Collapse the flags".
+- `docs/backlog.md` — BL-1 (in-loop Architect/QA review), BL-2 (Slack).
 
 ## Working tree
-- HEAD `1449d65` — the known-good `devcontainer.json` is committed (durable).
-  Uncommitted: only this `.ai/next-steps.md` regeneration (`.ai/state.json` is
-  git-ignored). Commit it before switching sessions so `/resume` sees a clean
-  tree matching `last_commit`.
+- HEAD `9072b41` (`docs: add product backlog`). **Uncommitted:**
+  `sprints/DEFERRED_VERIFICATION.md` (V1/V2/V3 results + F-GATE-SANDBOX) and this
+  `.ai/next-steps.md` regeneration (`.ai/state.json` is git-ignored). Commit before
+  switching sessions so `/resume` sees a clean tree. Scratch verification logs live
+  under `scratch/` (untracked, do not commit).

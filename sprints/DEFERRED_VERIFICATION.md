@@ -319,4 +319,137 @@ authenticated against a disposable scratch repo:
 - Clean up the scratch issue/repo afterward — this check has real side
   effects on GitHub, unlike every other check in this file.
 
+---
+
+# Phase 6 flip-block host-run results (V1 / V2 / V3)
+
+Host session 2026-07-10 (Opus/Architect), devcontainer with DinD + `gh` auth +
+`loop-engine-dev:latest`, config `LOOP_ENGINE_ENGINE=langgraph
+LOOP_ENGINE_TOOLS=mcp LOOP_ENGINE_PERSONAS=declarative
+LOOP_ENGINE_ISOLATION=container`.
+
+## V1 — ENGINE + TOOLS + PERSONAS big factory run — **PASS (qualified)**
+
+Four real end-to-end runs (`hatch`-env `loop-engine run` from a throwaway
+checkout so the git-worktree-of-self is a clean tree). **All three target
+paths verified functional and at parity across every run:**
+
+- **`ENGINE=langgraph`** — drove `PM → Architecture → Sprint Breakdown → Coder`
+  plus the gate/accept transitions, the escalation ladder, the pause-for-issue
+  path, and per-stage snapshots. Upstream accept→persist transitions all fired
+  under the graph engine.
+- **`PERSONAS=declarative`** — `PMGenerator`/`ArchitectureGenerator`/
+  `SprintBreakdownGenerator` produced correct `project_spec`,
+  `architecture_definition`, `sprint_plans`, and `task_manifest` (the generated
+  `converter.py` in run 2 was a genuinely correct strict-validation impl).
+  Cost ~$0.38/run for the three generator stages (Cache R 0 on clean first-pass
+  accepts — expected; no revision retries). Acceptable.
+- **`TOOLS=mcp`** — serviced the Coder tool loop (25–33 `CallToolRequest`s/run:
+  `read_file`/`list_files`/`grep`/`run_tests`) inside the hardened container
+  (`--network none --cap-drop ALL --read-only --security-opt no-new-privileges`,
+  single worktree bind). In-process fallback is structurally impossible under
+  `container`+`mcp` (`_CoderToolBackend.resolve` raises
+  `IsolationUnavailableError` otherwise) — "no in-process fallback" is met by
+  construction.
+
+**Qualification — terminal `COMPLETED` not observed under V1.** All four runs
+escalated at the **classic `CoderIacPersona`** stage rather than reaching a
+Coder-ACCEPT, for reasons **orthogonal to the three flags** and identical on a
+fully-classic run: (1) worktree-of-self tree collision → correct refusal to
+clobber; (2) the `_ALLOWED_ARTIFACT_ROOTS = (docs, sprints, src)` write allowlist
+blocking generated repo-root scaffolding tasks (that is `flows/bootstrap`'s job,
+not the Coder's); (3) classic multi-sprint file-application dropped a module;
+(4) the classic Coder over-escalated on a trivial pre-stubbed single-file task
+(33 tool calls, wrote nothing). None indicated a `langgraph`/`mcp`/`declarative`
+defect. Each escalation also *crashed* the run because the throwaway repos had no
+GitHub remote (`gh issue create` exit 1) — a harness artifact, not a product bug.
+
+**Decision (2026-07-10, repo owner):** the classic `CoderIacPersona` is being
+**fully retired and replaced by Ralph** — do not sink effort into making the
+classic Coder reach `COMPLETED`. The one genuinely-unverified transition
+(Coder-ACCEPT → terminal `COMPLETED` under the new engine) is **deferred to V2**:
+the Ralph run below IS the production Coder and its `COMPLETED` closes this tail.
+V1 is therefore recorded **PASS for `ENGINE`/`TOOLS`/`PERSONAS`** (unblocking
+deletion Tasks 1–3), with the terminal-`COMPLETED` proof carried by V2.
+
+## V2 — Ralph convergence + cost — **BLOCKED (finding: gate not sandboxed)**
+
+Ran the full production config **with `LOOP_ENGINE_CODER=ralph`** against a
+scaffolded src-only scratch tree. **Ralph's algorithm engaged correctly:** the
+declarative Sprint Breakdown emitted a `task_manifest`, Ralph entered its
+self-loop, wrote `.agent/STATE.md`, and checked off the first manifest task
+(`01_input_validation_foundation::t01`) via 11 sandboxed container tool calls —
+so the manifest/checklist/one-task-per-iteration machinery works live.
+
+**BLOCKER (finding — the real answer to "does Ralph work under container?"):**
+the run crashed at the Ralph coder stage with `IsolationUnavailableError`:
+*"container isolation is selected; sandboxed gate verification is deferred to the
+host-side e2e build."* Root cause: **`core/coder_gate.py::_raise_if_sandboxed`**
+(called by BOTH `CoderGate` and `RalphCoderGate`) raises whenever
+`sandbox_runtime_mode() is not None`, because the gate runs its verification
+pytest **in-process** and that was never routed through the sandbox. This is the
+**documented sprint-18 deferral** (§3 above): the coder's `run_tests` *tool* was
+sandboxed in Phase 3b (via MCP), but the gate's *own* verification pytest was not.
+
+**Consequence — affects the whole flip block, not just Ralph:** under the target
+production config (`LOOP_ENGINE_ISOLATION=container`), **neither** Coder can reach
+a green gate → ACCEPT → `COMPLETED`, because the gate refuses to verify. V1's four
+runs escalated on content *before* the gate, so they never surfaced this; V2 hit
+it directly. **V2 cannot pass under container isolation until the gate's pytest is
+routed through the MCP sandbox (the deferred sprint-18 / Phase-3b-completion work
+— an implementation task, not a verification run).** Ralph's convergence
+*algorithm* remains separately verifiable under `ISOLATION=worktree`/`none` (gate
+runs in-process) on a trusted pure-Python task.
+
+## V3 — forced issue-escalation round-trip — NOT STARTED
+
+Not run (budget/side-effect scope not authorized this session). Independent of the
+gate-sandbox gap below (V3 forces a *pause*, it does not need a Coder ACCEPT), but
+it has real GitHub side effects, so it is left for a future host session.
+
+## Finding F-GATE-SANDBOX — the flip block's container-isolated verification is gated on unimplemented work
+
+**What:** the Coder gates (`CoderGate` + `RalphCoderGate`) refuse to run under
+`LOOP_ENGINE_ISOLATION=container`/`sandbox` — `core/coder_gate.py::_raise_if_sandboxed`
+raises because the gate's verification pytest executes **in-process**, and routing
+it through the sandbox is deferred sprint-18 work (§3). The coder's `run_tests`
+*tool* was sandboxed in Phase 3b (via MCP); the gate's *own* pytest was not.
+
+**Impact on sprint 27 (the flip block):** the plan treats V1/V2/V3 as runnable to
+`COMPLETED` on a daemon-bearing host under `ISOLATION=container`. That assumption
+is **false today** — no run of any kind can reach a Coder ACCEPT → `COMPLETED`
+under container isolation, because the gate that must go green refuses to execute.
+This is a **prerequisite implementation task the flip block did not account for**,
+not a defect in any of the four flags being flipped (the gate refusal is
+flag-invariant and predates Phase 6).
+
+**Sequencing decision for the planning session (not decided here):**
+- **Option A — build the gate-sandbox wiring first.** Route the Coder/Ralph gate's
+  verification pytest through the MCP container sandbox (mirror Phase 3b's
+  `run_tests` sandboxing) as a new task/sprint that *finishes* Phase 3b, THEN run
+  V1(complete)/V2/V3 under container. Makes the container end-state actually
+  completable before any deletion.
+- **Option B — decouple the deletions from the gate gap.** The three V1-target
+  flags (`ENGINE`/`TOOLS`/`PERSONAS`) are already verified functional + parity
+  through PM→Arch→Sprint + the in-container MCP coder tool loop + the escalation
+  ladder; the gate-sandbox gap is orthogonal to them (flag-invariant, affects
+  classic and new paths equally). Consider whether Tasks 1–3 can proceed on that
+  decomposed evidence, with the terminal-`COMPLETED`/container-gate proof tracked
+  separately as its own gate (and `CODER`/Ralph Task 4 held until both V2 and the
+  gate wiring land).
+
+**State of evidence (2026-07-10 host session):**
+- Verified live: `ENGINE=langgraph`, `TOOLS=mcp`, `PERSONAS=declarative` functional
+  + parity through the full upstream pipeline, the in-container MCP coder tool loop,
+  and the escalation/pause/snapshot paths. Ralph's manifest → checklist →
+  one-task-per-iteration machinery engages live (task `t01` checked off).
+- NOT verified (blocked by F-GATE-SANDBOX): any Coder-ACCEPT → `COMPLETED` under
+  container isolation; Ralph full convergence + cost to `COMPLETED`; the V3 issue
+  round-trip (not started).
+- GitHub side effects cleaned: scratch issue #21 closed; V1 runs 2–4 and V2 had no
+  remote (crashed on `gh` at escalation — a harness artifact), so nothing else was
+  filed. Scratch repos are local (scratchpad), no remote cleanup needed.
+
+---
+
 Delete this file once the checks have been performed and any findings are fixed.
