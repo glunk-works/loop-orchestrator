@@ -848,10 +848,9 @@ with feature work. A path is only deleted *after* its replacement is verified on
 a host — Phase 6 removes proven-redundant scaffolding, it does not take the
 migration's remaining risk.
 
-**Open questions:** does any flag deserve to survive as a documented escape
-hatch (e.g. a "classic engine" break-glass) rather than full deletion? Is the
-verification bar per-flag or one big end-to-end factory run that clears several
-at once?
+**Open questions — RESOLVED 2026-07-10 (Opus/Architect flip-planning pass, user-confirmed); planned in `sprints/27_phase6_flip_block/sprint_plan.md`:**
+- **FD1 — Verification bar = per-flag *criterion*, batched *execution*.** Each flag keeps its own sunset criterion, but the runs are batched where paths co-occur: **one big end-to-end factory run** clears `ENGINE`+`TOOLS`+`PERSONAS` together (they're on the happy path and mutually exercised in the target production config; parity-checked against the classic baseline), with **two carve-outs** that a happy-path run structurally cannot exercise — **Ralph** (§3: a dedicated multi-sprint convergence/cost run, no parity oracle) and the **issue path** (§9: a forced pause-for-issue round-trip + R1–R4 seam wiring). Consequence: **deletion in `run_loop`-first dependency order** (`ENGINE` → `TOOLS` → `PERSONAS` → `CODER=ralph` → issue-path flip), since the `artifacts` strip and `loop.py` collapse are downstream of `run_loop` deletion. Rationale: isolated per-flag verification is both wasteful (re-provision host + re-burn real budget for paths that always run together) and weaker (never proves the interacting combined config that is the one-path end state).
+- **FD2 — No flag survives as a break-glass; git is the recovery mechanism.** Full deletion for all four sunsettable flags — an escape hatch kept live is a path kept untested (and for `ENGINE`, one that keeps `State` fat by blocking the `artifacts` strip), re-creating the exact calcification Phase 6 exists to remove. The "what if Ralph regresses" anxiety is answered by **tagging the pre-deletion commit** (`pre-phase6-classic`): the classic paths live in history, recoverable via `git revert` of a deletion commit — no permanently-live, permanently-untested branch. `PERSONAS` classic prompt *content* is separately preserved (promoted to `prompts/` as sole source of truth; only the redundant `run()` bodies + embedded templates are deleted). `LOOP_ENGINE_ISOLATION` stays — genuine runtime config (`none`/`container`), not a break-glass.
 
 ## Cross-cutting follow-ups (don't lose these)
 
