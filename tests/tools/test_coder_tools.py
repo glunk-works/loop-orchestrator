@@ -4,7 +4,12 @@ from pathlib import Path
 import pytest
 
 from loop_engine.tools.coder_tools import grep, list_files, read_file
-from loop_engine.tools.coder_tools.run_tests import run_pytest, run_tests
+from loop_engine.tools.coder_tools.run_tests import (
+    format_run_tests_result,
+    parse_run_tests_result,
+    run_pytest,
+    run_tests,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -139,3 +144,29 @@ def test_run_pytest_truncates_oversized_output(monkeypatch) -> None:
 
     assert len(output) < 100_000
     assert output.endswith("[truncated]")
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "output"),
+    [
+        (0, "1 passed in 0.01s"),
+        (5, "no tests ran in 0.00s"),
+        (1, "line one\n\nline two\n\npytest exit code: 0 (embedded, not a real header)"),
+        (1, ""),
+        (1, "\nleading blank line"),
+    ],
+)
+def test_format_parse_run_tests_result_round_trips(exit_code: int, output: str) -> None:
+    text = format_run_tests_result(exit_code, output)
+
+    assert parse_run_tests_result(text) == (exit_code, output)
+
+
+def test_run_tests_emits_exact_legacy_string(monkeypatch) -> None:
+    import loop_engine.tools.coder_tools.run_tests as run_tests_module
+
+    monkeypatch.setattr(run_tests_module, "run_pytest", lambda path: (0, "1 passed in 0.01s"))
+
+    result = run_tests("src")
+
+    assert result == "pytest exit code: 0\n\n1 passed in 0.01s"

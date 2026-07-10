@@ -53,7 +53,28 @@ def run_pytest(path: str) -> tuple[int, str]:
     return completed.returncode, output
 
 
+def format_run_tests_result(exit_code: int, output: str) -> str:
+    """Format a (exit_code, output) pair into the run_tests tool's result string.
+
+    Single source of truth for the result shape shared with
+    `parse_run_tests_result` so producer and consumer never drift.
+    """
+    return f"pytest exit code: {exit_code}\n\n{output}"
+
+
+def parse_run_tests_result(text: str) -> tuple[int, str]:
+    """Recover (exit_code, output) from a `format_run_tests_result` string.
+
+    Splits on the first blank line only, so multi-line/blank-line output
+    (including output that itself contains "pytest exit code:"-like text)
+    round-trips intact.
+    """
+    header, output = text.split("\n\n", 1)
+    exit_code = int(header.removeprefix("pytest exit code: "))
+    return exit_code, output
+
+
 def run_tests(path: str) -> str:
     """Tool-facing wrapper: pytest result formatted for the model."""
     exit_code, output = run_pytest(path)
-    return f"pytest exit code: {exit_code}\n\n{output}"
+    return format_run_tests_result(exit_code, output)
