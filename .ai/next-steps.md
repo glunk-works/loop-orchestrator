@@ -5,65 +5,50 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Phase 5 — Sprint 24 (`maintenance_flow`) — `awaiting_hitl_review`.**
-Implementation is done, green, and committed (`6172ad1`). The next session
-is **Opus/Architect** HITL-reviewing the diff.
+**Phase 5 — Sprint 25 (`bootstrap_flow`, piece 4) — `planning`.**
+No sprint_plan yet. The next session is an **Opus/Architect** planning pass
+(one question at a time, HITL gates) to write `sprints/25_bootstrap_flow/sprint_plan.md`.
 
-## Just done (Sonnet/Coder — Sprint 24 implementation, tasks 1–6)
-- **Task 1:** `tools/git_io` — new local-git write surface (`checkout_branch`,
-  `commit_all`, `push_branch`) against a cloned tree; the **fourth** sanctioned
-  subprocess surface. Mirrors `tools/worktree/manager.py::_git`'s posture,
-  validates every `tree` arg via `repo_io._validate_clone_dest`. Hermetic
-  tests against a `tmp_path` repo + local bare remote (`tests/tools/git_io/`).
-- **Task 2:** `runner.run_in_tree(human_input, tree_path, *, budget_usd,
-  loop_name) -> State` — same loop-build as `run_new`, cwd pinned to the
-  clone, deliberately **not** opening `worktree_run`. Cwd restored via
-  `finally` on every exit path; proven to never re-enter `worktree_run` even
-  with `LOOP_ENGINE_ISOLATION=worktree` set.
-- **Task 3:** `src/loop_engine/flows/maintenance/` — `MaintenanceRequest` /
-  `MaintenanceResult` (pydantic, `extra="forbid"`) + `run_maintenance()`
-  chaining `clone_repo` → `checkout_branch` → `run_step` (defaults to
-  `run_in_tree`) → green gate (`coder_tools.run_pytest` against the clone's
-  `src/`) → **green-only** `commit_all`/`push_branch`/`open_pr` (base
-  `develop`); red ⇒ no commit/push/PR. Every collaborator injectable.
-- **Task 4:** `tests/flows/test_boundaries.py` (no `keyring`, no direct file
-  write, no subprocess surface of its own in `flows/`) +
-  `tests/tools/test_subprocess_surfaces.py` (repo-wide static assertion,
-  sanctioned surfaces **three → four**, naming `tools/git_io`).
-- **Task 5:** `tests/flows/maintenance/test_integration.py` — hermetic
-  green/red end-to-end proof: real `git_io` against a `tmp_path` repo + local
-  bare remote (`repo_io`/the loop run faked). Green pushes + opens a PR
-  against `develop`; red touches neither.
-- **Task 6:** Updated `CLAUDE.md` (module boundaries: four surfaces, new
-  `tools/git_io` + `flows/` entries), `.ai/context/modules.md` (`git_io`,
-  `run_in_tree`, `flows/maintenance`), `docs/migration_roadmap.md` (status
-  row, NEXT ACTION → Sprint 25, Sprint 24 decisions log entry), and
-  `sprints/DEFERRED_VERIFICATION.md` (§7, the deferred live clone→push→PR
-  check).
-- **Green gate:** full suite **493 passed**; `hatch run lint`/`format`/`audit`
-  clean; `sbom.json` **unchanged** (no dependency added).
+## Just done (Sprint 24 — `maintenance_flow` — archived)
+- Sprint 24 (maintenance flow, capability slice) is **implemented, HITL-reviewed,
+  review-fixed, and archived** (`6172ad1` → `f8d388a`). Landed `tools/git_io`
+  (the 4th sanctioned subprocess surface), `runner.run_in_tree`, and the
+  `flows/maintenance` package (clone → branch → run → completion guard →
+  no-change guard → green gate → green-only push/PR).
+- HITL review (Opus) found + fixed 2 findings (`f8d388a`): the flow now requires
+  the inner run to end `COMPLETED` before the gate (else `run_incomplete`, so a
+  human-paused `AWAITING_ISSUE` tree is never shipped as a PR) and probes
+  `git_io.has_changes` before committing (else `no_changes`, dodging
+  `commit_all`'s empty-index crash). 497 tests green, lint/format/audit clean,
+  `sbom.json` unchanged.
 
 ## Next
-1. **(Opus/Architect) HITL-review the Sprint 24 diff** (`6172ad1`) against
-   `sprints/24_maintenance_flow/sprint_plan.md`'s locked decisions (capability
-   slice; `git_io` as the 4th surface; `run_in_tree` no-`worktree_run`;
-   green-only push/PR; `flows/` boundary posture). Fix any findings, re-verify
-   green.
-2. `/archive-sprint` only after the review is clean and committed.
-3. After archival: plan **Sprint 25 (bootstrap flow, piece 4)**.
+1. **(Opus/Architect) Plan Sprint 25 (bootstrap flow, piece 4).** Per the
+   roadmap's "Deferred" note: `create_repository` in `glunk-works` → scaffold
+   (`hatch new` / OpenTofu) in a fresh worktree → inject the global `CLAUDE.md`
+   → commit/push. Separately planned + gated; deliver as
+   `sprints/25_bootstrap_flow/sprint_plan.md`.
+2. Handoff to Sonnet to implement once the plan is HITL-approved.
 
 ## Carry-forward
+- **Low test-coverage nit (from the Sprint 24 review, not yet addressed):**
+  `flows/maintenance.flow._default_run_tests` (the real green-gate glue —
+  chdir into the clone + `run_pytest("src")`) is never exercised; every flow
+  test injects a fake `run_tests`. A small unit test over `_default_run_tests`
+  against a tmp clone with a trivial passing/failing `src/` test would close it.
+  Orthogonal to Sprint 25 — pick up opportunistically or fold into the deferred
+  live verification.
 - **Open low nit (carried from 22b, still unresolved):** bare `python` vs
   `sys.executable` in the committed `loop_engine.mcp.json` github stanza —
-  orthogonal to this flow, not touched in 24.
+  orthogonal to the flows work, not touched in 24.
 
 ## Pointers
-- `sprints/24_maintenance_flow/sprint_plan.md` — the task list this sprint
-  implemented (all 6 tasks, all acceptance criteria met).
-- `docs/migration_roadmap.md` — Phase 5 status; ▶ NEXT ACTION → HITL review
-  Sprint 24, then plan Sprint 25.
+- `docs/migration_roadmap.md` — Phase 5 status; ▶ NEXT ACTION → plan Sprint 25.
 - `.ai/context/workflow.md` — the Opus↔Sonnet handoff protocol + switch points.
+- `sprints/24_maintenance_flow/sprint_plan.md` — the just-archived sprint (the
+  precedent capability-slice shape Sprint 25 mirrors).
 
 ## Working tree
-- **Clean.** Sprint 24's implementation is committed at `6172ad1` (`Phase 5
-  sprint 24: implement maintenance flow, handoff to Opus`).
+- Sprint 24 committed at `f8d388a`. The archival edits (this `next-steps.md`,
+  `.ai/state.json`, `docs/migration_roadmap.md`) are **uncommitted** — commit
+  them to make the cursor advance durable.

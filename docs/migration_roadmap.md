@@ -23,7 +23,7 @@ this file tracks *how far we've got and what's next*.
 | 4 · part 1 — Ralph-loop Coder (`AgenticNode`) | ✅ built behind flag, reviewed; 4 review findings hardened in 4a (below). Plan: `sprints/19_ralph_coder/sprint_plan.md` | `195f7b7` |
 | 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ complete, reviewed; 3 HITL-review findings resolved (see "Sprint-19a HITL-review settlements"). Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | `d675d5d` → review-fixes |
 | 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ✅ complete, reviewed; HITL-review findings resolved via sprint 21 review-fixes. 394 tests green. Plans: `sprints/20_declarative_generators/`, `sprints/21_declarative_review_fixes/` | `cf48b0c` → `aceb23a` → `03818d9` |
-| 5 — Autonomous triggers + multi-repo factory | 🟨 22a + 22b + 23 + 23a complete, reviewed, archived. Sprint 24 (maintenance flow capability slice) implemented, all 6 tasks green; landed the fourth sanctioned subprocess surface (`tools/git_io`). Next: HITL review of the 24 diff, then plan Sprint 25 (bootstrap flow). Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/`, `sprints/23_trigger_surface/`, `sprints/23a_trigger_review_fixes/`, `sprints/24_maintenance_flow/` | `457f675` → `71f1692` → `d0e118d` → `7b46227` → `5bc3811` → `5ff8c02` → `e0406d8` → `212beeb` → (24, pending commit) |
+| 5 — Autonomous triggers + multi-repo factory | 🟨 22a + 22b + 23 + 23a + 24 complete, reviewed, archived. Sprint 24 (maintenance flow capability slice) implemented + HITL-reviewed; 2 review findings fixed (completion guard + no-change guard, `f8d388a`); landed the fourth sanctioned subprocess surface (`tools/git_io`). Next: plan Sprint 25 (bootstrap flow). Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/`, `sprints/23_trigger_surface/`, `sprints/23a_trigger_review_fixes/`, `sprints/24_maintenance_flow/` | `457f675` → `71f1692` → `d0e118d` → `7b46227` → `5bc3811` → `5ff8c02` → `e0406d8` → `212beeb` → `6172ad1` → `f8d388a` |
 | 6 — Collapse the flags (decommission the migration scaffolding) | ⬜ sketch only | — |
 
 Phases 1–3b are detailed and executed (3b's daemon-host e2e is deferred, not
@@ -34,8 +34,9 @@ its four review findings are hardened in **part 1a** (`sprints/19a_ralph_hardeni
 **Part 2** (`GeneratorNode` + PM critic-gate, `sprints/20_declarative_generators/`)
 is **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`),
 **reviewed, and its review findings resolved** (sprint 21 review-fixes, `03818d9`).
-**▶ NEXT ACTION: HITL review of Sprint 24 (maintenance flow), then plan Sprint 25** (bootstrap
-flow). Sprint 24 (`sprints/24_maintenance_flow/sprint_plan.md`) is **implemented,
+**▶ NEXT ACTION: plan Sprint 25 (bootstrap flow).** Sprint 24 (maintenance flow) is
+**implemented, HITL-reviewed, review-fixed, and archived** (`6172ad1` → `f8d388a`).
+Sprint 24 (`sprints/24_maintenance_flow/sprint_plan.md`) is **implemented,
 all 6 tasks green**: a new `tools/git_io` module (local-git `checkout_branch`/
 `commit_all`/`push_branch` against a cloned tree, mirroring `tools/worktree`'s
 `_git` posture, validated via `repo_io._validate_clone_dest`) — the **fourth**
@@ -53,8 +54,13 @@ against the clone) → **green-only** `git_io.commit_all`/`push_branch` +
 **Capability slice only** — no CLI subcommand, no trigger wiring, no bootstrap
 flow; auto-merge stays impossible (no merge verb, `open_pr` terminal). No new
 dependency (`sbom.json` unchanged); live clone→push→PR verification deferred to
-a daemon-bearing host (`sprints/DEFERRED_VERIFICATION.md`). A new HITL gate is
-now open: Opus reviews the Sprint 24 diff before archival. Sprint 23 (trigger
+a daemon-bearing host (`sprints/DEFERRED_VERIFICATION.md`). **HITL-reviewed by
+Opus; 2 findings fixed** (`f8d388a`): the flow now (1) requires the inner run's
+returned `State` to be `COMPLETED` before the gate (a `FAILED_STAGE`/
+`BUDGET_EXCEEDED`/`AWAITING_ISSUE` run → `run_incomplete`, so a human-paused
+tree is never shipped as a PR) and (2) probes `git_io.has_changes` before
+committing (an empty-diff run → `no_changes`, dodging `commit_all`'s empty-index
+failure). 497 tests green. Sprint 23 (trigger
 surface — a FastAPI webhook that turns a GitHub `agent-action` label or
 `/agent-run` comment into a real `runner.run_new` default-loop run via an
 injectable `RunDispatcher` seam) is **implemented, all 6 tasks green**
@@ -368,6 +374,21 @@ into permanent bloat.
     own — it *calls* `tools/git_io`, the one permitted new surface.
   - No new dependency (`sbom.json` unchanged); no `State`-schema change; the
     local-git surface deferred from 22b is now landed.
+  - **HITL-review settlement (Opus/Architect, 2026-07-10, `f8d388a`):** the
+    green gate is a *quality* gate, not a *completion* gate — so the flow now
+    guards **two** additional preconditions before any git write. (1)
+    **Completion guard:** the inner run's returned `State` must be `COMPLETED`;
+    a `FAILED_STAGE`/`BUDGET_EXCEEDED`/`AWAITING_ISSUE` run short-circuits to a
+    new `run_incomplete` status. Rationale: a partial or human-paused tree can
+    still pass pytest; without this guard an `AWAITING_ISSUE` pause (a run that
+    escalated a question to a human) would be silently converted into a
+    merge-ready PR. (2) **No-change guard:** a completed run that produced no
+    diff short-circuits to a new `no_changes` status via a read-only
+    `git_io.has_changes` probe (`git status --porcelain`) — this both models a
+    clean no-op honestly and dodges `commit_all`'s `git commit` failing on an
+    empty index (which previously raised an uncaught `GitIOError`). Both guards
+    are covered by fake-collaborator unit tests + a real-`git_io` integration
+    test; 497 tests green.
 
 ## Feature flags introduced
 
