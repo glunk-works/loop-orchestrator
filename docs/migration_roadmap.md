@@ -23,7 +23,7 @@ this file tracks *how far we've got and what's next*.
 | 4 · part 1 — Ralph-loop Coder (`AgenticNode`) | ✅ built behind flag, reviewed; 4 review findings hardened in 4a (below). Plan: `sprints/19_ralph_coder/sprint_plan.md` | `195f7b7` |
 | 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ complete, reviewed; 3 HITL-review findings resolved (see "Sprint-19a HITL-review settlements"). Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | `d675d5d` → review-fixes |
 | 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ✅ complete, reviewed; HITL-review findings resolved via sprint 21 review-fixes. 394 tests green. Plans: `sprints/20_declarative_generators/`, `sprints/21_declarative_review_fixes/` | `cf48b0c` → `aceb23a` → `03818d9` |
-| 5 — Autonomous triggers + multi-repo factory | 🟨 22a + 22b + 23 + 23a + 24 complete, reviewed, archived. Sprint 24 (maintenance flow capability slice) implemented + HITL-reviewed; 2 review findings fixed (completion guard + no-change guard, `f8d388a`); landed the fourth sanctioned subprocess surface (`tools/git_io`). Next: plan Sprint 25 (bootstrap flow). Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/`, `sprints/23_trigger_surface/`, `sprints/23a_trigger_review_fixes/`, `sprints/24_maintenance_flow/` | `457f675` → `71f1692` → `d0e118d` → `7b46227` → `5bc3811` → `5ff8c02` → `e0406d8` → `212beeb` → `6172ad1` → `f8d388a` |
+| 5 — Autonomous triggers + multi-repo factory | 🟨 22a + 22b + 23 + 23a + 24 complete, reviewed, archived. Sprint 25 (bootstrap flow capability slice) **implemented**, all 6 tasks green; landed the second sanctioned file-write surface (`tools/scaffold`). Next: Opus HITL review of the Sprint 25 diff. Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/`, `sprints/23_trigger_surface/`, `sprints/23a_trigger_review_fixes/`, `sprints/24_maintenance_flow/`, `sprints/25_bootstrap_flow/` | `457f675` → `71f1692` → `d0e118d` → `7b46227` → `5bc3811` → `5ff8c02` → `e0406d8` → `212beeb` → `6172ad1` → `f8d388a` → *(sprint 25, this commit)* |
 | 6 — Collapse the flags (decommission the migration scaffolding) | ⬜ sketch only | — |
 
 Phases 1–3b are detailed and executed (3b's daemon-host e2e is deferred, not
@@ -34,7 +34,30 @@ its four review findings are hardened in **part 1a** (`sprints/19a_ralph_hardeni
 **Part 2** (`GeneratorNode` + PM critic-gate, `sprints/20_declarative_generators/`)
 is **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`),
 **reviewed, and its review findings resolved** (sprint 21 review-fixes, `03818d9`).
-**▶ NEXT ACTION: plan Sprint 25 (bootstrap flow).** Sprint 24 (maintenance flow) is
+**▶ NEXT ACTION: Opus HITL review of the Sprint 25 (bootstrap flow) diff, then plan
+Phase 6 (collapse the flags).** Sprint 25 (`sprints/25_bootstrap_flow/sprint_plan.md`)
+is **implemented, all 6 tasks green**: a new `tools/scaffold` module (`write_skeleton`,
+validated via `repo_io._validate_clone_dest`, `pkg_name` sanitized to a safe Python
+identifier) — the **second** sanctioned file-write surface, moving the invariant from
+one to two (`CLAUDE.md` + `tests/tools/test_state_io_boundary.py` updated together,
+mirroring how sprint 24 moved the subprocess-surface count three→four); bundled
+package-data templates (`kind="python"` only; a `kind="iac"` set is deferred behind
+the seam) plus a byte-identical `templates/CLAUDE.md` sync-guard against
+`.ai/context/conventions.md`; the new `src/loop_engine/flows/bootstrap/` package
+(a sibling of `flows/maintenance`) chaining `repo_io.create_repository` →
+`repo_io.clone_repo` → `git_io.checkout_branch(main)` → `scaffold.write_skeleton` →
+`git_io.commit_all`/`push_branch(main)` → `repo_io.create_branch(develop, base=main)`
+(load-bearing ordering — `create_branch` must follow the push); **no** inner loop,
+**no** green gate, **no** `open_pr` (a brand-new repo has nothing to review into —
+auto-merge stays impossible); a `flows/` boundary test provably enumerating
+`flows/bootstrap`; and a hermetic end-to-end proof (real `scaffold` + real `git_io`
+against a `tmp_path` repo seeded on a non-`main` initial branch, proving the
+unborn-HEAD handling, + a local bare remote, `repo_io` faked). No new dependency
+(`sbom.json` unchanged); the four sanctioned subprocess surfaces are unchanged
+(`scaffold` writes files, it does not shell out); live `create_repository`→clone→
+scaffold→push→`create_branch` verification is deferred to a daemon-bearing host
+(`sprints/DEFERRED_VERIFICATION.md`; `glunk-works` org access remains an open
+hosting question). Sprint 24 (maintenance flow) is
 **implemented, HITL-reviewed, review-fixed, and archived** (`6172ad1` → `f8d388a`).
 Sprint 24 (`sprints/24_maintenance_flow/sprint_plan.md`) is **implemented,
 all 6 tasks green**: a new `tools/git_io` module (local-git `checkout_branch`/
@@ -634,9 +657,29 @@ decisions above.
   real-`git_io`-against-`tmp_path` green/red end-to-end proof; live
   clone→push→PR is deferred to a daemon-bearing host
   (`sprints/DEFERRED_VERIFICATION.md`). No new dependency, `sbom.json` unchanged.
-- **Sprint 25+ — bootstrap flow** (piece 4), separately planned + gated, now
-  that the github foundation (22), the trigger surface (23), and the
-  maintenance flow (24) all land.
+- **Sprint 25 — bootstrap flow** *(implemented, all 6 tasks green:
+  `sprints/25_bootstrap_flow/sprint_plan.md`; HITL review pending)*. Ships
+  `tools/scaffold` (the deferred second file-write surface — `write_skeleton`
+  writing bundled package-data templates into a validated foreign clone tree,
+  `pkg_name` sanitized to a safe Python identifier — moving the file-write
+  invariant one→two, mirroring how 24 moved the subprocess invariant three→four),
+  bundled `kind="python"` templates + a byte-identical `templates/CLAUDE.md`
+  sync-guard against `.ai/context/conventions.md`, and the new
+  `src/loop_engine/flows/bootstrap/` package chaining `repo_io.create_repository`
+  → `repo_io.clone_repo` → `git_io.checkout_branch(main)` →
+  `scaffold.write_skeleton` → `git_io.commit_all`/`push_branch(main)` →
+  `repo_io.create_branch(develop, base=main)` (ordering load-bearing: the base
+  ref must exist remotely before `create_branch` reads its SHA). **Skeleton
+  only** — no inner loop, no LLM run/budget, no green gate, no `open_pr`, no
+  CLI subcommand, no trigger wiring, no IaC template set (deferred behind the
+  `kind` seam). Coverage is hermetic: a `flows/` boundary test provably
+  enumerating `flows/bootstrap`, plus a real-`scaffold`+real-`git_io`-against-
+  `tmp_path` end-to-end proof (seeded on a non-`main` initial branch, proving
+  the unborn-HEAD handling) against a local bare remote, `repo_io` faked; live
+  `create_repository`→clone→scaffold→push→`create_branch` is deferred to a
+  daemon-bearing host (`sprints/DEFERRED_VERIFICATION.md`; `glunk-works` org
+  access remains an open hosting question). No new dependency, `sbom.json`
+  unchanged; the four sanctioned subprocess surfaces are unchanged.
 
 **Still-open questions (deferred to their sprints, not the github foundation):**
 where the trigger server is hosted (`uvicorn`, deferred with deployment); org

@@ -52,6 +52,10 @@ Source = "https://github.com/glunk-works/loop-engine"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/loop_engine"]
+# No force-include needed: hatchling's default `packages` file selection
+# already ships non-`.py` files under the package tree (verified by building
+# a wheel and inspecting it — `tools/scaffold/templates/` lands intact,
+# including `.tmpl` files and `CLAUDE.md`).
 
 [tool.hatch.envs.default]
 dependencies = [

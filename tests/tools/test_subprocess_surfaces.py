@@ -68,3 +68,14 @@ def test_exactly_four_sanctioned_subprocess_surfaces() -> None:
     assert len(set(_SANCTIONED_SUBPROCESS_MODULES.values())) == 4
     assert SRC_ROOT / "tools" / "git_io" / "local.py" in _SANCTIONED_SUBPROCESS_MODULES
     assert _SANCTIONED_SUBPROCESS_MODULES[SRC_ROOT / "tools" / "git_io" / "local.py"] == "git"
+
+
+def test_scaffold_is_a_file_write_surface_not_a_fifth_subprocess_surface() -> None:
+    # Sprint 25 added `tools/scaffold` as the SECOND file-write surface (see
+    # `tests/tools/test_state_io_boundary.py`) -- it must not also become a
+    # fifth subprocess surface. It's deliberately absent from the sanctioned
+    # dict, and `test_subprocess_surfaces_are_confined_to_the_sanctioned_modules`
+    # would fail if `writer.py` ever imported `subprocess`.
+    scaffold_writer = SRC_ROOT / "tools" / "scaffold" / "writer.py"
+    assert scaffold_writer not in _SANCTIONED_SUBPROCESS_MODULES
+    assert not _shells_out(ast.parse(scaffold_writer.read_text(), filename=str(scaffold_writer)))

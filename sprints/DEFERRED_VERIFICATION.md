@@ -219,4 +219,55 @@ host with `gh` authenticated and network access:
 - Clean up the scratch repo (and any opened PR/branch) afterward — this check
   has real side effects on GitHub, unlike every other check in this file.
 
+## 8. Bootstrap flow live create → clone → scaffold → push `main` → create `develop` (validates Sprint 25)
+
+Sprint 25's coverage is entirely hermetic: `tests/tools/scaffold/test_writer.py`
+proves `write_skeleton` against a `tmp_path` tree (incl. the `pkg_name`
+sanitization/traversal negative tests and the `CLAUDE.md` byte-identity guard),
+`tests/flows/bootstrap/test_flow.py` fakes every collaborator to prove the
+chain's call order, and `tests/flows/bootstrap/test_integration.py` exercises
+real `tools/scaffold` + real `tools/git_io` against a `tmp_path` repo + a local
+bare remote — but `repo_io.create_repository`/`clone_repo`/`create_branch` are
+always faked; no real `gh repo create`, no real clone, no real push, and no
+real `develop` branch creation happen in CI. Run on a daemon-bearing host with
+`gh` authenticated and network access, and with resolved org access to
+`glunk-works` (still an open hosting question — the org may not exist yet;
+confirm access or substitute a disposable scratch org before running this
+check):
+
+- **Run `flows.bootstrap.run_bootstrap`** with all collaborators at their real
+  defaults (`repo_io`, `git_io`, `tools/scaffold`) against a disposable scratch
+  repo name — confirm `create_repository` actually creates a private repo,
+  `clone_repo` lands a real empty working tree, and the returned `RepoRef.url`
+  resolves.
+- **Confirm the skeleton is really there.** In the real clone, confirm
+  `pyproject.toml`, `src/<pkg_name>/__init__.py`, `tests/test_smoke.py`,
+  `README.md`, `.gitignore`, and `CLAUDE.md` all exist with the repo/package
+  name substituted, and that a real `pytest`/`ruff check`/`ruff format --check`
+  pass against the scaffolded skeleton on its own (proving the bundled
+  templates are actually coherent, not just individually unit-tested).
+- **Confirm the empty-clone branch mechanics.** Verify the fresh clone's
+  initial branch name (whatever the host's `init.defaultBranch` is) and that
+  `checkout_branch(tree, "main")` still succeeds and produces a `main` branch
+  regardless of that starting name.
+- **Confirm the push + `develop` ordering against the real remote.** After the
+  run, confirm (via `gh api repos/{owner}/{repo}/branches`) that both `main`
+  (with the scaffold as its first commit, and set as the repo's default
+  branch) and `develop` (based on `main`'s pushed SHA) exist, and that
+  `develop` could only have been created after the push (confirm by timestamp
+  or by re-running against a repo where the push is deliberately blocked and
+  observing `create_branch` fails against a nonexistent base ref).
+- **Confirm no PR is opened and no merge verb is reachable** — `repo_io`
+  exposes none, and bootstrap never calls `open_pr`.
+- ~~Confirm the wheel actually ships the templates~~ — already verified in the
+  25 implementation session (no `gh`/network needed for this one): `hatch
+  build -t wheel` + inspecting the archive confirms
+  `loop_engine/tools/scaffold/templates/` (including the non-`.py` `CLAUDE.md`
+  and `.tmpl` files) ships via hatchling's **default** `packages` file
+  selection — no `force-include` needed (an explicit `force-include` entry
+  was tried first and **conflicts** with the default inclusion, raising
+  hatchling's duplicate-path build error; removed).
+- Clean up the scratch repo afterward — this check has real side effects on
+  GitHub, unlike every other check in this file.
+
 Delete this file once the checks have been performed and any findings are fixed.

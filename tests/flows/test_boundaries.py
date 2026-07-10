@@ -94,3 +94,13 @@ def test_flows_package_adds_no_subprocess_surface_of_its_own() -> None:
         tree = ast.parse(path.read_text(), filename=str(path))
         surfaces = _subprocess_surfaces(tree)
         assert not surfaces, f"{path} introduces a subprocess surface: {surfaces}"
+
+
+def test_flows_modules_provably_enumerate_bootstrap() -> None:
+    # Sharpens the auto-discovery above: proves `_flows_modules()` actually
+    # walks into the newer `flows/bootstrap` package (Phase 5 piece 4), not
+    # just the pre-existing `flows/maintenance` one.
+    bootstrap_dir = FLOWS_DIR / "bootstrap"
+    discovered = _flows_modules()
+    assert any(bootstrap_dir in path.parents for path in discovered)
+    assert bootstrap_dir / "flow.py" in discovered
