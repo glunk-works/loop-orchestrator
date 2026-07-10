@@ -305,6 +305,17 @@ authenticated against a disposable scratch repo:
   the runtime default) and the **classic-path deletion**, per LD3 in
   `docs/migration_roadmap.md`'s "Phase 6 planning pass". Neither should happen
   until this live check has passed.
+- **Sprint 26 HITL review (Opus, 2026-07-10) routed findings R1–R7 into this
+  flip** — see `docs/migration_roadmap.md` "Sprint 26 … HITL review". Before
+  flipping the reader default, fix **R1** (make `mcp_read_issue` a
+  provider-binding `mcp_issue_reader(provider)` factory + correct the
+  `mcp_client.py` docstring), **R2** (thread the `issue_filer` write seam
+  through `cli.resume`), **R3** (unify read/write seams on one injection
+  mechanism), and **R4** (injected-filer test coverage at all three
+  `_pause_for_issue` sites). Also resolve **R7** here (the `python` vs
+  `sys.executable` launch nit in `loop_engine.mcp.json`). **R5/R6** (the
+  pre-existing `resume` abort-path crash + first-block-only answer parse) are
+  independent of the flip and can be fixed any time.
 - Clean up the scratch issue/repo afterward — this check has real side
   effects on GitHub, unlike every other check in this file.
 

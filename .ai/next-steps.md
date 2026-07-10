@@ -5,80 +5,56 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Phase 6 — Collapse the flags — Sprint 26 (`issue_io_mcp_unification`) —
-`awaiting_hitl_review`.** Implementation (Sonnet/Coder) is done, all 6 tasks
-green. Next session is **Opus/Architect**, HITL-reviewing the diff.
+**Phase 6 — Collapse the flags — the host-gated flip block
+(`27_phase6_flip_block`) — `planning`.** Next session is **Opus/Architect**,
+writing the plan. No HITL gate open. Note: the *implementation* of this block is
+gated on a daemon-bearing host for live verification — the planning pass can
+proceed now, but the code lands only once the host is available.
 
-## Just done (Sonnet/Coder — Sprint 26 implementation pass)
-- **Task 1:** split `tools/issue_io` into pure `render_question_issue`/
-  `parse_issue_answers` and the two `gh`-touching primitives `create_issue`/
-  `read_issue`; `file_question_issue`/`read_issue_answers` are now thin,
-  behavior-preserving wrappers (all pre-existing tests pass unmodified).
-- **Task 2:** `mcp_servers/issue_io_server.py` (the third native MCP server,
-  mirrors `github_server.py`, exposes exactly `{create_issue, read_issue}`,
-  no `gh` at import) + a matching `issue` stanza in `loop_engine.mcp.json`.
-- **Task 3:** `build_issue_provider()` (`tools/mcp/provider.py`) +
-  `tools/issue_io/mcp_client.py`'s `mcp_issue_filer`/`mcp_read_issue`
-  client-side adapters (signature-compatible with the classic calls).
-- **Task 4:** injectable `issue_filer` write seam threaded `run_loop`/
-  `run_graph_loop` → `execute_stage` → `_pause_for_issue`. **Note for
-  reviewer:** the default is `None`, resolved to the classic
-  `file_question_issue` by module-global lookup *inside* the function body —
-  NOT a literal default-argument value. Binding the default directly
-  (`issue_filer: IssueFiler = file_question_issue`) snapshots the reference
-  at import time and silently breaks the existing
-  `monkeypatch.setattr("loop_engine.core.engine.file_question_issue", ...)`
-  autouse fixture in `tests/core/test_engine.py`/`test_graph_engine.py` — this
-  was caught by the pre-existing test suite going red, not by review.
-- **Task 5:** `cli.py`'s `resume --from-issue` gained an analogous read seam
-  (`_resolve_issue_reader()`, same module-global-override pattern as
-  `_select_engine()`'s `cli.run_loop`); `tests/tools/test_mcp_provider.py`'s
-  disjointness assertion extended two-way → three-way
-  (`coder_tools`/`github`/`issue`, pairwise disjoint); subprocess-surface
-  count confirmed still **four**; keyring-free checks added for the new
-  server + client-adapter modules.
-- **Task 6:** `CLAUDE.md`, `.ai/context/modules.md`, `docs/migration_roadmap.md`
-  (added the "Phase 6 planning pass" decisions log LD1–LD6 + a Sprint 26
-  summary — this section did not exist in the roadmap before this session),
-  and `sprints/DEFERRED_VERIFICATION.md` (§9: the live `issue`-server
-  round-trip check, gated together with the eventual default-flip/deletion)
-  all updated.
-- **Green gate:** full suite **545 passed**; `lint`/`format` clean; `audit`
-  clean; `sbom.json` **confirmed unchanged** (regenerated as a throwaway
-  check — only `timestamp`/`serialNumber` differed — then reverted via
-  `git checkout -- sbom.json`, so the committed file stays byte-identical).
-- **Locked posture respected throughout:** classic direct `issue_io`/`gh`
-  calls remain the runtime default everywhere; nothing flipped, nothing
-  deleted; no new subprocess surface (still four); no new dependency; no new
-  feature flag; no `State` change; no new `keyring` import.
-- **Committed** at `3a9bc30`.
+## Just done (Opus/Architect — Sprint 26 review + close-out)
+- **HITL-reviewed Sprint 26 (`3a9bc30`/`b7e2496`) at high effort** (8-angle
+  `/code-review` + manual trace) → **APPROVED**. No default-path defect; suite
+  green; conventions/boundary posture intact (keyring-free, four subprocess
+  surfaces, three-way disjoint verb sets, no `State` change).
+- **Recorded findings R1–R7** in `docs/migration_roadmap.md` (Sprint 26 HITL
+  subsection) + `sprints/DEFERRED_VERIFICATION.md` §9 — all deferred, none
+  block approval; the seam-shaped ones (R1–R4, R7) fold into this flip block,
+  R5/R6 (pre-existing `resume` abort crash + first-block-only answer parse) are
+  independent fixes.
+- **Archived Sprint 26**: snapshotted its cursor to
+  `.ai/archive/26_issue_io_mcp_unification-next-steps.md`, updated the roadmap
+  status row + NEXT ACTION, advanced `.ai/state.json` to `27_phase6_flip_block`.
 
 ## Next
-1. **(Opus/Architect) HITL-review Sprint 26's diff (`3a9bc30`).** Review
-   scope: the `tools/issue_io` pure/`gh` split, the third MCP server + config
-   stanza, the client adapters, the two injectable seams (engine write-side,
-   cli read-side), the three-way disjointness / four-surface boundary tests,
-   and the doc updates. Pay particular attention to the `issue_filer`/
-   `_issue_reader` module-global-resolution pattern (Task 4 note above) —
-   confirm it's the right shape, not just that it works.
-2. If approved: `/archive-sprint`, then plan the **host-gated Phase 6 block**
-   (the four flag deletions + `artifacts` strip + `loop.py` flag-branch
-   collapse + the issue-path default-flip/classic-path deletion) — all
-   deferred until a daemon-bearing host is available for live verification.
+1. **(Opus/Architect) Plan the host-gated Phase 6 flip block.** Scope (roadmap
+   "Collapse the flags"): flip defaults + delete classic paths behind the four
+   sunsettable flags (`LOOP_ENGINE_ENGINE=langgraph`, `TOOLS=mcp`,
+   `CODER=ralph`, `PERSONAS=declarative`; keep `ISOLATION`); the dual-field
+   `artifacts`/`artifact_refs` strip (bump `schema_version` + extend
+   `migrate_state_payload`); the `loops/default/loop.py` flag-branch collapse;
+   and the issue-path default-flip/classic-deletion **carrying Sprint 26's
+   R1–R7**. Resolve the two open planning-pass questions: per-flag vs
+   one-big-run verification bar, and whether any flag survives as a documented
+   break-glass. Deliver as `sprints/27_phase6_flip_block/sprint_plan.md`.
+2. Implementation waits on a daemon-bearing host (live verification per
+   `DEFERRED_VERIFICATION.md`).
 
 ## HITL gate
-**OPEN.** Sprint 26's *implementation* (this session) is unreviewed. The
-*plan* was already Opus-approved in the prior planning-pass session.
+**CLOSED.** Sprint 26 approved + archived. The next unit is a fresh Opus
+planning pass — no gate open.
 
 ## Pointers
-- `sprints/26_issue_io_mcp_unification/sprint_plan.md` — the task list (all 6
-  tasks' acceptance criteria met).
-- `docs/migration_roadmap.md` — "Phase 6 planning pass" (LD1–LD6) + the new
-  "Sprint 26 — `issue_io` → MCP unification (implemented)" subsection.
-- `sprints/DEFERRED_VERIFICATION.md` — §9, the live issue-server round-trip
-  check this sprint could not run hermetically.
+- `docs/migration_roadmap.md` — "Phase 6 — Collapse the flags" (the flag-fate
+  table + "Also collapses here") and the "Sprint 26 … HITL review" subsection
+  (R1–R7).
+- `sprints/DEFERRED_VERIFICATION.md` — §9 (issue-server live round-trip + the
+  R1–R7 routing into the flip).
+- `sprints/27_phase6_flip_block/sprint_plan.md` — **to be written** by the next
+  planning pass.
 - `.ai/context/workflow.md` — the Opus↔Sonnet handoff protocol.
 
 ## Working tree
-- HEAD `3a9bc30` — Sprint 26's implementation, committed clean (24 files
-  changed). `last_commit` matches HEAD; tree is clean.
+- HEAD `b7e2496` (Sprint 26). Uncommitted: the review-recording + archival
+  changes (`docs/migration_roadmap.md`, `sprints/DEFERRED_VERIFICATION.md`,
+  `.ai/state.json`, `.ai/next-steps.md`) — commit these to make the archival
+  durable.

@@ -24,7 +24,7 @@ this file tracks *how far we've got and what's next*.
 | 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ complete, reviewed; 3 HITL-review findings resolved (see "Sprint-19a HITL-review settlements"). Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | `d675d5d` → review-fixes |
 | 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ✅ complete, reviewed; HITL-review findings resolved via sprint 21 review-fixes. 394 tests green. Plans: `sprints/20_declarative_generators/`, `sprints/21_declarative_review_fixes/` | `cf48b0c` → `aceb23a` → `03818d9` |
 | 5 — Autonomous triggers + multi-repo factory | 🟨 22a + 22b + 23 + 23a + 24 + 25 complete, reviewed, archived. Sprint 25 (bootstrap flow capability slice) landed the second sanctioned file-write surface (`tools/scaffold`), HITL-reviewed by Opus and approved. Next: plan Phase 6 (collapse the flags). Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/`, `sprints/23_trigger_surface/`, `sprints/23a_trigger_review_fixes/`, `sprints/24_maintenance_flow/`, `sprints/25_bootstrap_flow/` | `457f675` → `71f1692` → `d0e118d` → `7b46227` → `5bc3811` → `5ff8c02` → `e0406d8` → `212beeb` → `6172ad1` → `f8d388a` → `79b535d` |
-| 6 — Collapse the flags (decommission the migration scaffolding) | 🟨 planning pass done (locked 2026-07-10); Sprint 26 (`issue_io`→MCP unification, capability+seams) is the first, verification-independent slice — implemented, green, awaiting HITL review. Plan: `sprints/26_issue_io_mcp_unification/` | — |
+| 6 — Collapse the flags (decommission the migration scaffolding) | 🟨 planning pass done (locked 2026-07-10); Sprint 26 (`issue_io`→MCP unification, capability+seams) — implemented, green, **HITL-reviewed by Opus and approved (2026-07-10)**; review findings R1–R7 routed into the host-gated flip block (see the Sprint 26 HITL-review subsection + `DEFERRED_VERIFICATION.md` §9), archived. Next: plan the host-gated flip block. Plan: `sprints/26_issue_io_mcp_unification/` | `3a9bc30` → `b7e2496` |
 
 Phases 1–3b are detailed and executed (3b's daemon-host e2e is deferred, not
 lost — see its plan). Phase 4's planning pass is done and it **split into two
@@ -34,10 +34,12 @@ its four review findings are hardened in **part 1a** (`sprints/19a_ralph_hardeni
 **Part 2** (`GeneratorNode` + PM critic-gate, `sprints/20_declarative_generators/`)
 is **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`),
 **reviewed, and its review findings resolved** (sprint 21 review-fixes, `03818d9`).
-**▶ NEXT ACTION: HITL review of Sprint 26 (Opus), then plan the host-gated
-Phase 6 block** (the four flag deletions + `artifacts` strip + `loop.py`
-collapse + the issue-path default-flip/classic-deletion — all deferred until
-a daemon-bearing host is available). Sprint 25
+**▶ NEXT ACTION: plan the host-gated Phase 6 block (Opus)** — the four flag
+deletions + `artifacts` strip + `loop.py` collapse + the issue-path
+default-flip/classic-deletion (which now also carries Sprint 26's HITL findings
+R1–R7), all deferred until a daemon-bearing host is available. Sprint 26
+(`issue_io`→MCP unification) is **complete, green, HITL-reviewed by Opus and
+approved (2026-07-10, `3a9bc30`/`b7e2496`), and archived**. Sprint 25
 (`sprints/25_bootstrap_flow/sprint_plan.md`) is **complete, all 6 tasks green,
 HITL-reviewed by Opus and approved (`79b535d`), and archived**: a new `tools/scaffold` module (`write_skeleton`,
 validated via `repo_io._validate_clone_dest`, `pkg_name` sanitized to a safe Python
@@ -756,6 +758,60 @@ is deferred to a daemon-bearing host, recorded in
 `sprints/DEFERRED_VERIFICATION.md`, gating together with the eventual
 default-flip and classic-path deletion (both still part of the host-gated
 block below). Plan: `sprints/26_issue_io_mcp_unification/sprint_plan.md`.
+
+**HITL review (Opus/Architect, 2026-07-10) — APPROVED.** Diff reviewed at high
+effort (8-angle `/code-review` + manual trace). No default-path defect: suite
+green, conventions/boundary posture intact (keyring-free, four subprocess
+surfaces, three-way disjoint verb sets, no `State` change). Findings are
+forward-looking seam asymmetries + test gaps + two pre-existing traps carried
+into touched code — **none block approval**, all deferred (nothing on the
+default path). The seam-shaped findings **fold into the host-gated flip block
+below** (they are exactly the seams that block exercises), not a new sprint:
+
+- **R1 (fix at flip) — `mcp_read_issue` is not a drop-in reader adapter.**
+  `mcp_issue_filer(provider)` returns a closure matching the `IssueFiler` seam,
+  but `mcp_read_issue(provider, issue_number)` is a raw 2-arg fn, not a factory
+  matching the reader seam's `Callable[[int], dict]` — the `mcp_client.py`
+  module docstring's "signature-compatible … drop into the reader seam" claim
+  is false for the read side. Wiring `cli._issue_reader = mcp_read_issue` by
+  analogy to the filer raises `TypeError` at resume time. Make it a
+  `mcp_issue_reader(provider) -> Callable[[int], dict]` factory before the flip.
+- **R2 (fix at flip) — `resume` never forwards `issue_filer` to the engine.**
+  `cli.resume` injects the *read* seam but its `_select_engine()(...)` call omits
+  `issue_filer`; once the reader is MCP-backed, a resumed run that re-escalates
+  would read-via-MCP but write new issues via classic `gh`. Thread the write
+  seam through resume in the same change that flips the reader.
+- **R3 (fix at flip) — two injection mechanisms for one capability.** Write seam
+  = threaded param; read seam = process-wide module global (`_issue_reader`).
+  The global can't carry a per-run provider (multi-repo-factory hazard). Unify
+  on the threaded-collaborator shape when wiring the flip.
+- **R4 (test, fold into flip) — injected-filer coverage is partial.** The
+  injected-`issue_filer` tests exercise only the unresolved-after-ladder
+  `_pause_for_issue` site; the escalation-cap and replan-cap sites are covered
+  only by the default-path stub, so a dropped `issue_filer` there passes green.
+  Add injected-filer cases at all three pause sites.
+- **R5 (pre-existing, worth fixing) — `resume` crashes on the documented abort
+  path.** Closing the issue without answers (the documented abort) makes
+  `parse_issue_answers` raise `IssueClosedWithoutAnswersError`, uncaught in
+  `cli.resume` → raw traceback + exit 1 instead of a clean abort. The Sprint 26
+  pure/`gh` split also dropped the issue number from that exception's message.
+  Catch it and exit cleanly; restore the issue number to the message.
+- **R6 (pre-existing, worth fixing) — first-block-only answer parse.**
+  `parse_issue_answers` uses `_ANSWERS_BLOCK_RE.search` (first ```answers block
+  per comment only); a human "Quote reply" that echoes the bot's own example
+  block silently drops the real answers below it → `resume` reports "no answers
+  yet". Switch to `finditer` over all blocks in a comment.
+- **R7 (host-gated nit) — committed MCP stanzas launch bare `python`.**
+  `loop_engine.mcp.json`'s `issue`/`github` stanzas exec `python` (not the active
+  interpreter), so the servers fail to spawn on a `python3`-only host — unlike
+  the `coder_tools` built-in default which uses `sys.executable`. Resolve when
+  the live round-trip check (`DEFERRED_VERIFICATION.md` §9) runs on the host.
+
+Lower-severity (recorded, no action required): the MCP `read_issue` path
+triple-round-trips the comment JSON (parse→dump→parse, once-per-resume,
+non-default path); `test_render_..._byte_for_byte` is near-tautological and
+doesn't pin MCP-path body parity; the `_FakeProvider` test double is hand-rolled
+in four files with no shared fixture.
 
 *(sketch — the remaining, host-gated block)*
 
