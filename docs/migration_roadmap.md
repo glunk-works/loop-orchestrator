@@ -23,7 +23,7 @@ this file tracks *how far we've got and what's next*.
 | 4 · part 1 — Ralph-loop Coder (`AgenticNode`) | ✅ built behind flag, reviewed; 4 review findings hardened in 4a (below). Plan: `sprints/19_ralph_coder/sprint_plan.md` | `195f7b7` |
 | 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ complete, reviewed; 3 HITL-review findings resolved (see "Sprint-19a HITL-review settlements"). Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | `d675d5d` → review-fixes |
 | 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ✅ complete, reviewed; HITL-review findings resolved via sprint 21 review-fixes. 394 tests green. Plans: `sprints/20_declarative_generators/`, `sprints/21_declarative_review_fixes/` | `cf48b0c` → `aceb23a` → `03818d9` |
-| 5 — Autonomous triggers + multi-repo factory | 🟨 22a + 22b + 23 + 23a + 24 complete, reviewed, archived. Sprint 25 (bootstrap flow capability slice) **implemented**, all 6 tasks green; landed the second sanctioned file-write surface (`tools/scaffold`). Next: Opus HITL review of the Sprint 25 diff. Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/`, `sprints/23_trigger_surface/`, `sprints/23a_trigger_review_fixes/`, `sprints/24_maintenance_flow/`, `sprints/25_bootstrap_flow/` | `457f675` → `71f1692` → `d0e118d` → `7b46227` → `5bc3811` → `5ff8c02` → `e0406d8` → `212beeb` → `6172ad1` → `f8d388a` → *(sprint 25, this commit)* |
+| 5 — Autonomous triggers + multi-repo factory | 🟨 22a + 22b + 23 + 23a + 24 + 25 complete, reviewed, archived. Sprint 25 (bootstrap flow capability slice) landed the second sanctioned file-write surface (`tools/scaffold`), HITL-reviewed by Opus and approved. Next: plan Phase 6 (collapse the flags). Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/`, `sprints/23_trigger_surface/`, `sprints/23a_trigger_review_fixes/`, `sprints/24_maintenance_flow/`, `sprints/25_bootstrap_flow/` | `457f675` → `71f1692` → `d0e118d` → `7b46227` → `5bc3811` → `5ff8c02` → `e0406d8` → `212beeb` → `6172ad1` → `f8d388a` → `79b535d` |
 | 6 — Collapse the flags (decommission the migration scaffolding) | ⬜ sketch only | — |
 
 Phases 1–3b are detailed and executed (3b's daemon-host e2e is deferred, not
@@ -34,9 +34,9 @@ its four review findings are hardened in **part 1a** (`sprints/19a_ralph_hardeni
 **Part 2** (`GeneratorNode` + PM critic-gate, `sprints/20_declarative_generators/`)
 is **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`),
 **reviewed, and its review findings resolved** (sprint 21 review-fixes, `03818d9`).
-**▶ NEXT ACTION: Opus HITL review of the Sprint 25 (bootstrap flow) diff, then plan
-Phase 6 (collapse the flags).** Sprint 25 (`sprints/25_bootstrap_flow/sprint_plan.md`)
-is **implemented, all 6 tasks green**: a new `tools/scaffold` module (`write_skeleton`,
+**▶ NEXT ACTION: Plan Phase 6 (collapse the flags).** Sprint 25
+(`sprints/25_bootstrap_flow/sprint_plan.md`) is **complete, all 6 tasks green,
+HITL-reviewed by Opus and approved (`79b535d`), and archived**: a new `tools/scaffold` module (`write_skeleton`,
 validated via `repo_io._validate_clone_dest`, `pkg_name` sanitized to a safe Python
 identifier) — the **second** sanctioned file-write surface, moving the invariant from
 one to two (`CLAUDE.md` + `tests/tools/test_state_io_boundary.py` updated together,
@@ -657,8 +657,9 @@ decisions above.
   real-`git_io`-against-`tmp_path` green/red end-to-end proof; live
   clone→push→PR is deferred to a daemon-bearing host
   (`sprints/DEFERRED_VERIFICATION.md`). No new dependency, `sbom.json` unchanged.
-- **Sprint 25 — bootstrap flow** *(implemented, all 6 tasks green:
-  `sprints/25_bootstrap_flow/sprint_plan.md`; HITL review pending)*. Ships
+- **Sprint 25 — bootstrap flow** *(complete, all 6 tasks green:
+  `sprints/25_bootstrap_flow/sprint_plan.md`; HITL-reviewed by Opus and
+  approved `79b535d`, archived)*. Ships
   `tools/scaffold` (the deferred second file-write surface — `write_skeleton`
   writing bundled package-data templates into a validated foreign clone tree,
   `pkg_name` sanitized to a safe Python identifier — moving the file-write
