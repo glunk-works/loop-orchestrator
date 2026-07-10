@@ -29,11 +29,17 @@ class _FakeRepoIO:
 
 
 class _FakeGitIO:
-    def __init__(self) -> None:
+    def __init__(self, *, has_changes: bool = True) -> None:
         self.calls: list[tuple] = []
+        self._has_changes = has_changes
 
     def checkout_branch(self, tree, branch):
         self.calls.append(("checkout_branch", tree, branch))
+
+    def has_changes(self, tree):
+        # Deliberately NOT recorded in `calls`: it's a read-only query, and the
+        # ordering assertions below track the *write* sequence only.
+        return self._has_changes
 
     def commit_all(self, tree, message):
         self.calls.append(("commit_all", tree, message))
@@ -42,13 +48,13 @@ class _FakeGitIO:
         self.calls.append(("push_branch", tree, branch, remote))
 
 
-def _fake_run_step(calls):
+def _fake_run_step(calls, *, status=RunStatus.COMPLETED):
     def run_step(human_input, tree_path, *, budget_usd, loop_name):
         calls.append(("run_step", human_input, tree_path, budget_usd, loop_name))
         return State(
             schema_version=2,
             run_id="r1",
-            status=RunStatus.COMPLETED,
+            status=status,
             stage_history=[],
             artifacts={},
         )
@@ -121,6 +127,54 @@ def test_red_gate_returns_gate_failed_and_calls_no_git_writes_or_pr() -> None:
 
     assert result.status == MaintenanceStatus.GATE_FAILED
     assert result.pull is None
+    assert not any(call[0] == "commit_all" for call in git_io.calls)
+    assert not any(call[0] == "push_branch" for call in git_io.calls)
+    assert not any(call[0] == "open_pr" for call in repo_io.calls)
+
+
+def test_incomplete_inner_run_returns_run_incomplete_and_ships_nothing() -> None:
+    # A run that paused for a human (AWAITING_ISSUE) must not reach the gate,
+    # a git write, or a PR — even if its partial tree would pass pytest.
+    repo_io = _FakeRepoIO()
+    git_io = _FakeGitIO()
+    run_step = _fake_run_step([], status=RunStatus.AWAITING_ISSUE)
+    gate_calls: list = []
+
+    def run_tests(tree):
+        gate_calls.append(tree)
+        return 0, "ok"
+
+    result = run_maintenance(
+        _request(), run_step=run_step, repo_io=repo_io, git_io=git_io, run_tests=run_tests
+    )
+
+    assert result.status == MaintenanceStatus.RUN_INCOMPLETE
+    assert result.pull is None
+    assert gate_calls == []  # gate never runs on an incomplete run
+    assert not any(call[0] == "commit_all" for call in git_io.calls)
+    assert not any(call[0] == "push_branch" for call in git_io.calls)
+    assert not any(call[0] == "open_pr" for call in repo_io.calls)
+
+
+def test_completed_run_with_no_changes_returns_no_changes_and_ships_nothing() -> None:
+    # A completed run that produced no diff is a clean no-op: no gate, no
+    # commit (which would fail on an empty index), no push, no PR.
+    repo_io = _FakeRepoIO()
+    git_io = _FakeGitIO(has_changes=False)
+    run_step = _fake_run_step([])
+    gate_calls: list = []
+
+    def run_tests(tree):
+        gate_calls.append(tree)
+        return 0, "ok"
+
+    result = run_maintenance(
+        _request(), run_step=run_step, repo_io=repo_io, git_io=git_io, run_tests=run_tests
+    )
+
+    assert result.status == MaintenanceStatus.NO_CHANGES
+    assert result.pull is None
+    assert gate_calls == []
     assert not any(call[0] == "commit_all" for call in git_io.calls)
     assert not any(call[0] == "push_branch" for call in git_io.calls)
     assert not any(call[0] == "open_pr" for call in repo_io.calls)

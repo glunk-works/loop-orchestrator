@@ -40,11 +40,22 @@ def _git(tree: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _run(tree: str, *args: str) -> None:
+def _run(tree: str, *args: str) -> subprocess.CompletedProcess[str]:
     validated = _validate_clone_dest(tree)
     result = _git(validated, *args)
     if result.returncode != 0:
         raise GitIOError(f"git {' '.join(args)} failed in {tree!r}: {result.stderr.strip()}")
+    return result
+
+
+def has_changes(tree: str) -> bool:
+    """True if the working tree at `tree` has any staged or unstaged change.
+
+    Read-only (`git status --porcelain`) — lets a caller distinguish a run
+    that produced a diff worth shipping from a no-op run, so `commit_all`
+    (which fails on an empty index) is never reached with nothing to commit.
+    """
+    return bool(_run(tree, "status", "--porcelain").stdout.strip())
 
 
 def checkout_branch(tree: str, branch: str) -> None:

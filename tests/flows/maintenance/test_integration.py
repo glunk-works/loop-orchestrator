@@ -9,9 +9,16 @@ from pathlib import Path
 
 import pytest
 
+from loop_engine.core.state import RunStatus, State
 from loop_engine.flows.maintenance import MaintenanceRequest, MaintenanceStatus, run_maintenance
 from loop_engine.tools import git_io
 from loop_engine.tools.repo_io import PullRef
+
+
+def _completed_state() -> State:
+    return State(
+        schema_version=2, run_id="r1", status=RunStatus.COMPLETED, stage_history=[], artifacts={}
+    )
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -60,7 +67,12 @@ class _FakeRepoIO:
 
 def _run_step(human_input, tree, *, budget_usd, loop_name):
     (Path(tree) / "change.txt").write_text("a change from the inner run")
-    return None
+    return _completed_state()
+
+
+def _run_step_no_change(human_input, tree, *, budget_usd, loop_name):
+    """A completed inner run that writes nothing into the clone."""
+    return _completed_state()
 
 
 def _bare_remote_heads(remote: Path) -> str:
@@ -126,6 +138,33 @@ def test_red_gate_leaves_remote_untouched_and_opens_no_pr(target_repo) -> None:
 
     remote_heads = _bare_remote_heads(target_repo / "remote.git")
     assert "refs/heads/maint/routine-red" not in remote_heads
+    assert not repo_io.open_pr_calls
+
+
+def test_completed_run_with_no_diff_pushes_nothing_and_does_not_crash(target_repo) -> None:
+    # Real git_io against a real tree: a completed run that changed nothing
+    # must return NO_CHANGES without ever reaching `commit_all` (which would
+    # raise GitIOError on an empty index) and without pushing or opening a PR.
+    repo_io = _FakeRepoIO()
+    request = MaintenanceRequest(
+        repo_full_name="acme/widgets",
+        human_input="Apply routine maintenance",
+        branch="maint/noop",
+        clone_dest="repo",
+    )
+
+    result = run_maintenance(
+        request,
+        run_step=_run_step_no_change,
+        repo_io=repo_io,
+        git_io=git_io,
+        run_tests=lambda tree: (0, "1 passed"),
+    )
+
+    assert result.status == MaintenanceStatus.NO_CHANGES
+    assert result.pull is None
+    remote_heads = _bare_remote_heads(target_repo / "remote.git")
+    assert "refs/heads/maint/noop" not in remote_heads
     assert not repo_io.open_pr_calls
 
 

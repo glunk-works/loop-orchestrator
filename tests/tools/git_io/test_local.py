@@ -7,7 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from loop_engine.tools.git_io import GitIOError, checkout_branch, commit_all, push_branch
+from loop_engine.tools.git_io import (
+    GitIOError,
+    checkout_branch,
+    commit_all,
+    has_changes,
+    push_branch,
+)
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -91,6 +97,15 @@ def test_push_branch_lands_branch_on_bare_remote(repo):
     ).stdout
     assert "refs/heads/feature" in remote_refs
     assert listed.returncode == 0
+
+
+def test_has_changes_reflects_working_tree_state(repo):
+    checkout_branch("repo", "feature")
+    assert has_changes("repo") is False
+    (repo / "repo" / "new.txt").write_text("hello")
+    assert has_changes("repo") is True
+    commit_all("repo", "add new.txt")
+    assert has_changes("repo") is False
 
 
 def test_non_zero_git_op_raises_git_io_error_with_stderr(repo):

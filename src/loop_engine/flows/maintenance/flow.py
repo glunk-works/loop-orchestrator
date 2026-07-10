@@ -24,7 +24,7 @@ from typing import Protocol
 from pydantic import BaseModel, ConfigDict
 
 from loop_engine import runner as _runner_module
-from loop_engine.core.state import State
+from loop_engine.core.state import RunStatus, State
 from loop_engine.runner import DEFAULT_BUDGET_USD
 from loop_engine.tools import git_io as _git_io_module
 from loop_engine.tools import repo_io as _repo_io_module
@@ -66,6 +66,8 @@ class MaintenanceRequest(BaseModel):
 class MaintenanceStatus(str, Enum):
     OPENED_PR = "opened_pr"
     GATE_FAILED = "gate_failed"
+    RUN_INCOMPLETE = "run_incomplete"
+    NO_CHANGES = "no_changes"
 
 
 class MaintenanceResult(BaseModel):
@@ -110,12 +112,27 @@ def run_maintenance(
     git_io.checkout_branch(tree, request.branch)
 
     logger.info("running loop_name=%s in tree", request.loop_name)
-    run_step(
+    final_state = run_step(
         request.human_input,
         tree,
         budget_usd=request.budget_usd,
         loop_name=request.loop_name,
     )
+
+    # The green gate is a *quality* gate, not a *completion* gate: a run that
+    # ended FAILED_STAGE / BUDGET_EXCEEDED / AWAITING_ISSUE left a partial (or
+    # human-paused) tree whose pytest may still pass. Shipping that would turn
+    # a "needs a human" pause into a merge-ready PR, so require COMPLETED first.
+    if final_state.status != RunStatus.COMPLETED:
+        logger.info("inner run did not complete (status=%s), no commit/push/PR", final_state.status)
+        return MaintenanceResult(status=MaintenanceStatus.RUN_INCOMPLETE)
+
+    # A completed run that changed nothing is a clean no-op — don't run the
+    # gate or reach `commit_all` (which fails on an empty index) with an empty
+    # diff; there is nothing to ship.
+    if not git_io.has_changes(tree):
+        logger.info("inner run produced no changes, no commit/push/PR")
+        return MaintenanceResult(status=MaintenanceStatus.NO_CHANGES)
 
     logger.info("running green gate")
     exit_code, _output = run_tests(tree)
