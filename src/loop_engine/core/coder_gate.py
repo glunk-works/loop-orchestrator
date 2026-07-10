@@ -13,7 +13,7 @@ from loop_engine.core.gates import ArtifactGate, GateDecision, GateResult
 from loop_engine.core.state import State
 from loop_engine.tools.agent_state import read_scratchpad
 from loop_engine.tools.coder_tools import run_tests as run_tests_tool
-from loop_engine.tools.isolation import IsolationUnavailableError, sandbox_runtime_mode
+from loop_engine.tools.mcp import run_gate_pytest
 
 # The persona appends this section to a report when model-emitted edit
 # blocks failed to apply; its presence is a deterministic REVISE signal.
@@ -28,26 +28,15 @@ EDIT_FAILURES_HEADER = "## Edit Application Failures"
 RALPH_REGRESSION_PREFIX = "Ralph regression —"
 
 
-def _raise_if_sandboxed(context: str) -> None:
-    """Both Coder gates run pytest in-process — under container/sandbox isolation
-    that would execute untrusted model code in the orchestrator, the exact thing
-    the mode exists to prevent. Routing the gate's pytest through the sandbox is
-    deferred host-side work; until then, fail honestly rather than run it.
-    See sprints/18_execution_isolation_container/sprint_plan.md.
-    """
-    if sandbox_runtime_mode() is not None:
-        raise IsolationUnavailableError(
-            f"{context} runs pytest in-process, but {sandbox_runtime_mode()} "
-            "isolation is selected; sandboxed gate verification is deferred to the "
-            "host-side e2e build (see sprints/18_execution_isolation_container)"
-        )
-
-
 def _run_gate_pytest(test_path: str) -> tuple[int, str]:
-    """Deterministic pytest run for a Coder gate (no tree ⇒ 'no tests collected')."""
-    if not Path(test_path).exists():
-        return run_tests_tool.PYTEST_NO_TESTS_COLLECTED, f"no {test_path}/ tree was produced"
-    return run_tests_tool.run_pytest(test_path)
+    """Isolation-aware pytest run for a Coder gate: in-process on none/worktree,
+    dispatched through the sandboxed coder-tools provider on container/sandbox
+    (no tree ⇒ 'no tests collected' in either case). The gate runs immediately
+    after the Coder stage in the same process, so Path.cwd() is the worktree —
+    passed explicitly so the sandbox provider mounts/`-w`s the same tree the
+    in-process branch would key off.
+    """
+    return run_gate_pytest(test_path, cwd=Path.cwd())
 
 
 def _last_reported_sprint(state: State, reports: dict[str, str]) -> str:
@@ -94,7 +83,6 @@ class CoderGate:
 
         blamed_sprint = _last_reported_sprint(state, reports)
 
-        _raise_if_sandboxed("the Coder gate")
         exit_code, output = _run_gate_pytest(self.test_path)
 
         if exit_code == run_tests_tool.PYTEST_NO_TESTS_COLLECTED:
@@ -163,10 +151,6 @@ class RalphCoderGate:
         ]
         if edit_findings:
             return GateResult(GateDecision.REVISE, findings=edit_findings)
-
-        # The gate runs pytest in-process; refuse under container/sandbox exactly
-        # like the classic gate (the second untrusted-exec surface).
-        _raise_if_sandboxed("the Ralph Coder gate")
 
         # Coverage: every manifest task must be checked off in .agent/STATE.md.
         done = set(read_scratchpad().completed_tasks)

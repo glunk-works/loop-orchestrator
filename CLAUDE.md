@@ -63,7 +63,7 @@ CI (`.github/workflows/ci.yml`) runs, in order: `lint` → `format-check` → `t
 
 These are checked by static tests, not just convention — don't casually violate them:
 
-- `core/` imports no concrete persona module, only `personas/base.py`.
+- `core/` imports no concrete persona module, only `personas/base.py`. It is otherwise unrestricted on `tools/*`: `core/coder_gate.py` (Sprint 28) imports `tools/mcp` — scoped to that one file, no other `core/` module — so the Coder gates' evidence pytest run can dispatch through `tools/mcp.run_gate_pytest` (in-process on `none`/`worktree`, the sandboxed coder-tools provider on `container`/`sandbox`) instead of refusing under sandbox modes as `_raise_if_sandboxed` (deleted) once did.
 - `tools/state_io` and `tools/scaffold` are the file-write-owning modules (`open`/`write_text`/`write_bytes`); everything else goes through `write_artifact`/`write_state_snapshot`. `tools/scaffold` (Phase 5 piece 4) is the **second** such surface — it writes a bundled skeleton (Python templates + the injected Global Conventions `CLAUDE.md`) into a foreign clone tree, validated via `repo_io._validate_clone_dest`; it imports no `subprocess`/`keyring`, so the four sanctioned subprocess surfaces below are unchanged.
 - `tools/llm/client.py` is the only module that imports `keyring`.
 - `tools/issue_io` and `tools/repo_io` are the GitHub-owning modules — `issue_io` files/reads human-escalation issues, `repo_io` is the repo/branch/PR factory (`create_repository`, `clone_repo`, `create_branch`, `open_pr`; no merge verb — auto-merge is prohibited). Both shell out to the already-authenticated `gh`; no other module talks to GitHub.

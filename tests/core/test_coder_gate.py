@@ -105,24 +105,51 @@ def test_coder_gate_defers_to_content_gate_for_shape_problems() -> None:
     assert "not valid JSON" in result.findings[0]
 
 
-def test_coder_gate_refuses_in_process_pytest_under_container_isolation(monkeypatch) -> None:
-    """The gate runs pytest in-process; under container/sandbox isolation that
-    would execute untrusted model code in the orchestrator, so it must raise
-    rather than run pytest. (Sandboxed gate verification is deferred host-side.)"""
-    from loop_engine.core import coder_gate
-    from loop_engine.tools.isolation import IsolationUnavailableError
+class _FakeGateProvider:
+    """Stands in for the sandboxed coder-tools provider: `run_tests` returns a
+    canned formatted result string instead of spawning anything."""
+
+    def __init__(self, result_text: str) -> None:
+        self._result_text = result_text
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, name, arguments):
+        assert name == "run_tests"
+        return self._result_text
+
+
+@pytest.mark.parametrize(
+    ("result_text", "expected_decision"),
+    [
+        ("pytest exit code: 0\n\n1 passed", GateDecision.ACCEPT),
+        ("pytest exit code: 5\n\nno tests ran", GateDecision.REVISE),
+        ("pytest exit code: 1\n\nFAILED src/test_red.py", GateDecision.REVISE),
+    ],
+)
+def test_coder_gate_verifies_through_sandboxed_provider_under_container_isolation(
+    monkeypatch, result_text, expected_decision
+) -> None:
+    """Under container/sandbox isolation the gate no longer refuses — it
+    verifies inside the sandbox, reaching the same decision the in-process
+    path would for the equivalent exit code."""
+    from loop_engine.tools.mcp import provider as mcp_provider
 
     Path("src").mkdir()
     Path("src/test_green.py").write_text("def test_ok():\n    assert True\n")
 
-    def _must_not_run(*args, **kwargs):
-        raise AssertionError("run_pytest must not be called under container isolation")
+    monkeypatch.setattr(mcp_provider, "sandbox_runtime_mode", lambda: "container")
+    monkeypatch.setattr(
+        mcp_provider, "build_coder_tool_provider", lambda cwd=None: _FakeGateProvider(result_text)
+    )
 
-    monkeypatch.setattr(coder_gate.run_tests_tool, "run_pytest", _must_not_run)
-    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "container")
+    result = CoderGate()(_state({"/sprints/01_foo/sprint_plan.md": "done"}), "CoderIacPersona")
 
-    with pytest.raises(IsolationUnavailableError, match="deferred"):
-        CoderGate()(_state({"/sprints/01_foo/sprint_plan.md": "done"}), "CoderIacPersona")
+    assert result.decision is expected_decision
 
 
 # --- RalphCoderGate: coverage-aware (green necessary, not sufficient) ---
@@ -212,16 +239,29 @@ def test_ralph_gate_revises_on_missing_manifest() -> None:
     assert "task_manifest" in result.findings[0]
 
 
-def test_ralph_gate_refuses_in_process_pytest_under_container(monkeypatch) -> None:
-    from loop_engine.core import coder_gate
-    from loop_engine.tools.isolation import IsolationUnavailableError
+@pytest.mark.parametrize(
+    ("result_text", "expected_decision"),
+    [
+        ("pytest exit code: 0\n\n1 passed", GateDecision.ACCEPT),
+        ("pytest exit code: 5\n\nno tests ran", GateDecision.REVISE),
+        ("pytest exit code: 1\n\nFAILED src/test_bad.py", GateDecision.REVISE),
+    ],
+)
+def test_ralph_gate_verifies_through_sandboxed_provider_under_container(
+    monkeypatch, result_text, expected_decision
+) -> None:
+    """Same sandboxed-verification behavior as CoderGate — the Ralph gate no
+    longer refuses under container/sandbox isolation."""
+    from loop_engine.tools.mcp import provider as mcp_provider
 
-    def _must_not_run(*args, **kwargs):
-        raise AssertionError("run_pytest must not be called under container isolation")
-
-    monkeypatch.setattr(coder_gate.run_tests_tool, "run_pytest", _must_not_run)
-    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "container")
+    Path("src").mkdir()
+    Path("src/test_placeholder.py").write_text("def test_ok():\n    assert True\n")
+    monkeypatch.setattr(mcp_provider, "sandbox_runtime_mode", lambda: "container")
+    monkeypatch.setattr(
+        mcp_provider, "build_coder_tool_provider", lambda cwd=None: _FakeGateProvider(result_text)
+    )
     state = _ralph_state(["s::t01"], {"/sprints/01_foo/sprint_plan.md": "done"}, ["s::t01"])
 
-    with pytest.raises(IsolationUnavailableError, match="deferred"):
-        RalphCoderGate()(state, "RalphCoderPersona")
+    result = RalphCoderGate()(state, "RalphCoderPersona")
+
+    assert result.decision is expected_decision
