@@ -367,10 +367,22 @@ def run_gate_pytest(path: str, cwd: str | Path) -> tuple[int, str]:
     pytest *execution* moves into the sandbox. Never silently falls back to
     in-process execution under a sandbox mode: a missing runtime/image
     propagates as `IsolationUnavailableError` from `build_coder_tool_provider`.
+
+    `cwd` is the target tree for both the existence probe and the sandbox
+    bind-mount. On the in-process branch, `run_pytest` resolves `path` against
+    the *process* working directory, so `cwd` must be that directory there (it
+    always is: the gate runs inside the worktree) — enforced below so the two
+    branches can never target different trees than the one just probed.
     """
     if not Path(cwd, path).exists():
         return PYTEST_NO_TESTS_COLLECTED, f"no {path}/ tree was produced"
     if sandbox_runtime_mode() is None:
+        if Path(cwd).resolve() != Path.cwd().resolve():
+            raise ValueError(
+                "run_gate_pytest: in-process pytest runs in the process working "
+                f"directory, but cwd={Path(cwd).resolve()} != {Path.cwd().resolve()}; "
+                "pass the worktree the gate runs in (Path.cwd())"
+            )
         return run_pytest(path)
     with build_coder_tool_provider(cwd=cwd) as provider:
         text = provider.execute("run_tests", {"path": path})
