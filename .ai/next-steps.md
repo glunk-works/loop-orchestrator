@@ -5,75 +5,69 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Phase 6 — Collapse the flags — the host-gated flip block
-(`27_phase6_flip_block`) — `blocked_pending_planning`.** The host verification
-runs (V1/V2) ran and surfaced a **blocking finding, F-GATE-SANDBOX**: no run can
-reach `COMPLETED` under `LOOP_ENGINE_ISOLATION=container` because the Coder gates'
-verification pytest is not sandboxed. A **planning/sequencing decision (Opus/
-Architect)** is required before any more host runs or deletions. **HITL gate OPEN
-(planning).**
+**Phase 6 (via a Phase-3b-completion prerequisite) — sprint `28_gate_pytest_sandbox`
+— `implementing`.** The F-GATE-SANDBOX sequencing decision is resolved (repo owner
+chose **Option A** — build the gate-sandbox wiring first). Sprint 28 is **planned +
+approved to implement**; next session is **Sonnet/Coder** executing its four tasks.
 
-## Just done (Opus/Architect — host verification session, 2026-07-10)
-- **V1 (ENGINE+TOOLS+PERSONAS) — PASS (qualified).** 4 real runs in target config
-  (`langgraph`+`mcp`+`declarative`+`container`). All three flags verified functional
-  + parity through PM→Arch→Sprint + the in-container MCP coder tool loop (25–33
-  sandboxed tool calls/run) + the escalation/pause/snapshot ladder. Cost ~$0.38/run
-  upstream. **Terminal `COMPLETED` not observed** — the classic `CoderIacPersona`
-  escalated in all 4 (worktree-of-self collision; the `docs/sprints/src`
-  artifact-write allowlist vs. generated root-file tasks; multi-sprint
-  file-application; over-escalation) — all **orthogonal to the three flags** and
-  identical on a classic run. Recorded in `sprints/DEFERRED_VERIFICATION.md`.
-- **User decision:** classic `CoderIacPersona` is being **fully retired/replaced by
-  Ralph** — don't invest in making the classic Coder reach `COMPLETED`.
-- **V2 (Ralph) — BLOCKED on finding F-GATE-SANDBOX.** Ralph's algorithm engaged
-  correctly (manifest emitted, `.agent/STATE.md` checklist, checked off
-  `01_input_validation_foundation::t01`, 11 sandboxed tool calls) but the run
-  crashed at the gate: `core/coder_gate.py::_raise_if_sandboxed` raises under
-  `container`/`sandbox` isolation because the gate's verification pytest runs
-  in-process (deferred sprint-18 work; the `run_tests` *tool* was sandboxed in
-  Phase 3b, the gate's *own* pytest was not). **Neither Coder can reach ACCEPT →
-  `COMPLETED` under container isolation** — this gates all of V1(terminal)/V2/V3.
-- **Non-migration items** (from the repo owner): confirmed GPG signing works via a
-  forwarded host agent (do NOT add the passphrase to infisical — it stays
-  host-side; rebuild lever is `gpg-forward.sh`); added `docs/backlog.md` (BL-1
-  in-loop Architect/QA code-review stage, BL-2 Slack) — committed `9072b41`.
+## Just done (Opus/Architect — planning session, 2026-07-10)
+- **Sequencing decision: Option A.** Route the Coder gates' verification pytest
+  through the MCP container sandbox (mirror Phase 3b's `run_tests` tool sandboxing)
+  *before* running sprint 27's V-suite. Finishes Phase 3b; unblocks V1(complete)/V2/V3.
+- **Wrote `sprints/28_gate_pytest_sandbox/sprint_plan.md`** (4 tasks). Locked design
+  (user-confirmed): the isolation-aware dispatch lives in a **new `tools/mcp`
+  helper** `run_gate_pytest(path, cwd)` (mirrors `_CoderToolBackend.resolve`), and
+  `core/coder_gate.py` calls it + **deletes `_raise_if_sandboxed`** — the gate
+  verifies inside the sandbox instead of refusing. Rejected the injected-seam
+  alternative (heavier; the sandbox path must self-select on `sandbox_runtime_mode()`,
+  not be an opt-in capability like Sprint 26's `issue_filer`).
+- **Grounded the plan against real code:** the `core → tools/mcp` edge is
+  convention-only (`tests/core/test_boundaries.py` pins only the persona rule — no
+  test change); `run_tests` tests live in `tests/tools/test_coder_tools.py`; no new
+  subprocess surface (the sandbox is launched by `stdio_client`, same as the tool
+  path).
+- **Backlog:** added **BL-3 — prompt-caching review** (correctness + improvement
+  opportunities) to `docs/backlog.md` (repo owner ask).
 
 ## Next
-1. **PLANNING DECISION (Opus/Architect) — sequencing around F-GATE-SANDBOX:**
-   - **Option A — build the gate-sandbox wiring first:** route the Coder/Ralph
-     gate's verification pytest through the MCP container sandbox (mirror Phase 3b's
-     `run_tests` sandboxing; finishes Phase 3b), THEN run V1(complete)/V2/V3 under
-     container. Makes the container end-state completable before any deletion.
-   - **Option B — decouple deletions from the gate gap:** the three V1-target flags
-     are already verified functional+parity through the in-container MCP tool loop;
-     the gate refusal is flag-invariant. Consider proceeding with Tasks 1–3
-     (ENGINE/TOOLS/PERSONAS) on that decomposed evidence, tracking the
-     terminal-`COMPLETED`/container-gate proof as its own gate, and holding
-     `CODER`/Ralph Task 4 until V2 + the gate wiring land.
-   - See `sprints/DEFERRED_VERIFICATION.md` → "Finding F-GATE-SANDBOX" for the full
-     write-up + evidence.
-2. **Do NOT run more budget-spending host runs** until sequencing is decided.
-3. **Commit the characterization** if not already: `sprints/DEFERRED_VERIFICATION.md`
-   + this `.ai/next-steps.md` are uncommitted on the working tree.
+1. **Implement sprint 28 (Sonnet/Coder)** — Tasks 1–4, each an independently
+   committable green commit (see `sprint_plan.md` for the full spec):
+   - **T1** factor `format_run_tests_result`/`parse_run_tests_result` in
+     `tools/coder_tools/run_tests.py` (one source of truth for the result string).
+   - **T2** add `run_gate_pytest(path, cwd)` to `tools/mcp` (in-process on
+     `none`/`worktree`; `build_coder_tool_provider` dispatch under
+     `container`/`sandbox`; existence-check sentinel orchestrator-side; **no** silent
+     in-process fallback).
+   - **T3** rewire both gates onto it; **delete `_raise_if_sandboxed`** + both call
+     sites; add the `core → tools/mcp` edge + record it in `CLAUDE.md`.
+   - **T4** update `DEFERRED_VERIFICATION.md`: F-GATE-SANDBOX resolved-in-code
+     (host re-verification → sprint 27 V1/V2); keep the per-task-test-selection
+     deferral open.
+2. **Then `/handoff` → Opus HITL review** of the sprint 28 diff before it lands.
+3. **Do NOT touch sprint 27 deletions** — they stay blocked until sprint 28 lands
+   AND its gating host V-runs pass.
 
 ## HITL gate
-**OPEN (planning).** The sequencing decision (A vs B) is an Architect judgement
-call. No deletion task lands until sequencing is chosen AND its gating V-run is
-recorded PASSED. F-GATE-SANDBOX blocks any container-isolated `COMPLETED`.
+Planning sequencing gate **RESOLVED** (Option A). **Open gate:** Opus HITL review of
+the sprint 28 implementation diff (the gate-isolation invariant — no silent
+in-process fallback under sandbox modes, no fifth subprocess surface — is
+correctness-critical). Sprint 27's deletions remain gated on sprint 28 + host V-runs.
 
 ## Pointers
-- `sprints/DEFERRED_VERIFICATION.md` — V1/V2/V3 host-run results + **finding
-  F-GATE-SANDBOX** (the blocking gate-sandbox gap + the A/B sequencing options).
-- `src/loop_engine/core/coder_gate.py::_raise_if_sandboxed` — the container-isolation
-  gate refusal (lines ~31–43).
-- `sprints/27_phase6_flip_block/sprint_plan.md` — the flip-block plan (Task 0,
-  V1–V3, Tasks 1–9) + FD1/FD2.
-- `docs/migration_roadmap.md` — "Phase 6 — Collapse the flags".
-- `docs/backlog.md` — BL-1 (in-loop Architect/QA review), BL-2 (Slack).
+- `sprints/28_gate_pytest_sandbox/sprint_plan.md` — the active sprint (4 tasks + DoD).
+- `sprints/DEFERRED_VERIFICATION.md` — finding **F-GATE-SANDBOX** (the gap 28 closes)
+  + V1/V2/V3 host-run results.
+- `src/loop_engine/core/coder_gate.py` — `_raise_if_sandboxed` (delete) +
+  `_run_gate_pytest` (delegate to the new helper).
+- `src/loop_engine/tools/mcp/provider.py` — `container_server_params` +
+  `build_coder_tool_provider` (the tool-path sandbox the gate mirrors).
+- `sprints/27_phase6_flip_block/sprint_plan.md` — the follow-on flip block (after 28).
+- `docs/migration_roadmap.md` — Phase 3b row ("sandboxed gate pytest deferred") +
+  "Phase 6 — Collapse the flags".
+- `docs/backlog.md` — BL-1 in-loop review, BL-2 Slack, BL-3 prompt-caching review.
 
 ## Working tree
-- HEAD `9072b41` (`docs: add product backlog`). **Uncommitted:**
-  `sprints/DEFERRED_VERIFICATION.md` (V1/V2/V3 results + F-GATE-SANDBOX) and this
-  `.ai/next-steps.md` regeneration (`.ai/state.json` is git-ignored). Commit before
-  switching sessions so `/resume` sees a clean tree. Scratch verification logs live
-  under `scratch/` (untracked, do not commit).
+- HEAD `bd6b162`. **Uncommitted:** `docs/backlog.md` (BL-3), the new
+  `sprints/28_gate_pytest_sandbox/` plan, and this `.ai/next-steps.md` regeneration
+  (`.ai/state.json` is git-ignored). **Commit before switching sessions** so
+  `/resume` sees `last_commit` == HEAD. Scratch logs under `scratch/` stay untracked.

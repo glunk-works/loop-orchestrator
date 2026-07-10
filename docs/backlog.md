@@ -59,3 +59,33 @@ outbound bot credential — distinct from the keyring-only Anthropic key and the
 env-var webhook secret, per the `trigger/` precedent); whether it's a new
 top-level orchestrator-level caller (sibling of `trigger/`/`flows/`) or an MCP
 server.
+
+### BL-3 — Review the prompt-caching implementation (correctness + improvement)
+*(added 2026-07-10, from repo owner)*
+
+A focused review of the Anthropic prompt-caching implementation (landed in
+`sprints/11_prompt_caching/`, primarily in `tools/llm/client.py` with rate
+accounting in `tools/llm/pricing.py`). Two aims:
+
+**a. Confirm correct implementation.** Verify caching actually engages and is not
+silently invalidated: the cached system prefix must be **byte-identical across
+calls** (state-derived, immutable content only — findings/sprint plans/revision
+history belong in the *user* turn, never the cached prefix, per the guard noted in
+`sprints/DEFERRED_VERIFICATION.md` §1). Check `cache_control` breakpoint placement,
+that the prefix clears Sonnet 5's ~2048-token minimum cacheable size on the
+Coder/Architect stages, and that `Cache R` (cache-read) is nonzero on tool-loop
+iterations and revision retries rather than always 0 (the tell-tale of a silent
+invalidator). Confirm cost accounting attributes cache-read vs. cache-write tokens
+at the right rates.
+
+**b. Look for improvement opportunities.** e.g. additional/earlier cache
+breakpoints, widening the cached prefix, caching across stages where the prefix is
+stable, cache-TTL/ordering considerations, and any cost-model refinements. Nothing
+designed yet.
+
+**Notes / where to look:** `tools/llm/client.py` (cache-control assembly + system
+blocks), `tools/llm/pricing.py` (rate table, incl. the introductory-rate caveat
+through 2026-08-31), `sprints/DEFERRED_VERIFICATION.md` §1 (the caching + USD smoke
+and the byte-identity guard). Part of this is a **live** check needing a real key
+(the mocked suite pins exact transport call counts but cannot show real cache hits)
+— fold it into the same daemon-bearing host session as the other deferred smokes.
