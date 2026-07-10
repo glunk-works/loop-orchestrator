@@ -51,17 +51,16 @@ green. Next session is **Opus/Architect**, HITL-reviewing the diff.
   calls remain the runtime default everywhere; nothing flipped, nothing
   deleted; no new subprocess surface (still four); no new dependency; no new
   feature flag; no `State` change; no new `keyring` import.
-- **Not committed yet** — see Working tree below.
+- **Committed** at `3a9bc30`.
 
 ## Next
-1. **(Opus/Architect) Commit, then HITL-review Sprint 26's diff.** The tree is
-   dirty (see Working tree) — nothing from this implementation session has
-   been committed. Review scope: the `tools/issue_io` pure/`gh` split, the
-   third MCP server + config stanza, the client adapters, the two injectable
-   seams (engine write-side, cli read-side), the three-way disjointness /
-   four-surface boundary tests, and the doc updates. Pay particular attention
-   to the `issue_filer`/`_issue_reader` module-global-resolution pattern
-   (Task 4 note above) — confirm it's the right shape, not just that it works.
+1. **(Opus/Architect) HITL-review Sprint 26's diff (`3a9bc30`).** Review
+   scope: the `tools/issue_io` pure/`gh` split, the third MCP server + config
+   stanza, the client adapters, the two injectable seams (engine write-side,
+   cli read-side), the three-way disjointness / four-surface boundary tests,
+   and the doc updates. Pay particular attention to the `issue_filer`/
+   `_issue_reader` module-global-resolution pattern (Task 4 note above) —
+   confirm it's the right shape, not just that it works.
 2. If approved: `/archive-sprint`, then plan the **host-gated Phase 6 block**
    (the four flag deletions + `artifacts` strip + `loop.py` flag-branch
    collapse + the issue-path default-flip/classic-path deletion) — all
@@ -81,8 +80,5 @@ green. Next session is **Opus/Architect**, HITL-reviewing the diff.
 - `.ai/context/workflow.md` — the Opus↔Sonnet handoff protocol.
 
 ## Working tree
-- HEAD `a3d316a` (unchanged this session — nothing committed). **Dirty:**
-  every file Sprint 26 touched is modified/untracked (18 modified, 5 new
-  under `src/`/`tests/`, plus the sprint plan dir already untracked from the
-  prior session). Commit before the next `/resume` so `last_commit` matches
-  HEAD.
+- HEAD `3a9bc30` — Sprint 26's implementation, committed clean (24 files
+  changed). `last_commit` matches HEAD; tree is clean.
