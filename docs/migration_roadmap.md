@@ -19,12 +19,12 @@ this file tracks *how far we've got and what's next*.
 | 1 — State & skill externalization + LangGraph engine | ✅ complete, reviewed | `ee89718` |
 | 2 — MCP tooling (coder tools as MCP server) | ✅ complete, reviewed | `7368411` |
 | 3a — Execution isolation (per-run git worktrees) | ✅ built behind flag, reviewed | `951e377` |
-| 3b — Execution isolation (disposable container/sandbox) — **inert seam** | ✅ built behind flag, reviewed (docker/podman primary, bwrap secondary; real `docker run` + sandboxed gate pytest deferred to a daemon host). Plan: `sprints/18_execution_isolation_container/sprint_plan.md` | `cdc7c8f` |
+| 3b — Execution isolation (disposable container/sandbox) — **inert seam** | ✅ built behind flag, reviewed (docker/podman primary, bwrap secondary). Sandboxed gate pytest **closed in code by sprint 28** (`386c660`): both Coder gates' verification pytest now routes through the MCP container sandbox via `tools/mcp.run_gate_pytest`, `_raise_if_sandboxed` deleted — only the real `docker run` daemon-host e2e remains deferred, carried by sprint 27's V1(complete)/V2. Plans: `sprints/18_execution_isolation_container/`, `sprints/28_gate_pytest_sandbox/` | `cdc7c8f` → `386c660` |
 | 4 · part 1 — Ralph-loop Coder (`AgenticNode`) | ✅ built behind flag, reviewed; 4 review findings hardened in 4a (below). Plan: `sprints/19_ralph_coder/sprint_plan.md` | `195f7b7` |
 | 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ complete, reviewed; 3 HITL-review findings resolved (see "Sprint-19a HITL-review settlements"). Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | `d675d5d` → review-fixes |
 | 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ✅ complete, reviewed; HITL-review findings resolved via sprint 21 review-fixes. 394 tests green. Plans: `sprints/20_declarative_generators/`, `sprints/21_declarative_review_fixes/` | `cf48b0c` → `aceb23a` → `03818d9` |
 | 5 — Autonomous triggers + multi-repo factory | 🟨 22a + 22b + 23 + 23a + 24 + 25 complete, reviewed, archived. Sprint 25 (bootstrap flow capability slice) landed the second sanctioned file-write surface (`tools/scaffold`), HITL-reviewed by Opus and approved. Next: plan Phase 6 (collapse the flags). Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/`, `sprints/23_trigger_surface/`, `sprints/23a_trigger_review_fixes/`, `sprints/24_maintenance_flow/`, `sprints/25_bootstrap_flow/` | `457f675` → `71f1692` → `d0e118d` → `7b46227` → `5bc3811` → `5ff8c02` → `e0406d8` → `212beeb` → `6172ad1` → `f8d388a` → `79b535d` |
-| 6 — Collapse the flags (decommission the migration scaffolding) | 🟨 planning pass done (locked 2026-07-10); Sprint 26 (`issue_io`→MCP unification, capability+seams) — implemented, green, **HITL-reviewed by Opus and approved (2026-07-10)**; review findings R1–R7 routed into the host-gated flip block (see the Sprint 26 HITL-review subsection + `DEFERRED_VERIFICATION.md` §9), archived. Next: plan the host-gated flip block. Plan: `sprints/26_issue_io_mcp_unification/` | `3a9bc30` → `b7e2496` |
+| 6 — Collapse the flags (decommission the migration scaffolding) | 🟨 planning pass done (locked 2026-07-10); Sprint 26 (`issue_io`→MCP unification, capability+seams) — implemented, green, **HITL-reviewed by Opus and approved (2026-07-10)**; review findings R1–R7 routed into the host-gated flip block (see the Sprint 26 HITL-review subsection + `DEFERRED_VERIFICATION.md` §9), archived. Flip block planned in `sprints/27_phase6_flip_block/`; its Phase-3b-completion prerequisite **sprint 28 (gate-pytest sandbox) is complete, green, HITL-reviewed by Opus and approved (2026-07-10, `386c660`), and archived** — unblocking sprint 27's host V-runs. Next: sprint 27's V1(complete)/V2 host verification under `LOOP_ENGINE_ISOLATION=container`, then the subtractive flag deletions. Plans: `sprints/26_issue_io_mcp_unification/`, `sprints/27_phase6_flip_block/`, `sprints/28_gate_pytest_sandbox/` | `3a9bc30` → `b7e2496` → `386c660` |
 
 Phases 1–3b are detailed and executed (3b's daemon-host e2e is deferred, not
 lost — see its plan). Phase 4's planning pass is done and it **split into two
@@ -34,10 +34,15 @@ its four review findings are hardened in **part 1a** (`sprints/19a_ralph_hardeni
 **Part 2** (`GeneratorNode` + PM critic-gate, `sprints/20_declarative_generators/`)
 is **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`),
 **reviewed, and its review findings resolved** (sprint 21 review-fixes, `03818d9`).
-**▶ NEXT ACTION: plan the host-gated Phase 6 block (Opus)** — the four flag
-deletions + `artifacts` strip + `loop.py` collapse + the issue-path
+**▶ NEXT ACTION: sprint 27 flip block — host V1(complete)/V2 verification (Opus)**
+under `LOOP_ENGINE_ISOLATION=container` on a daemon-bearing host, now unblocked by
+sprint 28. The flip block itself is planned (`sprints/27_phase6_flip_block/`): the
+four flag deletions + `artifacts` strip + `loop.py` collapse + the issue-path
 default-flip/classic-deletion (which now also carries Sprint 26's HITL findings
-R1–R7), all deferred until a daemon-bearing host is available. Sprint 26
+R1–R7), all gated on those host V-runs passing. **Sprint 28** (gate-pytest sandbox,
+the Phase-3b-completion prerequisite) is **complete, green, HITL-reviewed by Opus
+and approved (2026-07-10, `386c660`), and archived** — `_raise_if_sandboxed`
+deleted, gate pytest now routes through the MCP container sandbox. Sprint 26
 (`issue_io`→MCP unification) is **complete, green, HITL-reviewed by Opus and
 approved (2026-07-10, `3a9bc30`/`b7e2496`), and archived**. Sprint 25
 (`sprints/25_bootstrap_flow/sprint_plan.md`) is **complete, all 6 tasks green,
