@@ -89,3 +89,41 @@ through 2026-08-31), `sprints/DEFERRED_VERIFICATION.md` §1 (the caching + USD s
 and the byte-identity guard). Part of this is a **live** check needing a real key
 (the mocked suite pins exact transport call counts but cannot show real cache hits)
 — fold it into the same daemon-bearing host session as the other deferred smokes.
+
+### BL-4 — Ralph loop watcher: progress/liveness detection for runaway inner tool loops
+*(added 2026-07-10, from repo owner — surfaced by the Phase-6 V2 host run)*
+
+The Coder's inner tool loop (`LLMClient.run_tool_loop`) is bounded only by two
+*blunt* limits: the USD budget (the real guardrail — every iteration is a metered
+API call that re-checks the ledger) and a finite iteration backstop
+(`DEFAULT_MAX_TOOL_ITERATIONS`, raised 12→40 when a legitimately-progressing V2
+`truncate` increment was guillotined at 12). Neither can distinguish a loop that is
+**making progress but needs more turns** from one that is **stuck** (re-reading the
+same files, re-applying the same failing edit, oscillating between two states). The
+engine has a progress check at the *outer* gate-cycle level (the identical-findings
+guard, `core/engine.py`), but **nothing watches the inner tool loop** — which is
+exactly where V2 stalled.
+
+**Idea:** a liveness/progress watcher on the inner loop that detects a *non-progressing*
+loop directly and cuts it (fail the increment honestly → Ralph's existing no-output
+degradation → re-select/escalate), rather than relying on an iteration count as a
+stand-in for "stuck." This targets the actual runaway failure mode while letting
+genuine multi-step work run as long as it is still changing something.
+
+**Open design questions (not yet decided):**
+- What counts as "progress": working-tree/file deltas between iterations, the set of
+  distinct tool calls (repeated identical `read_file`/edit args = no progress),
+  test-result deltas, edit-application success/failure, or a combination.
+- Oscillation detection (A→B→A→B) vs. simple no-change-for-N-iterations.
+- Where it lives: inside `run_tool_loop` (generic, covers every persona) vs. a
+  Ralph-specific wrapper (Ralph is the surviving Coder post-Phase-6 Task 4).
+- Relationship to the iteration backstop: does the watcher **replace** the cap, or
+  do they coexist (watcher as primary, generous cap as a final finite backstop)?
+- Avoiding false positives on legitimately slow-but-progressing work (large reads,
+  many small correct edits) and on intentionally repeated tool calls.
+
+**Notes / where to look:** `tools/llm/client.py::run_tool_loop` (the inner loop +
+the `DEFAULT_MAX_TOOL_ITERATIONS` backstop and its rationale comment),
+`personas/coder_iac/ralph.py::_run_increment` (the `ToolLoopExceededError` →
+no-output degradation this would feed), `core/engine.py` (the outer identical-findings
+progress guard this mirrors at a different level).
