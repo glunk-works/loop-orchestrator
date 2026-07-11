@@ -32,11 +32,15 @@ thresholds are proven.
 OPUS (plan)    design/plan the sprint -> write sprint_plan.md + roadmap -> /handoff
    |                                                                          |
    v   (fresh session, /model sonnet)                                         |
-SONNET (code)  /resume -> implement tasks + tests -> green gate -> commit -> /handoff
+SONNET (code)  /resume -> branch sprint/NN-slug -> implement + tests -> green
+   |           gate -> commit -> push -> /handoff                             |
    |                                                                          |
    v   (fresh session, /model opus)                                           |
 OPUS (review)  /resume -> /code-review the diff -> HITL gate -> update roadmap
-               -> /archive-sprint (on completion) -> plan the next sprint
+   |           -> open PR (base: feat/mcp-langgraph-migration) -> STOP        |
+   |                                                                          |
+   v                                                                          |
+HUMAN          review the PR -> merge = approval -> /archive-sprint, plan next
 ```
 
 Each box is its own **short, single-model session**. The expensive planning context
@@ -47,6 +51,32 @@ never carries into the coding session, and vice-versa — that is the token savi
   doesn't warrant a full session switch, an Opus session may dispatch the Sonnet
   **`coder`** subagent (`.claude/agents/coder.md`) via the Agent tool. The subagent's
   result returns into the Opus context, so prefer the handoff path for anything large.
+
+## Integration gate: every sprint lands via a pull request
+
+**A merged PR is the human approval.** Nothing reaches the integration branch
+without it. Claude commits and pushes freely on a sprint branch, opens the PR, and
+**never merges** — the same posture the engine enforces on managed repos, where
+`tools/repo_io` deliberately exposes no merge verb.
+
+- **Branch per sprint:** `sprint/NN-slug`, cut from `feat/mcp-langgraph-migration`.
+- **PR base is `feat/mcp-langgraph-migration`, not `main`.** `main` stays untouched
+  until the whole migration lands as one final PR. A PR base may be any branch that
+  exists on the remote — it does not have to be the repo default.
+- **CI runs on the PR.** `.github/workflows/ci.yml` triggers on `pull_request:` with
+  no branch filter (and on pushes to `main` only) — so a sprint branch pushed
+  *without* a PR gets **no CI at all**. The PR is what turns the lint → format →
+  test → gitleaks → sbom gate on for sprint work; the local `hatch run` green gate
+  is a pre-check, not the gate of record.
+- **PR body = the Opus HITL review** (scope confirmation against the sprint plan's
+  locked decisions, the findings, the verdict). The PR is the review artifact — don't
+  duplicate it into a separate doc.
+- **Claude does not merge, and does not force-push a pushed branch** without asking.
+- A PR gates *integration*, not *committing* — local commits on a sprint branch are
+  still free and expected.
+
+Nothing here changes on-branch commit hygiene: commits stay signed, and the green
+gate still runs locally before the push.
 
 ## The three skills
 

@@ -33,6 +33,13 @@ Rule of thumb: if the task requires deciding *what* to build or *whether* a diff
 correct → **Opus**; if the task is executing a spec that already exists → **Sonnet**.
 Switch at sprint boundaries via `/handoff` → fresh session → `/resume`.
 
+**Every sprint lands via a pull request — a merged PR is the human approval.** Work on a
+`sprint/NN-slug` branch cut from `feat/mcp-langgraph-migration`; commit and push freely
+there, then open a PR whose **base is `feat/mcp-langgraph-migration`** (not `main`) with the
+Opus HITL review as its body. **Never merge, and never force-push a pushed branch** — the
+human merges. CI only runs on `pull_request:` (any base) and pushes to `main`, so a sprint
+branch without a PR gets no CI. Full protocol in `.ai/context/workflow.md`.
+
 ## Commands
 
 ```bash
