@@ -2,6 +2,13 @@ name: CI
 
 on:
   pull_request:
+    # `edited` is load-bearing: without it the default set is
+    # [opened, synchronize, reopened], so a PR whose *title* fails `pr-title` can
+    # never turn that check green by fixing the title — the check only re-runs on a
+    # new commit, forcing a dummy push. `edited` fires on title/body edits, so the
+    # title gate re-validates the thing it actually gates. The heavy jobs opt out of
+    # it below (see `lint`) — editing prose must not re-run the suite.
+    types: [opened, synchronize, reopened, edited]
   push:
     # Integration branches only. Sprint branches (`sprint/**`) are covered by their
     # PR, so listing them here would double every run for no extra signal. `feat/**`
@@ -39,7 +46,14 @@ jobs:
           fi
           echo "OK: $TITLE"
 
+  # Gate for the whole heavy chain. An `edited` event means the title/body changed,
+  # not the tree — the code checks already ran on this exact SHA, so re-running them
+  # would burn minutes for identical results. Skipping `lint` skips everything
+  # downstream too (`format-check` → `test` → `secrets-scan`/`dependency-audit` →
+  # `sbom` all reach it through `needs:`), so this one guard covers the chain.
+  # On `push` events `github.event.action` is empty, so the condition holds there.
   lint:
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
