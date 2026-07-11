@@ -5,54 +5,65 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Phase 6 — sprint `30_ralph_test_scope` — implemented, pushed, awaiting Opus HITL
-review (→ Opus/Architect).** The prompt-only F-RALPH-OVERSPEC-TEST fix (locked
-**FD1/FD2** — no gate-guard, additive directives only) is code-complete.
+**Phase 6 — sprint `27_phase6_flip_block` — `planned_host_gated`.**
+The flip block is **already planned**; it cannot proceed in this devcontainer.
+Its one blocking obligation is the **re-attempt of V2** — a real
+container-sandboxed Ralph run reaching terminal `COMPLETED` within budget on a
+daemon-bearing host. All in-code blockers are now closed. **V2 held OPEN.**
 
-## Just done (Sonnet/Coder session, 2026-07-11)
-- **T1** (`551338a`) — added the test-scope guardrail to `PROMPT_TEMPLATE`
-  (`coder_iac/shared.py`: tests must cover only the enumerated acceptance criteria,
-  no private/underscore-internal or import-mechanics assertions) and the
+## Just done (Opus/Architect, 2026-07-11)
+- **Sprint 30 (`ralph_test_scope`) COMPLETE + archived.** Closed
+  **F-RALPH-OVERSPEC-TEST** (V2 re-attempt #6's finding: Ralph authored
+  out-of-spec tests asserting private/underscore internals, then escalated on
+  their self-caused failures instead of self-fixing). T1 (`551338a`) added the
+  test-scope guardrail to the shared `PROMPT_TEMPLATE` and the
   self-fix-before-escalate guardrail to Ralph's per-increment prompts
-  (`_build_task_prompt`/`_build_repair_prompt`, `ralph.py`: fix/remove a
-  self-authored failing test in-scope; `## Open Questions` reserved for genuine
-  spec ambiguities only). Unit tests pin both new directives and confirm the
-  existing ones (implement-only-this-task, Global-DoD, no-secrets,
-  escalate-genuine-ambiguity) survive.
-- **T2** (`f934fda`) — reconciled `sprints/DEFERRED_VERIFICATION.md`:
-  F-RALPH-OVERSPEC-TEST now reads resolved-in-code (sprint 30, `551338a`); V2's
-  section notes its last in-code blocker is closed, host `COMPLETED` is the sole
-  remaining obligation.
-- Full suite (580 tests), lint, format, audit all green; `sbom.json` unchanged (no
-  dependency changes). Both commits pushed to `feat/mcp-langgraph-migration`.
+  (prompt-only, locked FD1/FD2 — no gate-guard). T2 (`f934fda`) reconciled
+  `sprints/DEFERRED_VERIFICATION.md`. HITL-reviewed by Opus and approved this
+  session: diff scoped to exactly the planned 5 files (no engine/gate/`State`
+  changes), targeted + full suite (580 passed) and lint independently
+  re-verified green. Cursor snapshot archived to
+  `.ai/archive/30_ralph_test_scope-next-steps.md`.
+- Updated `docs/migration_roadmap.md` (Phase 6 row + NEXT ACTION) to record
+  sprint 30 and re-scope V2's remaining gate to the host observation only.
 
 ## Next
-1. **Opus HITL-reviews** `551338a` + `f934fda` against the sprint plan's locked
-   decisions (FD1: prompt-only, no gate-guard; FD2: additive, not a scope
-   renegotiation) and the acceptance criteria. If approved, sprint 30 is done —
-   run `/archive-sprint`.
-2. **Then a fresh V2 re-attempt** (host, Opus, real budget) — reuse the run-#6
-   staging recipe (harness `scratch/v2_run_harness.py`, tree `scratchpad/v2_tree`,
-   `LOOP_ENGINE_DEV_IMAGE=loop-engine-dev:latest`, injected `issue_filer`, absolute
-   env python). Only this host `COMPLETED` *verifies* F-RALPH-OVERSPEC-TEST +
-   discharges V2. A re-run that still escalates on a self-authored test ⇒
-   prompt-only was insufficient ⇒ escalate to the deferred gate-guard (FD1
-   fallback), don't just re-tweak wording.
-3. **On V2 PASS:** sprint-27 flag deletions unblock (Task 4 `CODER=ralph` gated on V2).
+1. **Sprint 27 V2 re-attempt (host, Opus) — the critical path, HOST-GATED.** On a
+   daemon-bearing host (DinD + `gh` auth + `loop-engine-dev:latest`), under
+   `LOOP_ENGINE_ISOLATION=container` (+ `ENGINE=langgraph TOOLS=mcp
+   PERSONAS=declarative CODER=ralph`), reuse the run-#6 staging recipe (harness
+   `scratch/v2_run_harness.py`, tree `scratchpad/v2_tree`, injected
+   `issue_filer`, absolute env python) and observe terminal `COMPLETED` within
+   budget. Do NOT mark V2 PASS until literally observed. A re-run that still
+   escalates on a self-authored test means the prompt-only fix was
+   insufficient — escalate to the deferred gate-guard (FD1 in
+   `sprints/30_ralph_test_scope/sprint_plan.md`), don't just re-tweak wording.
+2. **On V2 PASS:** the subtractive sprint 27 flag deletions unblock (remove
+   `ENGINE`/`TOOLS`/`PERSONAS` classic paths + `artifacts` strip + `loop.py`
+   collapse + the issue-path default-flip carrying Sprint 26 findings R1–R7;
+   Task 4 `CODER=ralph` gated on V2).
+3. **If no host is available this session:** there is **no in-devcontainer work
+   on the critical path** — consider pulling a backlog item instead
+   (`docs/backlog.md` BL-1..BL-5).
 
 ## HITL gate
-**OPEN** — Opus review owed on sprint 30 commits `551338a` (T1) and `f934fda` (T2)
-before the sprint is archived. Separately, host-gated: V2 `COMPLETED` (now gated only
-on the host re-run) and V3 (not started). No sprint-27 deletion lands until V2 + V3 pass.
+No outstanding review owed — Sprint 30 fully approved. The open gate on the
+critical path is the **sprint 27 V2 host observation** (a real
+container-sandboxed `COMPLETED`), host-gated and not satisfiable in this
+devcontainer. V3 not started. Sprint 27's flag-deletion tasks stay gated on
+V2 (and V3) passing.
 
 ## Pointers
-- `sprints/30_ralph_test_scope/sprint_plan.md` — the prompt-only fix (implemented,
-  awaiting review).
-- `sprints/DEFERRED_VERIFICATION.md` — V1 PASS(qualified); V2 OPEN (host re-attempt
-  only); F-RALPH-OVERSPEC-TEST resolved-in-code (sprint 30); V3 not started.
-- `sprints/27_phase6_flip_block/sprint_plan.md` — the flip block (host-gated).
-- `docs/migration_roadmap.md` — Phase 6 row + NEXT ACTION.
+- `sprints/27_phase6_flip_block/sprint_plan.md` — the flip block (planned, host-gated); its V2 is the held-open `COMPLETED` obligation.
+- `sprints/30_ralph_test_scope/sprint_plan.md` — the prompt-only F-RALPH-OVERSPEC-TEST fix (complete, archived).
+- `sprints/DEFERRED_VERIFICATION.md` — V1 PASS(qualified); **V2 OPEN** (host re-attempt only, all in-code blockers closed); V3 not started.
+- `docs/migration_roadmap.md` — Phase 6 row + NEXT ACTION (updated for sprint 30).
+- `docs/backlog.md` — BL-1..BL-5.
 
 ## Working tree
-- HEAD `f934fda` (pushed). Clean except untracked `scratch/` (V2 specs/logs/harness/
-  pubkey) — out of all commits. `.ai/state.json` is git-ignored (local mirror only).
+- HEAD `5c96e15`. Sprint 30 fully committed + pushed (`551338a`, `f934fda`).
+  This archival session's delta (`.ai/next-steps.md` reseed, `.ai/archive/`
+  snapshot, `docs/migration_roadmap.md` update) is uncommitted — commit it to
+  make the archival durable. Untracked `scratch/` (V2 specs/run logs/harness)
+  remains out of all commits — not for commit. `.ai/state.json` is git-ignored
+  (local mirror only).
