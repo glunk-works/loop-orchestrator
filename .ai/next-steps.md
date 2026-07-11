@@ -5,65 +5,74 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Phase 6 — sprint `27_phase6_flip_block` — `planned_host_gated`.**
-The flip block is **already planned**; it cannot proceed in this devcontainer.
-Its one blocking obligation is the **re-attempt of V2** — a real
-container-sandboxed Ralph run reaching terminal `COMPLETED` within budget on a
-daemon-bearing host. All in-code blockers are now closed. **V2 held OPEN.**
+**Phase 6 — sprint `31_ralph_completion_integrity` — `planned`.**
+Sprint 27 (the flip block) stays `planned_host_gated` behind it: V2 cannot pass
+until sprint 31's fix lands. Sprint 31 is **planned, not yet implemented** —
+next up is Sonnet implementing Task 1 + Task 2.
 
-## Just done (Opus/Architect, 2026-07-11)
-- **Sprint 30 (`ralph_test_scope`) COMPLETE + archived.** Closed
-  **F-RALPH-OVERSPEC-TEST** (V2 re-attempt #6's finding: Ralph authored
-  out-of-spec tests asserting private/underscore internals, then escalated on
-  their self-caused failures instead of self-fixing). T1 (`551338a`) added the
-  test-scope guardrail to the shared `PROMPT_TEMPLATE` and the
-  self-fix-before-escalate guardrail to Ralph's per-increment prompts
-  (prompt-only, locked FD1/FD2 — no gate-guard). T2 (`f934fda`) reconciled
-  `sprints/DEFERRED_VERIFICATION.md`. HITL-reviewed by Opus and approved this
-  session: diff scoped to exactly the planned 5 files (no engine/gate/`State`
-  changes), targeted + full suite (580 passed) and lint independently
-  re-verified green. Cursor snapshot archived to
-  `.ai/archive/30_ralph_test_scope-next-steps.md`.
-- Updated `docs/migration_roadmap.md` (Phase 6 row + NEXT ACTION) to record
-  sprint 30 and re-scope V2's remaining gate to the host observation only.
+## Just done (Opus/Architect, 2026-07-11, host session)
+- **Ran V2 re-attempt #7** on this session's daemon-bearing host (docker live,
+  `loop-engine-dev:latest` present, keyring-backed Anthropic key present).
+  Confirmed sprint 30's F-RALPH-OVERSPEC-TEST fix holds (did not recur), but
+  found a new, more serious, **deterministic** defect: **F-RALPH-FALSE-COMPLETION**
+  — `RalphCoderPersona` marks a manifest task "completed" based only on whether
+  the model raised an open question, never checking whether `apply_file_blocks`
+  actually applied its edit. Combined with the per-task report never being
+  revisited once "done," one malformed/unattempted edit block on an
+  already-"completed" task permanently wedges the sprint's report, blocking the
+  pytest gate forever until the revise cap exhausts and escalates. Full
+  root-cause writeup + evidence in `sprints/DEFERRED_VERIFICATION.md` (new
+  section after F-RALPH-OVERSPEC-TEST) and `scratch/v2_rerun7.log` /
+  `v2_escalations_rerun7.jsonl` / `v2_rerun7_state_snapshot.json`.
+- **Planned the fix: sprint `31_ralph_completion_integrity`**
+  (`sprints/31_ralph_completion_integrity/sprint_plan.md`). Scope: fix lives
+  entirely in `personas/coder_iac/ralph.py`'s completion bookkeeping (FD1 — no
+  `core/coder_gate.py` change needed; the gate machinery is sound once
+  completion is honest). Task 1: change `_finalize_report` to return
+  `(report, failures)` and gate `completed_tasks` on `failures` being empty
+  (not just on no open question), with new tests. Task 2: reconcile
+  `DEFERRED_VERIFICATION.md` once Task 1 lands. Classic `CoderIacPersona` is
+  explicitly out of scope (FD2 — doesn't share the bug, slated for deletion in
+  sprint 27 Task 4 anyway).
 
 ## Next
-1. **Sprint 27 V2 re-attempt (host, Opus) — the critical path, HOST-GATED.** On a
-   daemon-bearing host (DinD + `gh` auth + `loop-engine-dev:latest`), under
-   `LOOP_ENGINE_ISOLATION=container` (+ `ENGINE=langgraph TOOLS=mcp
-   PERSONAS=declarative CODER=ralph`), reuse the run-#6 staging recipe (harness
-   `scratch/v2_run_harness.py`, tree `scratchpad/v2_tree`, injected
-   `issue_filer`, absolute env python) and observe terminal `COMPLETED` within
-   budget. Do NOT mark V2 PASS until literally observed. A re-run that still
-   escalates on a self-authored test means the prompt-only fix was
-   insufficient — escalate to the deferred gate-guard (FD1 in
-   `sprints/30_ralph_test_scope/sprint_plan.md`), don't just re-tweak wording.
-2. **On V2 PASS:** the subtractive sprint 27 flag deletions unblock (remove
+1. **Sonnet implements sprint 31** (`sprints/31_ralph_completion_integrity/sprint_plan.md`,
+   Task 1 then Task 2). Run the green gate (full suite + lint/format/audit).
+2. **Opus HITL review** of the diff — confirm it's scoped to exactly
+   `personas/coder_iac/ralph.py` + `tests/personas/test_ralph_coder.py` (Task 1)
+   and `sprints/DEFERRED_VERIFICATION.md` (Task 2), per FD1/FD2 — no
+   `core/coder_gate.py`, no classic-persona, no engine/`State` changes.
+3. **On HITL approval:** re-attempt V2 (#8) on a daemon-bearing host — reuse
+   the same staging recipe (`scratch/v2_run_harness.py`,
+   `scratch/v2_requirements_min.md`, fresh throwaway tree, full production
+   config, injected `issue_filer`). Do NOT mark V2 PASS until a real container
+   run reaches terminal `COMPLETED`. A re-wedge on an edit-application failure
+   means sprint 31's fix was insufficient — re-open FD1, don't just re-tweak.
+4. **On V2 PASS:** the subtractive sprint 27 flag deletions unblock (remove
    `ENGINE`/`TOOLS`/`PERSONAS` classic paths + `artifacts` strip + `loop.py`
    collapse + the issue-path default-flip carrying Sprint 26 findings R1–R7;
    Task 4 `CODER=ralph` gated on V2).
-3. **If no host is available this session:** there is **no in-devcontainer work
-   on the critical path** — consider pulling a backlog item instead
-   (`docs/backlog.md` BL-1..BL-5).
 
 ## HITL gate
-No outstanding review owed — Sprint 30 fully approved. The open gate on the
-critical path is the **sprint 27 V2 host observation** (a real
-container-sandboxed `COMPLETED`), host-gated and not satisfiable in this
-devcontainer. V3 not started. Sprint 27's flag-deletion tasks stay gated on
-V2 (and V3) passing.
+Sprint 31 is planned but **not yet implemented** — no diff exists yet to
+review. Once Sonnet implements Tasks 1–2, this becomes an open Opus HITL
+review gate before another V2 host attempt (see step 2 above).
 
 ## Pointers
-- `sprints/27_phase6_flip_block/sprint_plan.md` — the flip block (planned, host-gated); its V2 is the held-open `COMPLETED` obligation.
-- `sprints/30_ralph_test_scope/sprint_plan.md` — the prompt-only F-RALPH-OVERSPEC-TEST fix (complete, archived).
-- `sprints/DEFERRED_VERIFICATION.md` — V1 PASS(qualified); **V2 OPEN** (host re-attempt only, all in-code blockers closed); V3 not started.
-- `docs/migration_roadmap.md` — Phase 6 row + NEXT ACTION (updated for sprint 30).
+- `sprints/31_ralph_completion_integrity/sprint_plan.md` — the F-RALPH-FALSE-COMPLETION fix (planned this session; not yet implemented).
+- `sprints/27_phase6_flip_block/sprint_plan.md` — the flip block (planned, host-gated); its V2 is the held-open `COMPLETED` obligation, now additionally gated on sprint 31.
+- `sprints/30_ralph_test_scope/sprint_plan.md` — the prompt-only F-RALPH-OVERSPEC-TEST fix (complete, archived; verified holding by V2 re-attempt #7).
+- `sprints/DEFERRED_VERIFICATION.md` — V1 PASS(qualified); **V2 OPEN**, gated on **F-RALPH-FALSE-COMPLETION** (fix planned: sprint 31); V3 not started.
+- `docs/migration_roadmap.md` — Phase 6 row + NEXT ACTION (needs updating for sprint 31 — not yet done).
 - `docs/backlog.md` — BL-1..BL-5.
 
 ## Working tree
-- HEAD `5c96e15`. Sprint 30 fully committed + pushed (`551338a`, `f934fda`).
-  This archival session's delta (`.ai/next-steps.md` reseed, `.ai/archive/`
-  snapshot, `docs/migration_roadmap.md` update) is uncommitted — commit it to
-  make the archival durable. Untracked `scratch/` (V2 specs/run logs/harness)
+- HEAD `6e1203e`. This session's delta — `sprints/DEFERRED_VERIFICATION.md`
+  (new F-RALPH-FALSE-COMPLETION finding + status updates), the new
+  `sprints/31_ralph_completion_integrity/sprint_plan.md`, and this
+  `.ai/next-steps.md` reseed — is **uncommitted**; commit it to make the
+  finding + plan durable before switching model/session. `docs/migration_roadmap.md`
+  has NOT yet been updated for sprint 31 (do that alongside, or fold into
+  sprint 31's Task 2). Untracked `scratch/` (V2 specs/run logs/harness/evidence)
   remains out of all commits — not for commit. `.ai/state.json` is git-ignored
-  (local mirror only).
+  (local mirror only) and already reflects sprint 31 / assigned_model=sonnet.

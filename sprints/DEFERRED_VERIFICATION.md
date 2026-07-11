@@ -415,6 +415,17 @@ deletion Tasks 1–3), with the terminal-`COMPLETED` proof carried by V2.
 > recipe) reaching terminal `COMPLETED`. Do **not** record V2 PASS until that run is
 > observed.
 
+> **Status update (V2 re-attempt #7, 2026-07-11, Opus/Architect host session).**
+> Reused the run-#6 staging recipe verbatim (fresh `scratchpad/v2_tree`, same
+> `v2_requirements_min.md`, same full production config) to verify sprint 30's fix.
+> **F-RALPH-OVERSPEC-TEST did not recur** — no self-authored-test escalation this
+> run, so the prompt-only guardrail appears to hold. **Result: still NOT
+> `COMPLETED`.** The run escalated again, but on a **new, more serious, and
+> deterministic (not flaky) defect** — see **F-RALPH-FALSE-COMPLETION** below. V2
+> **stays OPEN**, now gated on that finding's fix. Do **not** attempt another V2
+> re-run until it is fixed — this defect will reproduce deterministically any time
+> a Ralph task's edit block fails to parse, which is not a rare event.
+
 *Historical record of the 2026-07-10 session (blocker since closed):*
 
 Ran the full production config **with `LOOP_ENGINE_CODER=ralph`** against a
@@ -620,6 +631,119 @@ discharges V2's last blocker. Do **not** flip `CODER=ralph` (Task 4) until that
 re-run reaches `COMPLETED`. A re-run that still escalates on a self-authored test
 means the prompt-only fix was insufficient — escalate to the deferred gate-guard
 (FD1), do not re-open this fix.
+
+**Verified by V2 re-attempt #7 (2026-07-11): this specific escalation mode did
+not recur.** The fix holds for its intended failure mode. Re-attempt #7 hit a
+different, more serious defect instead — see **F-RALPH-FALSE-COMPLETION** below.
+
+## Finding F-RALPH-FALSE-COMPLETION — OPEN, blocks V2 (host V2 re-attempt #7, 2026-07-11)
+
+**Status: OPEN — a code fix is required, not a prompt tweak.** New finding from
+V2 re-attempt #7 (run_id `e7fc2eed24fe41399089151f74754924`, `AWAITING_ISSUE`,
+$2.63/$5.00, evidence: `scratch/v2_rerun7.log`,
+`scratch/v2_escalations_rerun7.jsonl`, tree
+`scratchpad/v2_tree/.worktrees/e7fc2eed24fe41399089151f74754924/`). `CODER=ralph`
+(Task 4) stays gated on V2; V2 stays gated on this fix.
+
+**Symptom.** `.agent/STATE.md` recorded `02_core_feature_implementation::t01`
+(implement `slugify`), `t02` (implement `word_count`), and `t03` (write
+`test_slugify.py`) as **completed**, each with an elaborate, confident
+"Definition of Done Verification" narrative in its report. In reality, on disk:
+`src/textkit/slugify.py` and `src/textkit/word_count.py` were **still the
+original `raise NotImplementedError` stubs**, `src/textkit/tests/test_slugify.py`
+**did not exist**, and `src/textkit/tests/test_placeholder_stubs.py` **still
+contained both stale stub-assertion tests** the real implementations should have
+superseded. None of the three "completed" tasks' file edits had actually landed.
+The run eventually escalated to a human via the exhaustion ladder
+(`_exhaustion_escalation`) with a message that undersold the true scope: *"Edit
+Application Failures recorded in the implementation report; re-emit the
+corrected blocks so they apply cleanly"* — implying one file needed
+re-emitting, when in fact three tasks' worth of work had never been applied.
+
+**Root cause (confirmed by code reading, `src/loop_engine/personas/coder_iac/ralph.py`
++ `src/loop_engine/core/coder_gate.py`) — two compounding defects, both specific
+to the Ralph per-task loop (the classic `CoderIacPersona` does not share either,
+per below):**
+
+1. **Task completion is gated on "did the model raise an open question," not on
+   "did its edit actually apply."** `RalphCoderPersona._task_increment`
+   (`ralph.py:258-304`) calls `_finalize_report` → `apply_file_blocks`, which
+   returns a list of failures for any malformed/non-applying edit block — but
+   that return value is never consulted when deciding whether to mark the task
+   done. The only branch is `if new_questions: ... blocked ... else: ...
+   completed_tasks: [*scratch.completed_tasks, task.id]` (`ralph.py:282-300`). A
+   task whose edit silently failed to apply (or, as here, whose edit block was
+   never even emitted in the required `### FILEPATH:` grammar — `slugify.py`
+   and `word_count.py` have **no** recorded failure at all, because
+   `apply_file_blocks` can only flag a block it finds malformed, not a block
+   that was never attempted) is marked **completed** exactly like a genuinely
+   successful one, as long as the model didn't escalate a question.
+2. **A stale, unresolved `## Edit Application Failures` marker can become
+   permanently uncleared once its owning task is marked done.**
+   `_upsert_task_section` (`ralph.py:87-107`) only replaces the section for the
+   **exact task id currently being (re-)run**; `select_next_task` (`ralph.py:51-63`)
+   never re-selects a task already in `completed_tasks`. Here, `t02`'s edit
+   block for `test_placeholder_stubs.py` failed to parse ("no fenced file
+   contents or SEARCH/REPLACE edit block found") — but `t02` was still marked
+   completed (defect 1), so its report section, `## Edit Application Failures`
+   included, is never revisited. `CoderGate`/`RalphCoderGate`'s `edit_findings`
+   check (`coder_gate.py:146-151`) scans the **entire concatenated sprint
+   report string** for `EDIT_FAILURES_HEADER`, and short-circuits to REVISE
+   *before* ever running pytest. Once one task's stale marker is baked in this
+   way, **every subsequent increment for that sprint is permanently blocked
+   from ever reaching a pytest run** — the loop can only bounce between
+   "re-emit corrected blocks" (for a task that will never be re-selected) until
+   the revise cap exhausts and escalates. This is deterministic given defect 1,
+   not model flakiness: any single malformed/missing edit block on an
+   already-completed task wedges the sprint permanently.
+
+**Why the classic `CoderIacPersona` does not share this bug:** it re-runs the
+**whole sprint** every revise cycle and does `reports[sprint_path] = report`
+(`persona.py:143`) — a full replace, not a per-task append/upsert — so a
+corrected report on the next attempt naturally drops any prior
+`## Edit Application Failures` marker. The permanent-taint failure mode is
+specific to Ralph's per-task, never-revisit-completed-work design.
+
+**Severity.** This is more serious than F-RALPH-OVERSPEC-TEST: it means
+`RalphCoderGate`'s ACCEPT precondition ("every manifest task checked off AND a
+green pytest run") can be **unsound** — the checklist half of that conjunction
+is model-self-reported and is not cross-validated against `apply_file_blocks`
+ever having succeeded for that task. In this run, pytest was never even reached
+(blocked by defect 2), so the regression-repair path (`RALPH_REGRESSION_PREFIX`)
+never got a chance to engage; in a less lucky run (no single detectably-malformed
+block at all, just silently-never-attempted edits across every task), the
+manifest could reach "all tasks done," pytest would eventually run and go red,
+and the repair path would engage late — but the false "completed" status itself
+is the real problem, independent of when pytest happens to catch it.
+
+**Not the same finding as F-RALPH-OVERSPEC-TEST.** That finding was about *what*
+Ralph tests and *when* it chooses to escalate (a prompting/scope problem,
+correctly fixed with a prompt-only guardrail). This finding is about the
+engine's own bookkeeping marking work "done" without verifying the write
+actually happened — a correctness gap in `core/coder_gate.py` +
+`personas/coder_iac/ralph.py`, not fixable by steering the model's prompt alone
+(the model has no way to know, or control, that a parse failure on its output
+will be permanently unrecoverable).
+
+**Suggested fix shape (for the planning session, not decided here):** (a) don't
+mark a task completed if `apply_file_blocks` reported any failure attributable
+to it — treat it like the `new_questions`/blocked branch instead, so the *same*
+task is re-selected with the specific edit-application failure in its next
+fresh-context prompt (mirroring how a genuine escalation currently keeps a task
+open); (b) independently, reconsider whether `edit_findings` should scan the
+whole concatenated report or only the latest/active task's section, so a
+resolved failure cannot stay permanently load-bearing once its task is behind
+the loop. Both may be needed — (a) prevents the false-positive "done," (b)
+prevents a legitimately-blocked-and-retried task from tainting the gate forever
+once it does eventually succeed.
+
+**Remaining obligation:** a fix (own sprint, code change — not prompt-only),
+HITL-reviewed, then a fresh V2 re-attempt reaching terminal `COMPLETED`. Do
+**not** attempt another V2 re-run before this lands — the defect is
+deterministic and will very likely reproduce (any single malformed/unattempted
+edit block on a task the model doesn't also escalate a question about wedges
+the sprint the same way). Do not flip `CODER=ralph` (Task 4) until fixed and
+verified.
 
 ---
 
