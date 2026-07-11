@@ -38,6 +38,12 @@ they are the last thing standing between here and the end of the migration's fla
   (Everything before it, incl. `b751bd0`, has a permanently blank body. Not worth
   rewriting history over; the rationale lives in the sprint plans + this ledger.)
 
+- **Sprint 31 archived** (`/archive-sprint`, 2026-07-11): its final cursor is snapshotted
+  to `.ai/archive/31_ralph_completion_integrity-next-steps.md` (git-ignored). Sprint 31
+  was done, HITL-approved, committed (`e5d9d98`/`9c32cbf`) and recorded in the roadmap;
+  its fix is now **host-confirmed** by V2 #8. `sprints/31_*/` itself stays on disk — the
+  archive only retires the `.ai/` cursor.
+
 ## Next
 1. **Sprint 27's subtractive flag deletions (Tasks 1–4)** — now unblocked. Remove the
    `ENGINE`/`TOOLS`/`PERSONAS` classic paths, the `artifacts` strip, the `loop.py`
