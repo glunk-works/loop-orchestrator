@@ -189,3 +189,30 @@ per-persona `model` + `max_tokens`), `personas/*/persona.py` (`DEFAULT_MODEL`,
 `RESOLUTION_MAX_TOKENS`, `EXTRACTION_MAX_TOKENS`, `MAX_TOKENS`),
 `tools/llm/pricing.py` (`RATES` — the Opus-rate prerequisite), and the claude-api
 skill / `shared/models.md` for current Opus 4.8 vs Sonnet 5 pricing + `effort`.
+
+### BL-6 — Give Claude its own GitHub identity (machine user / GitHub App)
+
+**Why:** the `gh` CLI in this devcontainer authenticates as **`Seuss27`** — the repo
+owner's own account. So when Claude opens a PR and posts an Architect HITL review on
+it, GitHub renders it as *the owner reviewing their own PR*. Today this is patched by
+convention: every posted review is prefixed `**Opus/Architect HITL review
+(automated)**` so authorship is unambiguous in the text (`.ai/context/workflow.md`).
+That is a *declared* attribution, not a *real* one.
+
+**Why it eventually matters:** the PR gate exists so that a human merge is the
+approval. Shared identity means "who reviewed this" and "who approved this" are not
+independently checkable facts — they are conventions Claude is trusted to honor. That
+is acceptable while the human reads every PR, but it does not survive contact with
+branch protection ("require 1 approving review" is meaningless if the bot and the human
+are the same login) or with any future audit of the factory's own change history.
+
+**Shape:** a GitHub App installation token (preferred — scoped, revocable, renders as a
+distinct bot author) or a dedicated machine user. Interacts with the GPG signing story:
+commits are signed by the owner's forwarded host agent
+(`.devcontainer/gpg-forward.sh`), so a separate *review* identity is separable from —
+and easier than — a separate *commit* identity. Do the review identity first; the
+commit identity is a bigger question.
+
+**Not urgent.** GitHub already refuses self-approval, so the dangerous failure (Claude
+approving its own PR) is blocked by the platform, not just by convention. This is about
+attribution quality, not a live hole.
