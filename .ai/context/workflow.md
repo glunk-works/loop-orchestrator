@@ -71,6 +71,15 @@ without it. Claude commits and pushes freely on a sprint branch, opens the PR, a
 - **Claude does not merge, and does not force-push a pushed branch** without asking.
 - A PR gates *integration*, not *committing* — local commits on a sprint branch are
   still free and expected.
+- **A squash-merged branch is dead — never push to it again.** The squash puts a *new*
+  commit on the base with the same content, so the branch's original commits are still
+  "unmerged" and re-applying them conflicts. Start a fresh branch off the updated base
+  and cherry-pick anything that didn't land. This bites hard because of the next rule.
+- **A conflicted PR runs no CI, silently.** GitHub cannot build the `refs/pull/N/merge`
+  ref when a PR is not mergeable, so `pull_request` workflows never start — and *zero
+  checks* is visually almost identical to *checks still queuing*. If a PR shows no
+  checks after a minute, check `mergeable` before assuming CI is slow:
+  `gh api repos/<owner>/<repo>/pulls/<N> -q '.mergeable_state'`.
 
 ### The Architect's HITL review is a posted GitHub review, not just prose
 
