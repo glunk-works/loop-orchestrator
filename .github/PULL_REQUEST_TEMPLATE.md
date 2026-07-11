@@ -1,3 +1,9 @@
+<!--
+TITLE: `type(scope): imperative subject` — lower-case, no trailing period, <= 72 chars.
+Types: feat|fix|docs|test|refactor|perf|chore|ci|revert. `!` = breaking (State schema).
+The merge is a squash, so this title BECOMES the commit subject. CI enforces it.
+-->
+
 ## Summary
 
 <!-- What does this PR do and why? -->
