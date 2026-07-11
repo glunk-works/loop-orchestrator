@@ -125,8 +125,11 @@ def _build_task_prompt(
         parts.append(f"\nLatest gate status / resolutions to address:\n{composed_findings}")
     parts.append(
         "\nImplement only this task and write its acceptance-criteria test. Run the "
-        "tests before finishing. If a genuine ambiguity blocks the task, add a "
-        "`## Open Questions` section instead of guessing."
+        "tests before finishing. If a test you authored yourself (in this or an earlier "
+        "increment) fails or conflicts with correct code, fix or remove that test — this is "
+        "in scope for every increment regardless of which task first added it. Reserve "
+        "`## Open Questions` for genuine ambiguities in the task specification itself; never "
+        "raise one about a test of your own authorship."
     )
     return "\n".join(parts)
 
@@ -144,8 +147,10 @@ def _build_repair_prompt(composed_findings: str | None, completed: list[str]) ->
         parts.append(f"\nGate status / failing tests to address:\n{composed_findings}")
     parts.append(
         "\nUse your tools to locate the failing test(s) and the change that broke them. "
-        "Run the tests before finishing. If a genuine ambiguity blocks the fix, add a "
-        "`## Open Questions` section instead of guessing."
+        "Run the tests before finishing. If the regression traces to a test you authored "
+        "yourself, fix or remove that test — this is in scope for every increment. Reserve "
+        "`## Open Questions` for genuine ambiguities in the fix itself; never raise one about "
+        "a test of your own authorship."
     )
     return "\n".join(parts)
 

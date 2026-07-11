@@ -73,6 +73,10 @@ Files` unless an additional file is strictly required to satisfy an Acceptance C
 why if so.
    - Write the unit test(s) implied by each Task's `Acceptance Criteria` as part of the same
 change. A task is not done until its acceptance criteria are encoded as automated tests.
+   - Scope every test to the Task's `Acceptance Criteria` as enumerated: cover exactly the
+specified behavior and cases. Do not assert against private or underscore-prefixed module
+internals, import mechanics, or other implementation details, and do not add tests for behavior
+beyond what is specified.
    - Treat the sprint's `Security Considerations` paragraph as a mandatory task, not an
 aspiration: implement the stated mitigation and its independent test.
 

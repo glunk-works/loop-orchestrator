@@ -7,7 +7,12 @@ import pytest
 from loop_engine.core.coder_gate import RALPH_REGRESSION_PREFIX
 from loop_engine.core.state import State
 from loop_engine.personas.agile_sprint_breakdown.manifest import build_task_manifest
-from loop_engine.personas.coder_iac.ralph import RalphCoderPersona, select_next_task
+from loop_engine.personas.coder_iac.ralph import (
+    RalphCoderPersona,
+    _build_repair_prompt,
+    _build_task_prompt,
+    select_next_task,
+)
 from loop_engine.tools.agent_state import (
     ScratchpadState,
     read_memory,
@@ -269,3 +274,26 @@ def test_repair_that_escalates_does_not_record_a_fix_it_did_not_make() -> None:
     lesson = read_memory()[-1].body
     assert "escalated" in lesson.lower()
     assert "Repaired a cross-task test regression" not in lesson
+
+
+# --- (b) sprint 30 (F-RALPH-OVERSPEC-TEST): self-fix-before-escalate guardrail ---
+
+
+def test_task_prompt_carries_self_fix_before_escalate_guardrail() -> None:
+    task = build_task_manifest([_SPRINT_A, _SPRINT_B])[0]
+    prompt = _build_task_prompt(task, _SPRINT_A["content"], None, [])
+
+    assert "fix or remove that test" in prompt
+    assert "never" in prompt and "test of your own authorship" in prompt
+    # The narrowed Open-Questions carve-out is preserved, not deleted.
+    assert "Open Questions" in prompt
+
+
+def test_repair_prompt_carries_self_fix_before_escalate_guardrail() -> None:
+    prompt = _build_repair_prompt(None, [])
+
+    assert "fix or remove that test" in prompt
+    assert "test of your own authorship" in prompt
+    assert "Open Questions" in prompt
+    # The existing repair-scope directive is preserved.
+    assert "Do NOT add new features, new tasks, or new scope" in prompt
