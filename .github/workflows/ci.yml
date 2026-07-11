@@ -3,7 +3,16 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    # Integration branches only. Sprint branches (`sprint/**`) are covered by their
+    # PR, so listing them here would double every run for no extra signal. `feat/**`
+    # is the backstop: it guarantees CI on anything that reaches an integration
+    # branch even if a commit is pushed directly, bypassing the PR gate — the exact
+    # gap that left sprints 26-31 with no CI at all.
+    branches: [main, 'feat/**']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint:
