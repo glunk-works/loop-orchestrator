@@ -408,6 +408,13 @@ deletion Tasks 1–3), with the terminal-`COMPLETED` proof carried by V2.
 > gated on that finding's fix. Do **not** record V2 PASS until a real container run
 > reaches terminal `COMPLETED`.
 
+> **Status update (sprint 30, 2026-07-11).** F-RALPH-OVERSPEC-TEST's fix is now
+> **resolved-in-code** (`551338a` — the prompt-only test-scope + self-fix-before-escalate
+> guardrails). V2's last in-code blocker is closed; the **only** remaining obligation
+> is the host observation itself — a fresh V2 re-attempt (reusing the run-#6 staging
+> recipe) reaching terminal `COMPLETED`. Do **not** record V2 PASS until that run is
+> observed.
+
 *Historical record of the 2026-07-10 session (blocker since closed):*
 
 Ran the full production config **with `LOOP_ENGINE_CODER=ralph`** against a
@@ -550,10 +557,11 @@ lint stays out of scope — the Coder gets the *tool*, not a new gate.
 it, `run_lint` returns a misleading "lint failure" (module-not-found) rather than a
 tooling gap. That confirmation rides the V2 re-attempt, not a separate check.
 
-## Finding F-RALPH-OVERSPEC-TEST — OPEN (blocks V2; Ralph-hardening fix owed)
+## Finding F-RALPH-OVERSPEC-TEST — RESOLVED IN CODE by sprint 30 (host V2 re-attempt still owed)
 
-**Status: OPEN — new finding from V2 re-attempt #6 (2026-07-11).** A code fix is
-owed before `CODER=ralph` can flip (Task 4 stays gated on V2, V2 gated on this).
+**Status: resolved-in-code (sprint 30 Task 1, `551338a`).** New finding from V2
+re-attempt #6 (2026-07-11); `CODER=ralph` (Task 4) stays gated on V2, and V2 stays
+gated on a host re-run of this fix (see **Remaining obligation** below).
 
 **Symptom.** On the minimal 2-fn `textkit` spec, the Ralph coder wrote **correct**
 product code (`slugify.py`/`word_count.py`/`__init__.py` all meet the spec) but
@@ -586,18 +594,32 @@ question); generated tree under the run's worktree
 (`.../v2_tree/.worktrees/0d5e3f3c…/src/textkit/`). Injected-filer staging worked:
 clean pause, within budget, no `gh` crash.
 
-**Fix (owed, new sprint — Sonnet/Coder work, Opus-planned):** steer Ralph away from
-tests beyond the spec's enumerated cases (especially private/underscore internals
-and import mechanics), and toward **self-fixing its own suite before escalating**
-across its self-imposed task boundaries. Candidate surfaces: the Ralph coder prompt
-(test-scope guardrail) and/or the `RalphCoderGate`/escalation guard (a red gate on a
-self-authored, out-of-spec test should route to a fix increment, not a human). Do
-**not** flip `CODER=ralph` (Task 4) until this lands and a re-run reaches
-`COMPLETED`. (BL-4's Ralph liveness/progress watcher is adjacent but distinct — this
-is about *what Ralph tests and when it escalates*, not iteration liveness.)
+**Fix (sprint 30 Task 1, `551338a` — prompt-only, locked FD1/FD2, no gate-guard):**
+two additive directives steer Ralph away from the observed failure mode. (1)
+**Test-scope guardrail** — `PROMPT_TEMPLATE` (`coder_iac/shared.py`, shared with the
+classic Coder) now scopes every test to the task's enumerated `Acceptance Criteria`
+and forbids assertions on private/underscore module internals, import mechanics, or
+behavior beyond spec. (2) **Self-fix-before-escalate guardrail** — Ralph's
+per-increment prompts (`_build_task_prompt`/`_build_repair_prompt`, `ralph.py`) now
+require a test the coder itself authored (in this or an earlier increment) to be
+fixed or removed in-scope, for every increment, and reserve `## Open Questions` for
+genuine spec ambiguities only — never a test of the coder's own authorship. A
+gate-level guard (red gate whose only failing tests are self-authored + out-of-spec
+→ auto-repair) was considered and explicitly deferred (FD1): classifying "self-authored
+and out-of-spec" reliably at the gate is brittle; the prompt-only fix directly targets
+the observed, model-initiated escalation and is lower-risk. (BL-4's Ralph
+liveness/progress watcher is adjacent but distinct — this is about *what Ralph tests
+and when it escalates*, not iteration liveness.)
 
-**Remaining obligation:** the fix, then a fresh V2 re-attempt observing terminal
-`COMPLETED` within budget on a daemon-bearing host.
+**Remaining obligation:** none in code. A fresh V2 re-attempt on a daemon-bearing
+host, reusing the run-#6 staging recipe (harness `scratch/v2_run_harness.py`, tree
+`scratchpad/v2_tree`, `LOOP_ENGINE_DEV_IMAGE=loop-engine-dev:latest`, injected
+`issue_filer`, absolute env python), must observe terminal `COMPLETED` within budget
+— only that host observation *verifies* this finding (vs. resolved-in-code) and
+discharges V2's last blocker. Do **not** flip `CODER=ralph` (Task 4) until that
+re-run reaches `COMPLETED`. A re-run that still escalates on a self-authored test
+means the prompt-only fix was insufficient — escalate to the deferred gate-guard
+(FD1), do not re-open this fix.
 
 ---
 
