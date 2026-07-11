@@ -127,3 +127,65 @@ the `DEFAULT_MAX_TOOL_ITERATIONS` backstop and its rationale comment),
 `personas/coder_iac/ralph.py::_run_increment` (the `ToolLoopExceededError` →
 no-output degradation this would feed), `core/engine.py` (the outer identical-findings
 progress guard this mirrors at a different level).
+
+### BL-5 — Per-persona model routing + resolution token budget review
+*(added 2026-07-11, from repo owner)*
+
+Today **every persona runs `claude-sonnet-5`** — both the classic hardcoded
+`DEFAULT_MODEL` constants (`personas/*/persona.py`) and the declarative configs
+(`personas/declarative/configs/{pm,architecture,sprint_breakdown}.yaml`, all
+`model: claude-sonnet-5`). There is no Opus anywhere in the product. Two related
+questions about that per-call configuration:
+
+**a. Route the Architect (and maybe PM / Sprint Breakdown) persona to Opus.** The
+dev-workflow layer already runs Architect=Opus / Coder=Sonnet (see CLAUDE.md
+"model routing") on the theory that *deciding what to build* wants the stronger
+model while *executing a defined spec* does not. The **product's own** loop does
+not mirror that — its Architecture stage runs Sonnet. Hypothesis: a stronger
+initial architectural design (and sprint breakdown) yields better, more
+convergent downstream Coder loops, worth more than its marginal cost. **Unproven
+— it may not move the needle;** treat as an experiment with a before/after on
+Coder convergence + total run cost, not a foregone change.
+- **Cost:** Opus 4.8 (`claude-opus-4-8`) is **$5/$25 per MTok** vs Sonnet 5's
+  **$3/$15** — ~**1.67× at list** (up to ~2.5× vs Sonnet's introductory $2/$10
+  through 2026-08-31). The Architecture stage is small (~$0.13 in the V2 run-#3
+  cost-summary), so Opus-ifying *just* it adds only ~$0.06/run; extending to PM +
+  Sprint Breakdown scales that up but all three upstream stages together were
+  ~$0.29/run.
+- **Hard dependency (do this first):** `tools/llm/pricing.py`'s `RATES` table has
+  **only** `claude-sonnet-5`, and `_rates_for` raises `UnknownModelError` on any
+  other model. Routing *any* persona to Opus **requires adding `claude-opus-4-8`
+  rates ($5/$25 per MTok) to `RATES`** — otherwise the run crashes in cost
+  accounting the first time the Opus stage returns. Confirm the introductory-rate
+  caveat handling (`pricing.py` already notes Sonnet's intro rates) applies or is
+  N/A for Opus.
+- **Where to change the model:** the forward-looking (Phase-6) path is the
+  declarative `configs/architecture.yaml` `model:` field (and pm/sprint_breakdown
+  if extending); the classic `DEFAULT_MODEL` constants are being deleted in
+  sprint 27 Task 3–4, so don't invest there.
+- **Open questions:** which stages (Architect only, or PM + Sprint Breakdown too);
+  per-stage `effort` (`output_config.effort` is not currently threaded — see the
+  claude-api skill; Opus/Sonnet 5 both support `low..max`, and `xhigh`/`high` is
+  the sweet spot for hard reasoning); how to measure the "better downstream loops"
+  payoff objectively.
+
+**b. Revisit `RESOLUTION_MAX_TOKENS = 2048`.** The resolver-ladder answer pass
+(a persona resolving an escalated downstream question) is capped at **2048**
+output tokens — `personas/architecture/persona.py:13`, `personas/pm/persona.py:16`,
+and the declarative `resolution.max_tokens` in `architecture.yaml` / `pm.yaml`.
+That is ~**31× smaller** than the **64000** the main generation passes get
+(`MAX_TOKENS`), and PM's own extraction pass gets 4096. A substantive
+architectural resolution that runs past 2048 tokens hits `max_tokens` →
+`TruncatedResponseError` → the stage fails honestly rather than returning a
+half-answer. **Unclear whether 2048 is ever the binding constraint in practice**
+(short Q→A resolutions may never approach it), but the asymmetry vs the 64000
+generation budget is worth a deliberate look — raise it (e.g. to match the
+extraction 4096, or higher) if real resolutions are getting truncated. A host
+run that forces a real escalation→resolution round-trip (V3 territory) would show
+whether resolutions actually approach the cap.
+
+**Notes / where to look:** `personas/declarative/configs/*.yaml` (the live
+per-persona `model` + `max_tokens`), `personas/*/persona.py` (`DEFAULT_MODEL`,
+`RESOLUTION_MAX_TOKENS`, `EXTRACTION_MAX_TOKENS`, `MAX_TOKENS`),
+`tools/llm/pricing.py` (`RATES` — the Opus-rate prerequisite), and the claude-api
+skill / `shared/models.md` for current Opus 4.8 vs Sonnet 5 pricing + `effort`.
