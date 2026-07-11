@@ -71,6 +71,27 @@ friction mid-sprint.
 `sprint/NN-slug` for planned sprint work; `feat|fix|chore|docs/slug` for one-offs.
 The prefix matches the commit `type` the branch will land as.
 
+### Merge method: squash by default, merge-commit for integration → main
+
+- **Squash-merge every ordinary PR.** The sprint (not the individual task commit) is the
+  atomic unit: it is reviewed, archived, and attributed to a finding as one thing, and
+  you would never want to revert half of it. Squashing also means **every commit on the
+  integration branch is known-green** — WIP commits inside a branch are never CI'd on
+  their own, only the PR head is. Keep the squash *message* set to the branch's commit
+  messages, so per-task rationale and the `Sprint:`/`Finding:` trailers survive in the
+  body and stay greppable.
+- **Set the squash *title* source to the PR title, not "PR title or commit details."**
+  With the default, a **single-commit PR silently uses the commit subject instead**,
+  bypassing the CI-validated PR title entirely. The `pr-title` gate is only real once
+  this is set.
+- **Merge-commit (never squash) the long-lived integration branch into `main`.** Squashing
+  that PR would collapse the entire multi-sprint effort into one commit and destroy the
+  history. This is the one deliberate exception to the default.
+- **Enable "automatically delete head branches."** A squash-merged branch is dead (its
+  original commits are still "unmerged" against the new squashed commit and will
+  conflict). Auto-deletion makes that structural rather than remembered — you cannot push
+  to a branch that no longer exists.
+
 ## Issue + label taxonomy
 
 - **No title prefixes.** `[BUG] thing is broken` is noise — the label already says `bug`,
