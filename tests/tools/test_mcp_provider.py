@@ -47,7 +47,7 @@ def _provider(_seeded_tree):
 
 def test_provider_discovers_all_coder_tools(_provider) -> None:
     names = {t["name"] for t in _provider.tools}
-    assert names == {"read_file", "list_files", "grep", "run_tests"}
+    assert names == {"read_file", "list_files", "grep", "run_tests", "run_lint"}
     read_schema = next(t for t in _provider.tools if t["name"] == "read_file")
     assert read_schema["input_schema"]["properties"]["path"]["type"] == "string"
 
@@ -69,6 +69,11 @@ def test_grep_dispatch_matches_in_process(_provider) -> None:
 def test_run_tests_dispatch_runs_pytest(_provider) -> None:
     out = _provider.execute("run_tests", {"path": "src"})
     assert "pytest exit code: 0" in out
+
+
+def test_run_lint_dispatch_runs_ruff(_provider) -> None:
+    out = _provider.execute("run_lint", {"path": "src/mod.py"})
+    assert out.startswith("ruff exit code:")
 
 
 def test_error_result_raises_mcp_tool_error(_provider) -> None:
@@ -99,7 +104,7 @@ def test_extra_config_server_never_reaches_coder_provider(
 ) -> None:
     """Even when `loop_engine.mcp.json` declares a `github`-like server
     alongside `coder_tools`, the coder consumer's provider must expose exactly
-    the four coder tools — the extra server is never selected/launched. This
+    the five coder tools — the extra server is never selected/launched. This
     encodes cross-cutting #2's "orchestrator-invoked, not model tools" as an
     enforced invariant before the github server exists (22b)."""
     config_path = tmp_path / "loop_engine.mcp.json"
@@ -112,7 +117,7 @@ def test_extra_config_server_never_reaches_coder_provider(
     monkeypatch.setattr(mcp_config, "_repo_root", lambda: tmp_path)
     with build_coder_tool_provider(cwd=_seeded_tree) as provider:
         names = {t["name"] for t in provider.tools}
-    assert names == {"read_file", "list_files", "grep", "run_tests"}
+    assert names == {"read_file", "list_files", "grep", "run_tests", "run_lint"}
 
 
 def test_committed_config_declares_github_and_issue_alongside_coder_tools() -> None:
@@ -126,10 +131,10 @@ def test_committed_config_declares_github_and_issue_alongside_coder_tools() -> N
 
 def test_committed_github_stanza_does_not_change_coder_provider_tool_set(_provider) -> None:
     """With the committed `github`/`issue` stanzas in effect (no override
-    here), the coder consumer's provider is still exactly the four coder
+    here), the coder consumer's provider is still exactly the five coder
     tools."""
     names = {t["name"] for t in _provider.tools}
-    assert names == {"read_file", "list_files", "grep", "run_tests"}
+    assert names == {"read_file", "list_files", "grep", "run_tests", "run_lint"}
 
 
 def test_build_github_provider_discovers_exactly_four_github_verbs() -> None:
@@ -155,7 +160,7 @@ def test_coder_github_and_issue_providers_are_pairwise_disjoint(_provider) -> No
     with build_issue_provider() as issue_provider:
         issue_names = {t["name"] for t in issue_provider.tools}
 
-    assert coder_names == {"read_file", "list_files", "grep", "run_tests"}
+    assert coder_names == {"read_file", "list_files", "grep", "run_tests", "run_lint"}
     assert github_names == {"create_repository", "clone_repo", "create_branch", "open_pr"}
     assert issue_names == {"create_issue", "read_issue"}
     assert coder_names.isdisjoint(github_names)

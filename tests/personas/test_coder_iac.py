@@ -66,7 +66,7 @@ def test_coder_iac_persona_runs_one_tool_loop_per_sprint_and_writes_reports() ->
 
     # The loop is armed with the full read/execute tool set.
     tool_names = {tool["name"] for tool in first_call.kwargs["tools"]}
-    assert tool_names == {"read_file", "list_files", "grep", "run_tests"}
+    assert tool_names == {"read_file", "list_files", "grep", "run_tests", "run_lint"}
 
 
 def test_coder_iac_persona_stops_at_sprint_with_open_questions() -> None:

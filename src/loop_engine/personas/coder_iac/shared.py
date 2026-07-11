@@ -16,6 +16,7 @@ from loop_engine.tools.coder_tools import (
     read_file,
     resolve_tool_path,
 )
+from loop_engine.tools.coder_tools.run_lint import RUN_LINT_TOOL_SCHEMA, run_lint
 from loop_engine.tools.coder_tools.run_tests import RUN_TESTS_TOOL_SCHEMA, run_tests
 from loop_engine.tools.isolation import IsolationUnavailableError, sandbox_runtime_mode
 from loop_engine.tools.mcp import build_coder_tool_provider, use_mcp_tools
@@ -23,7 +24,7 @@ from loop_engine.tools.state_io.writer import write_artifact
 
 logger = logging.getLogger(__name__)
 
-CODER_TOOLS: list[dict] = [*READ_TOOL_SCHEMAS, RUN_TESTS_TOOL_SCHEMA]
+CODER_TOOLS: list[dict] = [*READ_TOOL_SCHEMAS, RUN_TESTS_TOOL_SCHEMA, RUN_LINT_TOOL_SCHEMA]
 
 _FILE_BLOCK_RE = re.compile(r"^### FILEPATH:\s*(\S+)\s*$", re.MULTILINE)
 _SEARCH_REPLACE_RE = re.compile(
@@ -149,6 +150,8 @@ def _execute_tool(name: str, tool_input: dict) -> str:
         return grep(tool_input["pattern"], tool_input["path"])
     if name == "run_tests":
         return run_tests(tool_input["path"])
+    if name == "run_lint":
+        return run_lint(tool_input["path"])
     raise ValueError(f"Unknown tool: {name!r}")
 
 

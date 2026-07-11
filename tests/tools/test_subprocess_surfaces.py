@@ -1,8 +1,10 @@
-"""Repo-wide static assertion (Phase 5 sprint 24): subprocess/Popen/os.exec*
-usage is confined to exactly the sanctioned surfaces named in `CLAUDE.md`'s
-enforced-module-boundaries section. This moved from three surfaces to four
-in sprint 24 with the addition of `tools/git_io`'s local `git` — nothing
-else in `src/loop_engine` may shell out."""
+"""Repo-wide static assertion (Phase 5 sprint 24, extended sprint 29):
+subprocess/Popen/os.exec* usage is confined to exactly the sanctioned
+surfaces named in `CLAUDE.md`'s enforced-module-boundaries section. This
+moved from three surfaces to four in sprint 24 with the addition of
+`tools/git_io`'s local `git`, and from four to five in sprint 29 with the
+addition of `tools/coder_tools/run_lint.py`'s `ruff` — nothing else in
+`src/loop_engine` may shell out."""
 
 import ast
 from pathlib import Path
@@ -10,10 +12,11 @@ from pathlib import Path
 SRC_ROOT = Path(__file__).resolve().parent.parent.parent / "src" / "loop_engine"
 
 # path -> the sanctioned surface it belongs to. issue_io and repo_io are two
-# consumers of the *same* `gh` surface (repo_io adds no fifth); each other
-# module is its own distinct surface. Four distinct surface names total.
+# consumers of the *same* `gh` surface (repo_io adds no sixth); each other
+# module is its own distinct surface. Five distinct surface names total.
 _SANCTIONED_SUBPROCESS_MODULES: dict[Path, str] = {
     SRC_ROOT / "tools" / "coder_tools" / "run_tests.py": "pytest",
+    SRC_ROOT / "tools" / "coder_tools" / "run_lint.py": "ruff",
     SRC_ROOT / "tools" / "issue_io" / "github.py": "gh",
     SRC_ROOT / "tools" / "repo_io" / "github.py": "gh",
     SRC_ROOT / "tools" / "worktree" / "manager.py": "git worktree",
@@ -64,10 +67,14 @@ def test_subprocess_surfaces_are_confined_to_the_sanctioned_modules() -> None:
     assert shelling_modules == set(_SANCTIONED_SUBPROCESS_MODULES)
 
 
-def test_exactly_four_sanctioned_subprocess_surfaces() -> None:
-    assert len(set(_SANCTIONED_SUBPROCESS_MODULES.values())) == 4
+def test_exactly_five_sanctioned_subprocess_surfaces() -> None:
+    assert len(set(_SANCTIONED_SUBPROCESS_MODULES.values())) == 5
     assert SRC_ROOT / "tools" / "git_io" / "local.py" in _SANCTIONED_SUBPROCESS_MODULES
     assert _SANCTIONED_SUBPROCESS_MODULES[SRC_ROOT / "tools" / "git_io" / "local.py"] == "git"
+    assert SRC_ROOT / "tools" / "coder_tools" / "run_lint.py" in _SANCTIONED_SUBPROCESS_MODULES
+    assert (
+        _SANCTIONED_SUBPROCESS_MODULES[SRC_ROOT / "tools" / "coder_tools" / "run_lint.py"] == "ruff"
+    )
 
 
 def test_scaffold_is_a_file_write_surface_not_a_fifth_subprocess_surface() -> None:
