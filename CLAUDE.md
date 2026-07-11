@@ -35,10 +35,10 @@ Switch at sprint boundaries via `/handoff` → fresh session → `/resume`.
 
 **Every sprint lands via a pull request — a merged PR is the human approval.** Work on a
 `sprint/NN-slug` branch cut from `feat/mcp-langgraph-migration`; commit and push freely
-there, then open a PR whose **base is `feat/mcp-langgraph-migration`** (not `main`) with the
-Opus HITL review as its body. **Never merge, and never force-push a pushed branch** — the
-human merges. CI only runs on `pull_request:` (any base) and pushes to `main`, so a sprint
-branch without a PR gets no CI. Full protocol in `.ai/context/workflow.md`.
+there, then open a PR whose **base is `feat/mcp-langgraph-migration`** (not `main`). Post the
+Opus HITL review on it with `gh pr review --comment` (**never `--approve`** — the human's merge
+is the approval, and `gh` authenticates as the PR author anyway). **Never merge, and never
+force-push a pushed branch.** Full protocol in `.ai/context/workflow.md`.
 
 ## Commands
 

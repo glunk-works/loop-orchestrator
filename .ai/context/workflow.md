@@ -68,12 +68,46 @@ without it. Claude commits and pushes freely on a sprint branch, opens the PR, a
   *without* a PR gets **no CI at all**. The PR is what turns the lint → format →
   test → gitleaks → sbom gate on for sprint work; the local `hatch run` green gate
   is a pre-check, not the gate of record.
-- **PR body = the Opus HITL review** (scope confirmation against the sprint plan's
-  locked decisions, the findings, the verdict). The PR is the review artifact — don't
-  duplicate it into a separate doc.
 - **Claude does not merge, and does not force-push a pushed branch** without asking.
 - A PR gates *integration*, not *committing* — local commits on a sprint branch are
   still free and expected.
+- **A squash-merged branch is dead — never push to it again.** The squash puts a *new*
+  commit on the base with the same content, so the branch's original commits are still
+  "unmerged" and re-applying them conflicts. Start a fresh branch off the updated base
+  and cherry-pick anything that didn't land. This bites hard because of the next rule.
+- **A conflicted PR runs no CI, silently.** GitHub cannot build the `refs/pull/N/merge`
+  ref when a PR is not mergeable, so `pull_request` workflows never start — and *zero
+  checks* is visually almost identical to *checks still queuing*. If a PR shows no
+  checks after a minute, check `mergeable` before assuming CI is slow:
+  `gh api repos/<owner>/<repo>/pulls/<N> -q '.mergeable_state'`.
+
+### The Architect's HITL review is a posted GitHub review, not just prose
+
+Two distinct artifacts — do not conflate them:
+
+- **The PR *description*** says what the change is and why (scope, links to the
+  `sprint_plan.md`). It is authored, editable prose.
+- **The PR *review*** is the Opus/Architect verdict on the diff, posted with
+  `gh pr review --comment`. It is a timestamped, threadable event — a real audit
+  record that survives edits to the description, and that cannot be mistaken for the
+  human's approval.
+
+Rules:
+
+- **`--comment` only. Never `--approve`, never `--request-changes`.** The merge is the
+  human's approval; a Claude-issued approval would be a gate approving itself. This is
+  also enforced by GitHub: the `gh` token authenticates as **`Seuss27`**, the same
+  identity that opens the PR, and GitHub forbids approving your own PR.
+- **Prefix every posted review with `**Opus/Architect HITL review (automated)**`.**
+  Because Claude and the repo owner share the `Seuss27` identity, a posted review
+  otherwise renders as the owner reviewing their own PR. The header is what makes
+  authorship unambiguous. (A separate machine identity would make attribution *real*
+  rather than declared — tracked as **BL-6** in `docs/backlog.md`.)
+- **Inline comments for line-anchored defects; the summary body for the scope verdict.**
+  `/code-review --comment` posts findings inline on the diff — right for concrete bugs.
+  But most of the Architect review is *not* line-anchored ("does this honor the sprint
+  plan's locked FD1/FD2/FD3?", "is the scope exactly these files?"); that judgment
+  belongs in the review summary.
 
 Nothing here changes on-branch commit hygiene: commits stay signed, and the green
 gate still runs locally before the push.
