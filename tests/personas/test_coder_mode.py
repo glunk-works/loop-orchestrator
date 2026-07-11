@@ -1,35 +1,16 @@
+"""The Ralph iteration cap — all that remains of the Coder mode module.
+
+Phase 6 deleted `LOOP_ENGINE_CODER` (and with it `coder_mode`/`use_ralph_coder`):
+Ralph is the only Coder. `LOOP_ENGINE_RALPH_MAX_ITERS` survives because it is
+genuine runtime config, not migration scaffolding.
+"""
+
 import pytest
 
 from loop_engine.personas.coder_iac.mode import (
-    CODER_ENV_VAR,
     RALPH_MAX_ITERS_ENV_VAR,
-    coder_mode,
     ralph_max_iterations,
-    use_ralph_coder,
 )
-
-
-def test_coder_mode_defaults_to_classic(monkeypatch) -> None:
-    monkeypatch.delenv(CODER_ENV_VAR, raising=False)
-    assert coder_mode() == "classic"
-    assert use_ralph_coder() is False
-
-
-def test_coder_mode_selects_ralph(monkeypatch) -> None:
-    monkeypatch.setenv(CODER_ENV_VAR, "ralph")
-    assert coder_mode() == "ralph"
-    assert use_ralph_coder() is True
-
-
-def test_coder_mode_is_case_insensitive_and_stripped(monkeypatch) -> None:
-    monkeypatch.setenv(CODER_ENV_VAR, "  RALPH  ")
-    assert coder_mode() == "ralph"
-
-
-def test_unknown_coder_mode_raises(monkeypatch) -> None:
-    monkeypatch.setenv(CODER_ENV_VAR, "wiggum")
-    with pytest.raises(ValueError, match="not a valid Coder mode"):
-        coder_mode()
 
 
 def test_ralph_max_iterations_default(monkeypatch) -> None:
