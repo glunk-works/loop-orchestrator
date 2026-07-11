@@ -86,11 +86,11 @@ hatch run loop-engine cost-summary --run-id <run_id>
 The full programmatic surface is available without the CLI:
 
 ```python
-from loop_engine import DEFAULT_LOOP, LLMClient, State, run_loop
+from loop_engine import DEFAULT_LOOP, LLMClient, State, run_graph_loop
 
-initial_state = State(schema_version=2, run_id="my-run", stage_history=[], artifacts={})
+initial_state = State(schema_version=3, run_id="my-run", stage_history=[], artifacts={})
 llm_client = LLMClient(budget_usd=5.00)
-final_state = run_loop(DEFAULT_LOOP, initial_state, llm_client)
+final_state = run_graph_loop(DEFAULT_LOOP, initial_state, llm_client)
 ```
 
 ## Running in a container
@@ -173,7 +173,8 @@ docker run --rm \
 The user engages only with the PM role; the other personas coordinate through it. Each stage's output must pass a content **gate** before the run advances. Questions a persona cannot answer escalate up a resolver ladder (Coder → Architect → PM), and whatever no automated layer resolves is filed as a GitHub issue for the human. Every resolution carries a blast-radius classification that routes rework: `task` re-runs the asking stage, `plan` re-enters Sprint Breakdown, `architecture` re-enters the Architect. Hard caps on escalations and re-plans keep every feedback edge finite — hitting a cap escalates to the human instead of looping.
 
 - **`core/state.py`** — `State`, a Pydantic v2 model (`schema_version` 2: `run_id`, `status`, `questions`, `pending_issue`, `counters`, `stage_history`, `artifacts`) with `extra="forbid"`, so no field can silently smuggle a credential through. `RunStatus` makes termination explicit; v1 snapshots are migrated on load.
-- **`core/engine.py`** — `run_loop()`: per stage, a bounded propose → gate → accept/revise/escalate cycle. Gate findings feed revisions against the prior artifact — only flagged sections regenerate, merged back locally (identical findings twice stops paying and escalates); every exit path — success or any failure — persists a snapshot, so no paid work is lost to a traceback.
+- **`core/engine.py`** — `execute_stage()`: one bounded propose → gate → accept/revise/escalate cycle, the single unit of stage progress. Gate findings feed revisions against the prior artifact — only flagged sections regenerate, merged back locally (identical findings twice stops paying and escalates); every exit path — success or any failure — persists a snapshot, so no paid work is lost to a traceback.
+- **`core/graph_engine.py`** — `run_graph_loop()`: the LangGraph `StateGraph` that drives inter-stage routing (advance / re-enter by blast radius / terminate), one node per stage over the shared `execute_stage` primitive.
 - **`core/gates.py`** — `ArtifactGate`: presence/JSON-shape checks, question-shaped-output detection (a model that answers with a question never advances the pipeline), and `## Open Questions` extraction.
 - **`personas/base.py`** — `BasePersona`: abstract `run(state, llm_client, findings=None)`, declared `consumes`/`produces` artifact keys (pre-checked by the engine), and an overridable `resolve_questions()` hook for resolver duty. Personas receive the LLM client via injection — they cannot construct their own or touch credentials directly.
 - **`personas/{pm,architecture,agile_sprint_breakdown,coder_iac}/`** — the four default personas, with batch-mode prompts (explicit assumptions + `## Open Questions`, never "ask and wait"). `PMPersona` keeps its critic revision loop with no-progress detection and folds human issue answers back into the spec; `CoderIacPersona` implements one sprint per LLM call and stops at a sprint that raises questions; on findings re-entry it re-runs only the sprint(s) whose questions were resolved, falling back to a full re-run for gate-revision findings. Sprint plans and implementation reports are written to `sprints/` as real files.
@@ -211,7 +212,7 @@ See [`docs/architecture_definition.md`](docs/architecture_definition.md) for the
 
 ```
 src/loop_engine/
-├── core/           # State model, run_loop engine
+├── core/           # State model, LangGraph engine
 ├── personas/       # BasePersona ABC + pm/architecture/agile_sprint_breakdown/coder_iac
 ├── loops/          # DEFAULT_LOOP composition
 ├── tools/          # llm client, state_io writer, logging config

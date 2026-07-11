@@ -266,8 +266,8 @@ def execute_stage(
 ) -> StageOutcome:
     """Run one bounded propose → gate → accept/revise/escalate cycle.
 
-    The single unit of stage progress, shared by both the classic `run_loop`
-    driver and the LangGraph engine so the two stay behaviorally identical.
+    The single unit of stage progress. The LangGraph engine's stage nodes are
+    thin wrappers over this primitive — all per-stage behavior lives here.
     """
     stage = loop.stages[stage_index]
     stage_name = type(stage.persona).__name__
@@ -410,35 +410,3 @@ def execute_stage(
         stage_name=stage_name,
     )
     return StageOutcome(state, stage_index + 1, carried_findings, carried_until)
-
-
-def run_loop(
-    loop: Loop,
-    initial_state: State,
-    llm_client: LLMClient,
-    start_index: int = 0,
-    initial_findings: list[str] | None = None,
-    issue_filer: IssueFiler | None = None,
-) -> State:
-    state = initial_state.model_copy(update={"status": RunStatus.RUNNING, "pending_issue": None})
-    stage_index = start_index
-
-    # Resolutions produced by an escalation batch, delivered as findings to
-    # every stage from the re-entry point through the stage that escalated
-    # (rework stages need the answers as much as the asker does). On resume
-    # after an issue round-trip the CLI passes the human answers in via
-    # initial_findings, applied through the stage the run paused on.
-    state, carried_findings, carried_until = _prime_resume(loop, state, initial_findings)
-
-    while stage_index < len(loop.stages):
-        outcome = execute_stage(
-            loop, stage_index, state, carried_findings, carried_until, llm_client, issue_filer
-        )
-        state = outcome.state
-        if outcome.terminal:
-            return state
-        carried_findings = outcome.carried_findings
-        carried_until = outcome.carried_until
-        stage_index = outcome.next_index
-
-    return _finalize(state, len(loop.stages), RunStatus.COMPLETED)

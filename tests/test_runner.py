@@ -26,7 +26,7 @@ def test_run_new_builds_state_from_human_input_and_returns_engine_result(monkeyp
         captured["start_index"] = start_index
         return _completed_state(run_id=state.run_id)
 
-    monkeypatch.setattr("loop_engine.runner.run_loop", fake_engine)
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", fake_engine)
     monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
 
     final_state = run_new("do the thing", budget_usd=1.23, loop_name="default")
@@ -45,7 +45,7 @@ def test_run_new_mints_a_fresh_run_id_each_call(monkeypatch) -> None:
         seen_run_ids.append(state.run_id)
         return _completed_state(run_id=state.run_id)
 
-    monkeypatch.setattr("loop_engine.runner.run_loop", fake_engine)
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", fake_engine)
     monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
 
     run_new("first")
@@ -55,37 +55,23 @@ def test_run_new_mints_a_fresh_run_id_each_call(monkeypatch) -> None:
     assert seen_run_ids[0] != seen_run_ids[1]
 
 
-def test_run_new_dispatches_to_langgraph_engine_when_flagged(monkeypatch) -> None:
+def test_run_new_always_drives_the_langgraph_engine(monkeypatch) -> None:
+    # Phase 6: the engine is unconditional — there is no flag and no alternative
+    # driver to fall back to (the classic `run_loop` is deleted).
     mock_graph = MagicMock(return_value=_completed_state())
-    mock_classic = MagicMock(return_value=_completed_state())
     monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_graph)
-    monkeypatch.setattr("loop_engine.runner.run_loop", mock_classic)
     monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
-    monkeypatch.setenv("LOOP_ENGINE_ENGINE", "langgraph")
 
     run_new("hello")
 
     assert mock_graph.called
-    assert not mock_classic.called
-
-
-def test_run_new_defaults_to_classic_engine(monkeypatch) -> None:
-    mock_graph = MagicMock(return_value=_completed_state())
-    mock_classic = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_graph)
-    monkeypatch.setattr("loop_engine.runner.run_loop", mock_classic)
-    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
-    monkeypatch.delenv("LOOP_ENGINE_ENGINE", raising=False)
-
-    run_new("hello")
-
-    assert mock_classic.called
-    assert not mock_graph.called
 
 
 def test_run_new_default_budget_is_used_when_not_specified(monkeypatch) -> None:
     mock_client_cls = MagicMock()
-    monkeypatch.setattr("loop_engine.runner.run_loop", MagicMock(return_value=_completed_state()))
+    monkeypatch.setattr(
+        "loop_engine.runner.run_graph_loop", MagicMock(return_value=_completed_state())
+    )
     monkeypatch.setattr("loop_engine.runner.LLMClient", mock_client_cls)
 
     run_new("hello")
@@ -102,7 +88,7 @@ def test_run_in_tree_runs_engine_inside_tree_path_and_restores_cwd(monkeypatch, 
         captured["state"] = state
         return _completed_state(run_id=state.run_id)
 
-    monkeypatch.setattr("loop_engine.runner.run_loop", fake_engine)
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", fake_engine)
     monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
 
     final_state = run_in_tree("do the thing", tmp_path, budget_usd=1.23, loop_name="default")
@@ -121,7 +107,7 @@ def test_run_in_tree_restores_cwd_even_if_engine_raises(monkeypatch, tmp_path) -
     def raising_engine(loop, state, client, *, start_index):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("loop_engine.runner.run_loop", raising_engine)
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", raising_engine)
     monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
 
     try:
@@ -139,7 +125,7 @@ def test_run_in_tree_mints_a_fresh_run_id(monkeypatch, tmp_path) -> None:
         seen_run_ids.append(state.run_id)
         return _completed_state(run_id=state.run_id)
 
-    monkeypatch.setattr("loop_engine.runner.run_loop", fake_engine)
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", fake_engine)
     monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
 
     run_in_tree("first", tmp_path)
@@ -161,7 +147,7 @@ def test_run_in_tree_never_opens_worktree_run_even_with_isolation_flagged(
         captured["cwd"] = Path.cwd()
         return _completed_state(run_id=state.run_id)
 
-    monkeypatch.setattr("loop_engine.runner.run_loop", fake_engine)
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", fake_engine)
     monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
 
     run_in_tree("hello", tmp_path)

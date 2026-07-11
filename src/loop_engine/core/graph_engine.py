@@ -1,17 +1,16 @@
-"""LangGraph engine (Phase 1d).
+"""LangGraph engine — the loop engine.
 
-A `StateGraph` reimplementation of `run_loop`'s inter-stage routing. It does
-NOT reimplement the per-stage cycle: each stage node calls the shared
-`execute_stage` primitive, so the classic engine and this one are behaviorally
-identical by construction. The graph carries only control-flow routing state
-(the domain `State` plus a stage cursor and carried findings) — the "lightweight
-routing hub" the migration targets.
+A `StateGraph` driving the inter-stage routing. It does NOT implement the
+per-stage cycle: each stage node calls the shared `execute_stage` primitive.
+The graph carries only control-flow routing state (the domain `State` plus a
+stage cursor and carried findings) — the "lightweight routing hub" the
+migration targeted.
 
-Selected at runtime by `LOOP_ENGINE_ENGINE=langgraph`; the classic `run_loop`
-remains the default until this path has proven out end to end.
+This is the only engine. The classic `run_loop` driver it replaced was deleted
+in Phase 6 (sprint 27) once the LangGraph path was verified end to end on a
+real host run; it remains recoverable at the `pre-phase6-classic` tag.
 """
 
-import os
 from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -26,9 +25,6 @@ from loop_engine.core.engine import (
 )
 from loop_engine.core.state import RunStatus, State
 from loop_engine.tools.llm.client import LLMClient
-
-ENGINE_ENV_VAR = "LOOP_ENGINE_ENGINE"
-_LANGGRAPH_ENGINE = "langgraph"
 
 # Our own hard caps (MAX_ESCALATIONS_PER_STAGE, MAX_REPLANS_PER_RUN) already
 # guarantee termination; this bound only needs enough headroom that a legitimate
@@ -52,11 +48,6 @@ _COMPLETE_NODE = "__complete__"
 
 def _node_name(index: int) -> str:
     return f"stage_{index}"
-
-
-def use_langgraph_engine() -> bool:
-    """Whether the LangGraph engine is selected via the environment flag."""
-    return os.environ.get(ENGINE_ENV_VAR, "").strip().lower() == _LANGGRAPH_ENGINE
 
 
 def _make_stage_node(loop: Loop, index: int, llm_client: LLMClient, issue_filer: IssueFiler | None):
@@ -124,8 +115,8 @@ def run_graph_loop(
     initial_findings: list[str] | None = None,
     issue_filer: IssueFiler | None = None,
 ) -> State:
-    """LangGraph-driven equivalent of `run_loop`, with the same signature and
-    return contract (the final, already-persisted `State`)."""
+    """Drive `loop` to a terminal state, returning the final, already-persisted
+    `State`."""
     state = initial_state.model_copy(update={"status": RunStatus.RUNNING, "pending_issue": None})
     state, carried_findings, carried_until = _prime_resume(loop, state, initial_findings)
 

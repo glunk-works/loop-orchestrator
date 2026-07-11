@@ -6,8 +6,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from loop_engine.core.engine import Loop, Stage, run_loop
+from loop_engine.core.engine import Loop, Stage
 from loop_engine.core.gates import GateDecision, GateResult
+from loop_engine.core.graph_engine import run_graph_loop
 from loop_engine.core.state import RunStatus, State
 from loop_engine.personas.architecture.persona import ArchitecturePersona
 
@@ -55,7 +56,7 @@ def test_gate_revise_round_makes_two_calls_with_three_turn_second_request() -> N
         artifacts={"project_spec": '{"problem_statement": "x"}'},
     )
 
-    final = run_loop(loop, initial, llm_client)
+    final = run_graph_loop(loop, initial, llm_client)
 
     assert final.status is RunStatus.COMPLETED
     # Exactly two transport-bound requests: one full generation, one revision.
