@@ -1,69 +1,44 @@
-"""The declarative prompt files ARE the source of truth the nodes load.
+"""The prompt files ARE the source of truth the generator nodes load.
 
-These invert the classic header-check parity test: rather than pinning an
-embedded copy against a file, they assert the on-disk prompt files are
-byte-identical to the personas' embedded templates (so a declarative node's
-system_blocks equal the classic persona's), and that each bundled config points
-at an existing prompt file carrying its mandated section headers.
+Until Phase 6 these asserted the on-disk prompt files were byte-identical to the
+classic personas' embedded templates — the parity guarantee that made swapping in
+the declarative nodes safe. With the classic personas deleted there is no second
+copy to diff against; `prompts/` is now the only source, so what is worth pinning
+is that every bundled config resolves to a real prompt file carrying the section
+headers its output adapter depends on.
 """
 
-from loop_engine.personas.agile_sprint_breakdown.persona import (
-    PROMPT_TEMPLATE as SPRINT_TEMPLATE,
-)
-from loop_engine.personas.architecture.persona import (
-    PROMPT_TEMPLATE as ARCH_TEMPLATE,
-)
-from loop_engine.personas.architecture.persona import (
-    RESOLUTION_PROMPT_TEMPLATE as ARCH_RES_TEMPLATE,
-)
+import pytest
+
 from loop_engine.personas.declarative.config import (
     load_named_config,
     load_prompt,
     resolve_prompt_path,
 )
-from loop_engine.personas.pm.fields import CHECKLIST_FIELDS
-from loop_engine.personas.pm.persona import (
-    FOLLOWUP_PROMPT_TEMPLATE as PM_FOLLOWUP_TEMPLATE,
-)
-from loop_engine.personas.pm.persona import (
-    PROMPT_TEMPLATE as PM_TEMPLATE,
-)
-from loop_engine.personas.pm.persona import (
-    RESOLUTION_PROMPT_TEMPLATE as PM_RES_TEMPLATE,
-)
+
+# The markers each persona's prompt must carry for its adapter to work: section
+# headers the model is told to emit, or (for PM, which has no headers) the
+# preamble phrase that defines the extraction task.
+MANDATED_MARKERS = {
+    "architecture": ["## Output Requirements"],
+    "sprint_breakdown": ["## ROLE", "## OBJECTIVE", "## TASK INSTRUCTIONS"],
+    "pm": ["extracting candidate answers"],
+}
 
 
-def test_architecture_prompt_file_byte_identical_to_embedded() -> None:
-    assert load_prompt("prompts/02_architecture_definition_prompt.md") == ARCH_TEMPLATE
+@pytest.mark.parametrize("name", sorted(MANDATED_MARKERS))
+def test_each_config_points_at_an_existing_prompt_with_its_mandated_markers(name) -> None:
+    cfg = load_named_config(name)
+
+    assert resolve_prompt_path(cfg.prompt_file).is_file()
+    body = load_prompt(cfg.prompt_file)
+    for marker in MANDATED_MARKERS[name]:
+        assert marker in body, f"{name}: missing {marker!r}"
 
 
-def test_sprint_breakdown_prompt_file_byte_identical_to_embedded() -> None:
-    assert load_prompt("prompts/03_agile_sprint_breakdown_prompt.md") == SPRINT_TEMPLATE
+@pytest.mark.parametrize("name", sorted(MANDATED_MARKERS))
+def test_each_configs_revision_prompt_file_exists_when_declared(name) -> None:
+    cfg = load_named_config(name)
 
-
-def test_pm_extraction_prompt_file_matches_formatted_embedded() -> None:
-    expected = PM_TEMPLATE.format(fields=", ".join(CHECKLIST_FIELDS))
-    assert load_prompt("prompts/00_pm_extraction_prompt.md") == expected
-
-
-def test_pm_followup_prompt_file_byte_identical() -> None:
-    assert load_prompt("prompts/00_pm_followup_prompt.md") == PM_FOLLOWUP_TEMPLATE
-
-
-def test_resolution_prompt_files_byte_identical() -> None:
-    assert load_prompt("prompts/00_pm_resolution_prompt.md") == PM_RES_TEMPLATE
-    assert load_prompt("prompts/02_architecture_resolution_prompt.md") == ARCH_RES_TEMPLATE
-
-
-def test_each_config_points_at_existing_prompt_with_headers() -> None:
-    mandated = {
-        "architecture": ["## Output Requirements"],
-        "sprint_breakdown": ["## ROLE", "## OBJECTIVE", "## TASK INSTRUCTIONS"],
-        "pm": ["extracting candidate answers"],  # PM preamble phrase (no headers)
-    }
-    for name, markers in mandated.items():
-        cfg = load_named_config(name)
-        assert resolve_prompt_path(cfg.prompt_file).is_file()
-        body = load_prompt(cfg.prompt_file)
-        for marker in markers:
-            assert marker in body, f"{name}: missing {marker!r}"
+    if cfg.revision_feedback_prompt_file is not None:
+        assert resolve_prompt_path(cfg.revision_feedback_prompt_file).is_file()

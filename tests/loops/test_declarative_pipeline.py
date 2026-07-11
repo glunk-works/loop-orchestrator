@@ -138,7 +138,6 @@ def test_default_loop_pm_stage_escalates_after_exhausting_revisions(monkeypatch)
     # set of blank fields) must exhaust its 4-revision budget and escalate to a
     # human issue (review finding #2/#3), not raise StageGateFailedError — PM's
     # only resolver is the human, so a hard fail there is a dead end.
-    monkeypatch.setenv("LOOP_ENGINE_PERSONAS", "declarative")
     monkeypatch.delenv("LOOP_ENGINE_CODER", raising=False)
     loop = build_default_loop()
     pm_stage = loop.stages[0]

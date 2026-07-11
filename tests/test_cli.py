@@ -80,7 +80,7 @@ def test_cli_resume_from_skips_already_completed_stages(tmp_path, monkeypatch) -
         run_id="run-1",
         stage_history=[
             {
-                "stage_name": "PMPersona",
+                "stage_name": "PMGenerator",
                 "tokens_used": 10,
                 "cost_usd": 0.0,
                 "completed_at": "2026-07-02T00:00:00Z",
@@ -107,7 +107,7 @@ def test_cli_resume_from_migrates_v1_snapshot(tmp_path, monkeypatch) -> None:
         "run_id": "run-legacy",
         "stage_history": [
             {
-                "stage_name": "PMPersona",
+                "stage_name": "PMGenerator",
                 "tokens_used": 10,
                 "cost_usd": 0.0,
                 "completed_at": "2026-07-02T00:00:00Z",
@@ -161,10 +161,10 @@ def test_cli_resume_from_issue_folds_answers_and_reenters(tmp_path, monkeypatch)
         status=RunStatus.AWAITING_ISSUE,
         pending_issue=IssueRef(number=17, url="https://github.com/acme/repo/issues/17"),
         counters={"paused_stage_index": 1},
-        questions=[Question(id="q1", origin_stage="ArchitecturePersona", text="Which region?")],
+        questions=[Question(id="q1", origin_stage="ArchitectureGenerator", text="Which region?")],
         stage_history=[
             {
-                "stage_name": "PMPersona",
+                "stage_name": "PMGenerator",
                 "tokens_used": 10,
                 "cost_usd": 0.0,
                 "completed_at": "2026-07-02T00:00:00Z",
@@ -220,10 +220,10 @@ def test_cli_resume_from_issue_via_injected_mcp_reader(tmp_path, monkeypatch) ->
         status=RunStatus.AWAITING_ISSUE,
         pending_issue=IssueRef(number=17, url="https://github.com/acme/repo/issues/17"),
         counters={"paused_stage_index": 1},
-        questions=[Question(id="q1", origin_stage="ArchitecturePersona", text="Which region?")],
+        questions=[Question(id="q1", origin_stage="ArchitectureGenerator", text="Which region?")],
         stage_history=[
             {
-                "stage_name": "PMPersona",
+                "stage_name": "PMGenerator",
                 "tokens_used": 10,
                 "cost_usd": 0.0,
                 "completed_at": "2026-07-02T00:00:00Z",
@@ -269,19 +269,18 @@ def test_cli_resume_from_issue_via_injected_mcp_reader(tmp_path, monkeypatch) ->
     assert fold_result_holder["questions"][0].resolved_by == "human:17"
 
 
-def test_cli_resume_from_issue_works_under_declarative_personas(tmp_path, monkeypatch) -> None:
-    # Regression for review finding #1: under `declarative`, stage 0 is
-    # PMGenerator, which must expose fold_answers or every paused declarative
-    # run is unresumable (cli.py's resume guard raises typer.BadParameter).
+def test_cli_resume_from_issue_folds_answers_via_the_pm_generator(tmp_path, monkeypatch) -> None:
+    # Regression for review finding #1: stage 0 is PMGenerator, which must expose
+    # fold_answers or every paused run is unresumable (cli.py's resume guard
+    # raises typer.BadParameter).
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("LOOP_ENGINE_PERSONAS", "declarative")
     paused = State(
         schema_version=2,
         run_id="run-1",
         status=RunStatus.AWAITING_ISSUE,
         pending_issue=IssueRef(number=17, url="https://github.com/acme/repo/issues/17"),
         counters={"paused_stage_index": 1},
-        questions=[Question(id="q1", origin_stage="ArchitecturePersona", text="Which region?")],
+        questions=[Question(id="q1", origin_stage="ArchitectureGenerator", text="Which region?")],
         stage_history=[
             {
                 "stage_name": "PMGenerator",
@@ -322,7 +321,7 @@ def test_cli_cost_summary_counts_each_stage_once_despite_terminal_snapshot(
     run_dir = tmp_path / "state" / "run-1"
     run_dir.mkdir(parents=True)
 
-    stage_names = ["PMPersona", "ArchitecturePersona"]
+    stage_names = ["PMGenerator", "ArchitectureGenerator"]
     tokens = [20, 80]
     history = []
     for index, (name, t) in enumerate(zip(stage_names, tokens, strict=True)):

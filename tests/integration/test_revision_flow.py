@@ -10,7 +10,7 @@ from loop_engine.core.engine import Loop, Stage
 from loop_engine.core.gates import GateDecision, GateResult
 from loop_engine.core.graph_engine import run_graph_loop
 from loop_engine.core.state import RunStatus, State
-from loop_engine.personas.architecture.persona import ArchitecturePersona
+from loop_engine.personas.declarative.node import ArchitectureGenerator
 
 FIRST_ATTEMPT = "# Architecture\n\n1. Overview.\n\n## Assumptions\n\n- Single region.\n"
 
@@ -48,7 +48,7 @@ def test_gate_revise_round_makes_two_calls_with_three_turn_second_request() -> N
         text="## Assumptions\n\n- All compute in eu-west-1.\n"
     )
 
-    loop = Loop(stages=[Stage(persona=ArchitecturePersona(), gate=ReviseOnceGate())])
+    loop = Loop(stages=[Stage(persona=ArchitectureGenerator(), gate=ReviseOnceGate())])
     initial = State(
         schema_version=2,
         run_id="run-revise",
