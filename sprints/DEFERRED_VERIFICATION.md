@@ -392,6 +392,22 @@ deletion Tasks 1–3), with the terminal-`COMPLETED` proof carried by V2.
 > `issue_filer`, so a stray escalation on a remote-less scratch tree pauses cleanly
 > instead of crashing `gh issue create`). Do **not** record V2 PASS until observed.
 
+> **Status update (V2 re-attempt #6, 2026-07-11, Opus/Architect host session).**
+> Escalation-free staging was built the injected-`issue_filer` way (the Seuss27 PAT
+> is scoped only to `glunk-works/loop-engine`, so no throwaway scratch remote could
+> be created; a non-crashing recording filer was injected via `run_graph_loop`'s
+> `issue_filer` seam instead). Run under the full production config
+> (`langgraph`+`mcp`+`declarative`+`ralph`+`container`, `LOOP_ENGINE_DEV_IMAGE=loop-engine-dev:latest`
+> rebuilt to include `ruff` — the F-CODER-NO-LINT host obligation, now closed) against
+> the minimal 2-fn `textkit` spec. **Result: staging validated, but still NOT
+> `COMPLETED`.** The run reached the container Ralph coder, serviced a full sandboxed
+> tool loop, and then **escalated** (`AWAITING_ISSUE`, $3.29 / $5.00) — the injected
+> filer recorded the question and paused cleanly (no `gh` crash), so the staging
+> approach itself is proven. The escalation is a **new, distinct convergence gap** —
+> see **F-RALPH-OVERSPEC-TEST** below. V2 therefore **stays OPEN**, now additionally
+> gated on that finding's fix. Do **not** record V2 PASS until a real container run
+> reaches terminal `COMPLETED`.
+
 *Historical record of the 2026-07-10 session (blocker since closed):*
 
 Ran the full production config **with `LOOP_ENGINE_CODER=ralph`** against a
@@ -533,6 +549,55 @@ lint stays out of scope — the Coder gets the *tool*, not a new gate.
 `ruff` must be present in the container image so `python -m ruff` resolves — absent
 it, `run_lint` returns a misleading "lint failure" (module-not-found) rather than a
 tooling gap. That confirmation rides the V2 re-attempt, not a separate check.
+
+## Finding F-RALPH-OVERSPEC-TEST — OPEN (blocks V2; Ralph-hardening fix owed)
+
+**Status: OPEN — new finding from V2 re-attempt #6 (2026-07-11).** A code fix is
+owed before `CODER=ralph` can flip (Task 4 stays gated on V2, V2 gated on this).
+
+**Symptom.** On the minimal 2-fn `textkit` spec, the Ralph coder wrote **correct**
+product code (`slugify.py`/`word_count.py`/`__init__.py` all meet the spec) but
+then **escalated** at `AWAITING_ISSUE` instead of reaching `COMPLETED` — blocked by
+a **single self-authored test** it had written *beyond* the spec:
+`test_slugify_uses_module_level_compiled_pattern`, which asserts a **private module
+internal** (`slugify._NON_ALNUM_RUN`, a compiled regex) via
+`import textkit.slugify as slugify_module`. That import form resolves to the
+**function**, not the module (because `__init__.py`'s spec-mandated
+`from textkit.slugify import slugify` shadows the `textkit.slugify` submodule
+attribute), so it fails `AttributeError: 'function' object has no attribute
+'_NON_ALNUM_RUN'`. The test's own inline comment claims the import "sidesteps that
+rebinding" — it does not.
+
+**Two-part root cause (both Ralph behavior, not a product defect and not a
+`langgraph`/`mcp`/`declarative` defect):**
+1. **Over-specified test generation.** The spec enumerated exact known/error cases
+   and nothing about private internals, signatures, or ReDoS; Ralph nonetheless
+   authored a module-internals test, a `inspect.signature` test, and a 10k-char
+   ReDoS test. The internals test encodes a Python-import-semantics misunderstanding
+   and cannot pass against the (correct) re-export structure.
+2. **Rigid task-scoping → escalation instead of self-fix.** Ralph reasoned the fix
+   "belongs to Task 2" and paused for a human rather than deleting/correcting a
+   one-line unspecified assertion it had itself introduced. A trivial self-fix
+   (remove or correct the test) would have gone green.
+
+**Evidence.** `scratch/v2_rerun6.log` (run_id `0d5e3f3c274d414e988ac295a8d4bddb`,
+`AWAITING_ISSUE`, $3.29/$5.00); `scratch/v2_escalations.jsonl` (the recorded
+question); generated tree under the run's worktree
+(`.../v2_tree/.worktrees/0d5e3f3c…/src/textkit/`). Injected-filer staging worked:
+clean pause, within budget, no `gh` crash.
+
+**Fix (owed, new sprint — Sonnet/Coder work, Opus-planned):** steer Ralph away from
+tests beyond the spec's enumerated cases (especially private/underscore internals
+and import mechanics), and toward **self-fixing its own suite before escalating**
+across its self-imposed task boundaries. Candidate surfaces: the Ralph coder prompt
+(test-scope guardrail) and/or the `RalphCoderGate`/escalation guard (a red gate on a
+self-authored, out-of-spec test should route to a fix increment, not a human). Do
+**not** flip `CODER=ralph` (Task 4) until this lands and a re-run reaches
+`COMPLETED`. (BL-4's Ralph liveness/progress watcher is adjacent but distinct — this
+is about *what Ralph tests and when it escalates*, not iteration liveness.)
+
+**Remaining obligation:** the fix, then a fresh V2 re-attempt observing terminal
+`COMPLETED` within budget on a daemon-bearing host.
 
 ---
 
