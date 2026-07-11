@@ -40,6 +40,7 @@ from loop_engine.tools.agent_state import (
     read_scratchpad,
     write_scratchpad,
 )
+from loop_engine.tools.llm.client import ToolLoopExceededError
 from loop_engine.tools.state_io.writer import write_artifact
 
 logger = logging.getLogger(__name__)
@@ -150,7 +151,15 @@ def _build_repair_prompt(composed_findings: str | None, completed: list[str]) ->
 
 
 def _run_increment(llm_client, architecture: str, prompt: str) -> str:
-    """One fresh-context tool loop; returns the stripped report text."""
+    """One fresh-context tool loop; returns the stripped report text.
+
+    A tool loop that exhausts its iteration cap is degraded to an empty report
+    (not a crash): the increment is treated exactly like a no-output turn, so
+    the caller leaves the task unchecked, the loop re-selects it with a fresh
+    context, and the engine's identical-findings guard escalates if it stays
+    stuck. Iteration exhaustion is a bounded-resource failure like budget
+    exhaustion — it must fail the increment honestly, never abort the run.
+    """
     system_blocks = [
         PROMPT_TEMPLATE,
         f"Architecture Definition Document:\n\n{architecture}",
@@ -166,6 +175,9 @@ def _run_increment(llm_client, architecture: str, prompt: str) -> str:
             execute=execute,
             system_blocks=system_blocks,
         )
+    except ToolLoopExceededError:
+        logger.warning("Ralph increment tool loop did not converge; treating as no output")
+        return ""
     finally:
         tool_backend.close()
     return response.text.strip()

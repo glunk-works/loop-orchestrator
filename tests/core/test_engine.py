@@ -18,6 +18,7 @@ from loop_engine.core.gates import ArtifactGate
 from loop_engine.core.state import IssueRef, Question, RunStatus, StageRecord, State
 from loop_engine.loops.default.loop import build_default_loop
 from loop_engine.personas.base import BasePersona
+from loop_engine.tools.llm.client import ToolLoopExceededError
 
 
 @pytest.fixture(autouse=True)
@@ -138,6 +139,22 @@ def test_run_loop_budget_exhaustion_returns_budget_exceeded_with_snapshot() -> N
 
     assert final.status is RunStatus.BUDGET_EXCEEDED
     assert (Path("state") / "run-4" / "00_budget_exceeded.json").exists()
+
+
+def test_run_loop_tool_loop_exhaustion_fails_stage_cleanly_with_snapshot() -> None:
+    # A persona whose inner tool loop exhausts its iteration cap must end the
+    # run with a persisted FAILED_STAGE snapshot, not crash it (mirrors the
+    # bounded-resource handling of BudgetExceededError).
+    class StuckPersona(BasePersona):
+        def run(self, state: State, llm_client, findings=None) -> State:
+            raise ToolLoopExceededError("did not converge")
+
+    loop = Loop(stages=[Stage(persona=StuckPersona(), gate=ArtifactGate("x"))])
+
+    final = run_loop(loop, _initial_state("run-stuck"), _stub_llm_client())
+
+    assert final.status is RunStatus.FAILED_STAGE
+    assert (Path("state") / "run-stuck" / "00_failed_stage.json").exists()
 
 
 def test_run_loop_records_real_cost_and_cache_deltas_per_stage() -> None:

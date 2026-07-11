@@ -24,7 +24,12 @@ from loop_engine.core.state import IssueRef, Question, RunStatus, StageRecord, S
 from loop_engine.personas.base import BasePersona
 from loop_engine.tools.artifact_store import has_artifact, mirror_to_disk
 from loop_engine.tools.issue_io import file_question_issue
-from loop_engine.tools.llm.client import BudgetExceededError, LLMClient, TruncatedResponseError
+from loop_engine.tools.llm.client import (
+    BudgetExceededError,
+    LLMClient,
+    ToolLoopExceededError,
+    TruncatedResponseError,
+)
 from loop_engine.tools.logging_config import log_stage_completion
 from loop_engine.tools.state_io.writer import write_state_snapshot
 
@@ -301,6 +306,20 @@ def execute_stage(
         except BudgetExceededError:
             return StageOutcome(
                 _finalize(state, stage_index, RunStatus.BUDGET_EXCEEDED),
+                stage_index,
+                carried_findings,
+                carried_until,
+                terminal=True,
+            )
+        except ToolLoopExceededError:
+            # A persona's inner tool loop exhausted its iteration cap without
+            # finishing. Like budget exhaustion, this is a bounded-resource
+            # failure: end the stage cleanly with a persisted FAILED_STAGE
+            # snapshot rather than letting the exception crash the run.
+            # (RalphCoderPersona degrades this internally to a no-output
+            # increment; this is the safety net for every other persona.)
+            return StageOutcome(
+                _finalize(state, stage_index, RunStatus.FAILED_STAGE),
                 stage_index,
                 carried_findings,
                 carried_until,

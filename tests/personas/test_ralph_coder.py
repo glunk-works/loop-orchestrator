@@ -14,6 +14,7 @@ from loop_engine.tools.agent_state import (
     read_scratchpad,
     write_scratchpad,
 )
+from loop_engine.tools.llm.client import ToolLoopExceededError
 
 
 def _prompt_of(client: MagicMock) -> str:
@@ -106,6 +107,20 @@ def test_run_is_a_noop_when_all_tasks_done() -> None:
 
     assert client.run_tool_loop.call_count == 0
     assert "implementation_reports" not in result.artifacts
+
+
+def test_tool_loop_exhaustion_degrades_to_no_output_and_task_not_checked_off() -> None:
+    # A stuck inner tool loop must not crash the run: the increment is treated
+    # as no output, the task stays unchecked, and the loop can re-select it.
+    client = MagicMock()
+    client.run_tool_loop.side_effect = ToolLoopExceededError("did not converge")
+
+    result = RalphCoderPersona().run(_state(), client)
+
+    assert client.run_tool_loop.call_count == 1
+    assert read_scratchpad().completed_tasks == []
+    assert "implementation_reports" not in result.artifacts
+    assert result.questions == []
 
 
 def test_open_questions_escalate_and_task_is_not_checked_off() -> None:
