@@ -4,13 +4,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from loop_engine.core.coder_gate import RALPH_REGRESSION_PREFIX
+from loop_engine.core.coder_gate import EDIT_FAILURES_HEADER, RALPH_REGRESSION_PREFIX
 from loop_engine.core.state import State
 from loop_engine.personas.agile_sprint_breakdown.manifest import build_task_manifest
 from loop_engine.personas.coder_iac.ralph import (
     RalphCoderPersona,
     _build_repair_prompt,
     _build_task_prompt,
+    _finalize_report,
     select_next_task,
 )
 from loop_engine.tools.agent_state import (
@@ -137,6 +138,52 @@ def test_open_questions_escalate_and_task_is_not_checked_off() -> None:
     assert result.questions[0].origin_detail == "01_foundation::t01"
     # A blocked task is NOT marked done.
     assert read_scratchpad().completed_tasks == []
+
+
+# --- F-RALPH-FALSE-COMPLETION: completion is gated on successful edit application ---
+
+
+_MALFORMED_EDIT_BLOCK = (
+    "Attempt.\n\n### FILEPATH: src/loop_engine/ci.py\n"
+    "no fenced contents and no SEARCH/REPLACE pairs here.\n"
+)
+_WELL_FORMED_EDIT_BLOCK = (
+    "Attempt.\n\n### FILEPATH: src/loop_engine/ci.py\n```python\nCI = True\n```\n"
+)
+
+
+def test_edit_application_failure_is_not_checked_off_and_does_not_escalate() -> None:
+    client = _llm(_MALFORMED_EDIT_BLOCK)
+    result = RalphCoderPersona().run(_state(), client)
+
+    # A mechanical edit-application failure must not be checked off...
+    assert read_scratchpad().completed_tasks == []
+    # ...and must NOT be fabricated into a human-escalation-worthy question (FD3).
+    assert result.questions == []
+
+
+def test_edit_application_failure_retries_the_same_task_until_it_applies() -> None:
+    first = RalphCoderPersona().run(_state(), _llm(_MALFORMED_EDIT_BLOCK))
+    assert read_scratchpad().completed_tasks == []
+
+    second_client = _llm(_WELL_FORMED_EDIT_BLOCK)
+    second = RalphCoderPersona().run(first, second_client)
+
+    # Both increments were invoked for the same task id (retry, not skip-ahead).
+    assert "Task id: 01_foundation::t01" in _prompt_of(second_client)
+    assert read_scratchpad().completed_tasks == ["01_foundation::t01"]
+    assert second.questions == []
+
+
+def test_finalize_report_returns_report_and_failures_tuple() -> None:
+    clean_report = "Done.\n\n### FILEPATH: src/loop_engine/ci.py\n```python\nCI = True\n```\n"
+    report, failures = _finalize_report(clean_report)
+    assert failures == []
+    assert report == clean_report
+
+    malformed_report, failures = _finalize_report(_MALFORMED_EDIT_BLOCK)
+    assert failures != []
+    assert EDIT_FAILURES_HEADER in malformed_report
 
 
 # --- (d) the model sees carried resolutions + the latest status, not findings[-1] ---

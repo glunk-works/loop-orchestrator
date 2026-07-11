@@ -188,13 +188,18 @@ def _run_increment(llm_client, architecture: str, prompt: str) -> str:
     return response.text.strip()
 
 
-def _finalize_report(report: str) -> str:
-    """Append the edit-failure section if any model edit blocks did not apply."""
+def _finalize_report(report: str) -> tuple[str, list[str]]:
+    """Append the edit-failure section if any model edit blocks did not apply.
+
+    Returns the (possibly failure-annotated) report text and the raw failure
+    list, so callers can tell whether this increment's edit actually applied
+    — a task must not be marked done on the strength of report text alone.
+    """
     failures = apply_file_blocks(report)
     if failures:
         failure_lines = "\n".join(f"- {failure}" for failure in failures)
         report += f"\n\n{EDIT_FAILURES_HEADER}\n\n{failure_lines}"
-    return report
+    return report, failures
 
 
 def _load_reports(state: State) -> dict[str, str]:
@@ -269,7 +274,7 @@ class RalphCoderPersona(BasePersona):
             logger.warning("empty Ralph response for task %s", task.id)
             return state
 
-        report = _finalize_report(report)
+        report, edit_failures = _finalize_report(report)
         reports = _load_reports(state)
         _write_report(reports, task.sprint_path, f"### Task {task.id}: {task.title}", report)
 
@@ -277,8 +282,10 @@ class RalphCoderPersona(BasePersona):
         questions = [*state.questions, *new_questions]
 
         # One `.agent/` memory append per increment; mark the task done only if
-        # it did not escalate (an escalating task stays uncompleted so the loop
-        # re-selects it after resolution).
+        # it neither escalated nor failed to apply its edit (either case leaves
+        # the task uncompleted so the loop re-selects it: on resolution for an
+        # escalation, on retry for a mechanical edit-application failure — the
+        # two are kept distinct per FD3, not conflated into one blocked state).
         if new_questions:
             outcome = (
                 f"Blocked task {task.id} ({task.title}): "
@@ -288,6 +295,9 @@ class RalphCoderPersona(BasePersona):
             write_scratchpad(
                 scratch.model_copy(update={"active_task": task.id, "blocked_items": blocked})
             )
+        elif edit_failures:
+            outcome = f"Task {task.id} ({task.title}): edit application failed; will retry."
+            write_scratchpad(scratch.model_copy(update={"active_task": task.id}))
         else:
             outcome = f"Completed task {task.id}: {task.title}."
             write_scratchpad(
@@ -321,7 +331,7 @@ class RalphCoderPersona(BasePersona):
             logger.warning("empty Ralph repair response")
             return state
 
-        report = _finalize_report(report)
+        report, _edit_failures = _finalize_report(report)
         reports = _load_reports(state)
         # Attribute the fix to the last sprint in plan order (where a regression
         # is most likely to have landed); it never marks a task done.
