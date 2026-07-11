@@ -5,12 +5,13 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Phase 6 — sprint `27_phase6_flip_block` — `planned_host_gated`, now with a
-prerequisite Ralph-hardening sprint owed first.**
-V2 was re-attempted on a daemon-bearing host (#6, 2026-07-11). **Staging is finally
-validated**, but V2 still did **not** reach `COMPLETED` — Ralph escalated on a
-self-inflicted over-specified test. New blocking finding **F-RALPH-OVERSPEC-TEST**
-opened. V2 stays OPEN, now gated on that fix. **No deletion may land.**
+**Sprint `30_ralph_test_scope` — `planned` (Opus/Architect, this session) → Sonnet
+to implement.** A prerequisite Ralph-hardening sprint that must land before sprint
+27's V2 can pass. V2 re-attempt #6 (daemon-bearing host, 2026-07-11) **validated the
+staging** but did **not** reach `COMPLETED` — Ralph escalated on a self-inflicted
+over-specified test (finding **F-RALPH-OVERSPEC-TEST**). Sprint 30 is the prompt-only
+fix (locked **FD1**, repo-owner-confirmed — no gate-guard). V2 stays OPEN; **no sprint-27
+deletion may land** until V2 (and V3) pass.
 
 ## Just done (Opus/Architect host session, 2026-07-11)
 - **V2 re-attempt #6 run.** Config `langgraph`+`mcp`+`declarative`+`ralph`+`container`
@@ -29,20 +30,23 @@ opened. V2 stays OPEN, now gated on that fix. **No deletion may land.**
 - **New finding F-RALPH-OVERSPEC-TEST** recorded in `DEFERRED_VERIFICATION.md`:
   Ralph wrote **correct** product code but authored a test asserting a private module
   internal (`_NON_ALNUM_RUN`) via a broken import form, then **escalated** (rigid
-  task-scoping) rather than self-fixing a one-line unspecified test. Repo-owner
-  decision: stop spending budget, open the finding, fix in a new sprint.
+  task-scoping) rather than self-fixing a one-line unspecified test.
+- **Committed** the V2 #6 delta (`01d4bdc`: Dockerfile ruff + finding + cursor).
+- **Planned sprint `30_ralph_test_scope`** (Opus) — prompt-only fix (FD1). Plan file
+  written (uncommitted): T1 = test-scope guardrail in `PROMPT_TEMPLATE` (`shared.py`)
+  + self-fix-before-escalate guardrail in Ralph's per-increment prompts
+  (`_build_task_prompt`/`_build_repair_prompt`, `ralph.py`) + unit tests; T2 = finding
+  reconciliation.
 
 ## Next
-1. **Plan a new Ralph-hardening sprint (Opus/Architect).** Steer Ralph away from
-   tests **beyond the spec's enumerated cases** (esp. private/underscore internals +
-   import mechanics) and toward **self-fixing its own suite before escalating** across
-   self-imposed task boundaries. Candidate surfaces: the Ralph coder **prompt**
-   (test-scope guardrail) and/or the **`RalphCoderGate`/escalation guard** (a red gate
-   on a self-authored out-of-spec test → a fix increment, not a human). Then
-   **Sonnet** implements.
-2. **Fresh V2 re-attempt** (host) after the fix — observe terminal `COMPLETED` within
-   budget. Reuse the staging recipe above (harness `scratch/v2_run_harness.py`, tree
-   `scratchpad/v2_tree`, `LOOP_ENGINE_DEV_IMAGE=loop-engine-dev:latest`, abs env python).
+1. **Sonnet implements sprint 30** (T1 prompt guardrails + tests, T2 finding
+   reconciliation) — each an independently-committable green change with an Opus HITL
+   review gate. `/handoff` → Sonnet session → `/resume`.
+2. **Fresh V2 re-attempt** (host, Opus) after the fix — observe terminal `COMPLETED`
+   within budget. Reuse the run-#6 staging recipe (harness `scratch/v2_run_harness.py`,
+   tree `scratchpad/v2_tree`, `LOOP_ENGINE_DEV_IMAGE=loop-engine-dev:latest`, injected
+   filer, absolute env python). Only this host `COMPLETED` *verifies*
+   F-RALPH-OVERSPEC-TEST and discharges V2's obligation.
 3. **On V2 PASS:** the subtractive sprint-27 flag deletions unblock (Task 4
    `CODER=ralph` gated on V2; Tasks 1–3 on V1; Task 8 on V3).
 
@@ -64,10 +68,10 @@ V3 (not started).
   from F-RALPH-OVERSPEC-TEST).
 
 ## Working tree
-- HEAD `60ecd54`. **Uncommitted committable delta:** `Dockerfile` (ruff in dev stage)
-  + `sprints/DEFERRED_VERIFICATION.md` (F-RALPH-OVERSPEC-TEST + V2 #6 note) + this
-  cursor. Untracked `scratch/` (V2 specs/logs/harness/pubkey) and `scratchpad/v2_tree`
-  remain out of all commits. `.ai/state.json` is git-ignored (local mirror only).
+- HEAD `01d4bdc` (V2 #6 delta: Dockerfile ruff + finding + cursor). **Uncommitted
+  committable delta:** `sprints/30_ralph_test_scope/sprint_plan.md` (new) + this cursor.
+  Untracked `scratch/` (V2 specs/logs/harness/pubkey) and `scratchpad/v2_tree` remain
+  out of all commits. `.ai/state.json` is git-ignored (local mirror only).
 - Aside (not migration work): GitHub shows commits **Unverified** — they ARE signed
   locally (ed25519 `F1AAE…6AB8005D`, jgroves27@gmail.com); the public key just needs
   uploading to the GitHub account owning that verified email. Pubkey exported to
