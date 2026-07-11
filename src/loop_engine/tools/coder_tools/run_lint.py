@@ -16,23 +16,6 @@ from loop_engine.tools.coder_tools import resolve_tool_path, truncate_result
 
 LINT_TIMEOUT_SECONDS = 60
 
-RUN_LINT_TOOL_SCHEMA: dict = {
-    "name": "run_lint",
-    "description": (
-        "Run `ruff check` and `ruff format --check` against a file or "
-        "directory in the run's artifact tree (e.g. src/). Use it to verify "
-        "your implementation before claiming any 'ruff clean' acceptance "
-        "criterion is met."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "path": {"type": "string", "description": "Relative file or directory, e.g. src"}
-        },
-        "required": ["path"],
-    },
-}
-
 
 def run_ruff(path: str) -> tuple[int, str]:
     """Execute `ruff check` + `ruff format --check` on a validated path.

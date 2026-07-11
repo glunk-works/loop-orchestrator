@@ -256,10 +256,10 @@ def validate_manifest(manifest_raw: str, sprint_plans_raw: str) -> list[str]:
 class ManifestArtifactGate:
     """Sprint-Breakdown gate that also validates the `task_manifest` artifact.
 
-    Composes the classic `sprint_plans` content gate (preserving its Open
-    Questions escalation), then applies `validate_manifest`. Wired into the
-    Sprint-Breakdown stage only under `LOOP_ENGINE_CODER=ralph`; the classic
-    path keeps the plain `ArtifactGate`.
+    Composes the plain `sprint_plans` content gate (preserving its Open
+    Questions escalation), then applies `validate_manifest`. Since Phase 6 this
+    is the Sprint-Breakdown stage's only gate — the Ralph Coder is the only
+    Coder, and it needs the manifest.
     """
 
     sprint_plans_key: str = "sprint_plans"

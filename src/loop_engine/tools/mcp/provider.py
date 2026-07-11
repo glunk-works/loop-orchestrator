@@ -36,9 +36,6 @@ from loop_engine.tools.mcp.config import (
 
 logger = logging.getLogger(__name__)
 
-_TOOLS_ENV_VAR = "LOOP_ENGINE_TOOLS"
-_MCP_VALUE = "mcp"
-
 _CODER_TOOLS_SERVER_MODULE = "loop_engine.mcp_servers.coder_tools_server"
 
 # Phase 3b sandbox launch (env-overridable): the container runtime, the dev-stage
@@ -57,13 +54,7 @@ _SHUTDOWN_TIMEOUT_S = 10.0
 
 class MCPToolError(Exception):
     """An MCP tool returned an error result. Raised from `execute` so the tool
-    loop surfaces it to the model as an `is_error` result — exactly as it does
-    for an in-process tool that raises."""
-
-
-def use_mcp_tools() -> bool:
-    """Whether MCP tool dispatch is selected via the environment flag."""
-    return os.environ.get(_TOOLS_ENV_VAR, "").strip().lower() == _MCP_VALUE
+    loop surfaces it to the model as an `is_error` result."""
 
 
 def _container_runtime() -> str:

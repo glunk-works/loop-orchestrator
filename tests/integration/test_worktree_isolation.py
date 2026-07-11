@@ -1,12 +1,12 @@
-"""Phase 3a: the real engines run identically with worktree isolation on, and
-place artifacts vs. snapshots on the two sides of the worktree boundary (D2)."""
+"""Phase 3a: the engine runs identically with worktree isolation on, and places
+artifacts vs. snapshots on the two sides of the worktree boundary (D2)."""
 
 import subprocess
 from types import SimpleNamespace
 
 import pytest
 
-from loop_engine.core.engine import Loop, Stage, run_loop
+from loop_engine.core.engine import Loop, Stage
 from loop_engine.core.gates import ArtifactGate
 from loop_engine.core.graph_engine import run_graph_loop
 from loop_engine.core.state import RunStatus, State
@@ -60,7 +60,7 @@ def repo(tmp_path, monkeypatch):
     return tmp_path
 
 
-ENGINES = [run_loop, run_graph_loop]
+ENGINES = [run_graph_loop]
 
 
 @pytest.mark.parametrize("engine", ENGINES)

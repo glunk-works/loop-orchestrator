@@ -1,5 +1,4 @@
 import json
-from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,11 +11,10 @@ from loop_engine.core.engine import (
     MissingArtifactError,
     Stage,
     StageGateFailedError,
-    run_loop,
 )
 from loop_engine.core.gates import ArtifactGate
+from loop_engine.core.graph_engine import run_graph_loop
 from loop_engine.core.state import IssueRef, Question, RunStatus, StageRecord, State
-from loop_engine.loops.default.loop import build_default_loop
 from loop_engine.personas.base import BasePersona
 from loop_engine.tools.llm.client import ToolLoopExceededError
 
@@ -76,15 +74,17 @@ def _simple_loop(keys: list[str]) -> Loop:
     return Loop(stages=[_stage(AppendArtifactPersona(k), k) for k in keys])
 
 
-def test_run_loop_executes_stages_in_order_and_merges_state() -> None:
-    final_state = run_loop(_simple_loop(["a", "b", "c"]), _initial_state(), _stub_llm_client())
+def test_engine_executes_stages_in_order_and_merges_state() -> None:
+    final_state = run_graph_loop(
+        _simple_loop(["a", "b", "c"]), _initial_state(), _stub_llm_client()
+    )
 
     assert final_state.artifacts == {"a": "done", "b": "done", "c": "done"}
     assert final_state.status is RunStatus.COMPLETED
 
 
-def test_run_loop_writes_snapshot_after_each_stage_and_a_terminal_snapshot() -> None:
-    run_loop(_simple_loop(["a", "b"]), _initial_state("run-2"), _stub_llm_client())
+def test_engine_writes_snapshot_after_each_stage_and_a_terminal_snapshot() -> None:
+    run_graph_loop(_simple_loop(["a", "b"]), _initial_state("run-2"), _stub_llm_client())
 
     run_dir = Path("state") / "run-2"
     names = sorted(p.name for p in run_dir.glob("*.json"))
@@ -97,7 +97,7 @@ def test_run_loop_writes_snapshot_after_each_stage_and_a_terminal_snapshot() -> 
     assert final.status is RunStatus.COMPLETED
 
 
-def test_run_loop_raises_invalid_state_transition_error_naming_persona() -> None:
+def test_engine_raises_invalid_state_transition_error_naming_persona() -> None:
     class CorruptingPersona(BasePersona):
         def run(self, state: State, llm_client, findings=None) -> State:
             record = StageRecord(
@@ -112,22 +112,22 @@ def test_run_loop_raises_invalid_state_transition_error_naming_persona() -> None
 
     loop = Loop(stages=[Stage(persona=CorruptingPersona(), gate=ArtifactGate("x"))])
     with pytest.raises(InvalidStateTransitionError, match="CorruptingPersona"):
-        run_loop(loop, _initial_state(), _stub_llm_client())
+        run_graph_loop(loop, _initial_state(), _stub_llm_client())
 
 
-def test_run_loop_missing_consumed_artifact_fails_with_snapshot() -> None:
+def test_engine_missing_consumed_artifact_fails_with_snapshot() -> None:
     class NeedsInputPersona(AppendArtifactPersona):
         consumes = ("nonexistent",)
 
     loop = Loop(stages=[_stage(NeedsInputPersona("out"), "out")])
     with pytest.raises(MissingArtifactError, match="nonexistent"):
-        run_loop(loop, _initial_state("run-3"), _stub_llm_client())
+        run_graph_loop(loop, _initial_state("run-3"), _stub_llm_client())
 
     snapshot = Path("state") / "run-3" / "00_failed_stage.json"
     assert snapshot.exists()
 
 
-def test_run_loop_budget_exhaustion_returns_budget_exceeded_with_snapshot() -> None:
+def test_engine_budget_exhaustion_returns_budget_exceeded_with_snapshot() -> None:
     class NeverCalledPersona(BasePersona):
         def run(self, state: State, llm_client, findings=None) -> State:
             raise AssertionError("this persona must never be invoked")
@@ -135,13 +135,13 @@ def test_run_loop_budget_exhaustion_returns_budget_exceeded_with_snapshot() -> N
     loop = Loop(stages=[Stage(persona=NeverCalledPersona(), gate=ArtifactGate("x"))])
     client = _stub_llm_client(cost_used=5.0, budget_usd=5.0)
 
-    final = run_loop(loop, _initial_state("run-4"), client)
+    final = run_graph_loop(loop, _initial_state("run-4"), client)
 
     assert final.status is RunStatus.BUDGET_EXCEEDED
     assert (Path("state") / "run-4" / "00_budget_exceeded.json").exists()
 
 
-def test_run_loop_tool_loop_exhaustion_fails_stage_cleanly_with_snapshot() -> None:
+def test_engine_tool_loop_exhaustion_fails_stage_cleanly_with_snapshot() -> None:
     # A persona whose inner tool loop exhausts its iteration cap must end the
     # run with a persisted FAILED_STAGE snapshot, not crash it (mirrors the
     # bounded-resource handling of BudgetExceededError).
@@ -151,13 +151,13 @@ def test_run_loop_tool_loop_exhaustion_fails_stage_cleanly_with_snapshot() -> No
 
     loop = Loop(stages=[Stage(persona=StuckPersona(), gate=ArtifactGate("x"))])
 
-    final = run_loop(loop, _initial_state("run-stuck"), _stub_llm_client())
+    final = run_graph_loop(loop, _initial_state("run-stuck"), _stub_llm_client())
 
     assert final.status is RunStatus.FAILED_STAGE
     assert (Path("state") / "run-stuck" / "00_failed_stage.json").exists()
 
 
-def test_run_loop_records_real_cost_and_cache_deltas_per_stage() -> None:
+def test_engine_records_real_cost_and_cache_deltas_per_stage() -> None:
     class SpendingPersona(BasePersona):
         def run(self, state: State, llm_client, findings=None) -> State:
             llm_client.tokens_used += 100
@@ -167,7 +167,7 @@ def test_run_loop_records_real_cost_and_cache_deltas_per_stage() -> None:
             return state.model_copy(update={"artifacts": {**state.artifacts, "doc": "done"}})
 
     loop = Loop(stages=[Stage(persona=SpendingPersona(), gate=ArtifactGate("doc"))])
-    final = run_loop(loop, _initial_state("run-cost"), _stub_llm_client())
+    final = run_graph_loop(loop, _initial_state("run-cost"), _stub_llm_client())
 
     record = final.stage_history[-1]
     assert record.tokens_used == 100
@@ -176,7 +176,7 @@ def test_run_loop_records_real_cost_and_cache_deltas_per_stage() -> None:
     assert record.cache_read_input_tokens == 60
 
 
-def test_run_loop_revise_then_accept_passes_gate_findings_to_persona() -> None:
+def test_engine_revise_then_accept_passes_gate_findings_to_persona() -> None:
     received_findings: list[list[str] | None] = []
 
     class EventuallyValidPersona(BasePersona):
@@ -190,14 +190,14 @@ def test_run_loop_revise_then_accept_passes_gate_findings_to_persona() -> None:
             return state.model_copy(update={"artifacts": {**state.artifacts, "doc": value}})
 
     loop = Loop(stages=[Stage(persona=EventuallyValidPersona(), gate=ArtifactGate("doc"))])
-    final = run_loop(loop, _initial_state(), _stub_llm_client())
+    final = run_graph_loop(loop, _initial_state(), _stub_llm_client())
 
     assert final.status is RunStatus.COMPLETED
     assert received_findings[0] is None
     assert any("missing or empty" in f for f in received_findings[1])
 
 
-def test_run_loop_no_progress_revision_escalates_instead_of_rerolling(
+def test_engine_no_progress_revision_escalates_instead_of_rerolling(
     _stub_issue_filer,
 ) -> None:
     class AlwaysEmptyPersona(BasePersona):
@@ -211,7 +211,7 @@ def test_run_loop_no_progress_revision_escalates_instead_of_rerolling(
     persona = AlwaysEmptyPersona()
     loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"), max_revisions=3)])
 
-    final = run_loop(loop, _initial_state("run-5"), _stub_llm_client())
+    final = run_graph_loop(loop, _initial_state("run-5"), _stub_llm_client())
 
     # Two attempts produce identical findings; the third re-roll is not spent.
     assert persona.calls == 2
@@ -220,7 +220,7 @@ def test_run_loop_no_progress_revision_escalates_instead_of_rerolling(
     assert len(_stub_issue_filer) == 1
 
 
-def test_run_loop_gate_failure_with_changing_findings_raises_after_cap() -> None:
+def test_engine_gate_failure_with_changing_findings_raises_after_cap() -> None:
     class AlternatingBadPersona(BasePersona):
         def __init__(self) -> None:
             self.calls = 0
@@ -241,12 +241,12 @@ def test_run_loop_gate_failure_with_changing_findings_raises_after_cap() -> None
         ]
     )
     with pytest.raises(StageGateFailedError, match="AlternatingBadPersona"):
-        run_loop(loop, _initial_state("run-6"), _stub_llm_client())
+        run_graph_loop(loop, _initial_state("run-6"), _stub_llm_client())
 
     assert (Path("state") / "run-6" / "00_failed_stage.json").exists()
 
 
-def test_run_loop_gate_failure_with_changing_findings_escalates_when_flag_set(
+def test_engine_gate_failure_with_changing_findings_escalates_when_flag_set(
     _stub_issue_filer,
 ) -> None:
     class AlternatingBadPersona(BasePersona):
@@ -270,52 +270,10 @@ def test_run_loop_gate_failure_with_changing_findings_escalates_when_flag_set(
         ]
     )
 
-    final = run_loop(loop, _initial_state("run-6"), _stub_llm_client())
+    final = run_graph_loop(loop, _initial_state("run-6"), _stub_llm_client())
 
     # No resolver for this stage, so the escalation pauses for a human issue
     # instead of raising StageGateFailedError.
-    assert final.status is RunStatus.AWAITING_ISSUE
-    assert final.pending_issue is not None
-    assert len(_stub_issue_filer) == 1
-
-
-def test_classic_default_loop_pm_stage_escalates_on_exhaustion(
-    _stub_issue_filer, monkeypatch
-) -> None:
-    # The classic PM stage is NOT inert to the exhaustion flags: its real
-    # ArtifactGate("project_spec", ...) returns REVISE on an invalid spec, so a
-    # classic PM that cannot converge escalates to a human issue rather than
-    # hard-failing. Exercises the exact gate + max_revisions=4 +
-    # escalate_on_exhaustion=True that build_default_loop() wires, swapping only
-    # the LLM-driven persona for a deterministic stub.
-    monkeypatch.delenv("LOOP_ENGINE_PERSONAS", raising=False)
-    pm_stage = build_default_loop().stages[0]
-    assert isinstance(pm_stage.gate, ArtifactGate)  # classic path, not CriticGate
-    assert pm_stage.max_revisions == 4
-    assert pm_stage.escalate_on_exhaustion is True
-    assert pm_stage.resolvers == []  # PM's only resolver is the human
-
-    class ChangingBadPMPersona(BasePersona):
-        def __init__(self) -> None:
-            self.calls = 0
-
-        def run(self, state: State, llm_client, findings=None) -> State:
-            self.calls += 1
-            # Alternate invalid shapes so consecutive gate findings differ and
-            # the run reaches the max_revisions exhaustion path (not the earlier
-            # identical-findings escalation).
-            value = "" if self.calls % 2 else "not json"
-            return state.model_copy(
-                update={"artifacts": {**state.artifacts, "project_spec": value}}
-            )
-
-    persona = ChangingBadPMPersona()
-    loop = Loop(stages=[replace(pm_stage, persona=persona)])
-
-    final = run_loop(loop, _initial_state("run-classic-pm"), _stub_llm_client())
-
-    # max_revisions=4 → 5 attempts, then escalate; no resolver → pause for issue.
-    assert persona.calls == 5
     assert final.status is RunStatus.AWAITING_ISSUE
     assert final.pending_issue is not None
     assert len(_stub_issue_filer) == 1
@@ -354,12 +312,12 @@ class AnsweringResolver(BasePersona):
         ]
 
 
-def test_run_loop_escalation_resolved_by_ladder_reenters_with_findings() -> None:
+def test_engine_escalation_resolved_by_ladder_reenters_with_findings() -> None:
     persona = QuestionAskingPersona()
     resolver = AnsweringResolver(impact="task")
     loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"), resolvers=[resolver])])
 
-    final = run_loop(loop, _initial_state("run-7"), _stub_llm_client())
+    final = run_graph_loop(loop, _initial_state("run-7"), _stub_llm_client())
 
     assert final.status is RunStatus.COMPLETED
     assert persona.calls == 2
@@ -367,11 +325,11 @@ def test_run_loop_escalation_resolved_by_ladder_reenters_with_findings() -> None
     assert final.questions[0].resolution == "eu-west-1"
 
 
-def test_run_loop_unresolved_questions_file_issue_and_pause(_stub_issue_filer) -> None:
+def test_engine_unresolved_questions_file_issue_and_pause(_stub_issue_filer) -> None:
     persona = QuestionAskingPersona()
     loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"))])
 
-    final = run_loop(loop, _initial_state("run-8"), _stub_llm_client())
+    final = run_graph_loop(loop, _initial_state("run-8"), _stub_llm_client())
 
     assert final.status is RunStatus.AWAITING_ISSUE
     assert final.pending_issue == IssueRef(
@@ -395,14 +353,14 @@ class _FakeIssueProvider:
         ).model_dump_json()
 
 
-def test_run_loop_injected_mcp_issue_filer_routes_through_provider() -> None:
+def test_engine_injected_mcp_issue_filer_routes_through_provider() -> None:
     from loop_engine.tools.issue_io import mcp_issue_filer
 
     persona = QuestionAskingPersona()
     loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"))])
     provider = _FakeIssueProvider()
 
-    final = run_loop(
+    final = run_graph_loop(
         loop, _initial_state("run-8b"), _stub_llm_client(), issue_filer=mcp_issue_filer(provider)
     )
 
@@ -413,7 +371,7 @@ def test_run_loop_injected_mcp_issue_filer_routes_through_provider() -> None:
     assert provider.calls[0][0] == "create_issue"
 
 
-def test_run_loop_plan_impact_reenters_earlier_stage() -> None:
+def test_engine_plan_impact_reenters_earlier_stage() -> None:
     executed: list[str] = []
 
     class RecordingPersona(AppendArtifactPersona):
@@ -432,7 +390,7 @@ def test_run_loop_plan_impact_reenters_earlier_stage() -> None:
         impact_reentry={"plan": 0},
     )
 
-    final = run_loop(loop, _initial_state("run-9"), _stub_llm_client())
+    final = run_graph_loop(loop, _initial_state("run-9"), _stub_llm_client())
 
     assert final.status is RunStatus.COMPLETED
     # plan runs, asker escalates, plan re-runs with findings, asker re-runs.
@@ -441,7 +399,7 @@ def test_run_loop_plan_impact_reenters_earlier_stage() -> None:
     assert final.counters.get("replans") == 1
 
 
-def test_run_loop_escalation_cap_files_issue_instead_of_cycling(_stub_issue_filer) -> None:
+def test_engine_escalation_cap_files_issue_instead_of_cycling(_stub_issue_filer) -> None:
     class AlwaysAskingPersona(BasePersona):
         def __init__(self) -> None:
             self.calls = 0
@@ -455,19 +413,19 @@ def test_run_loop_escalation_cap_files_issue_instead_of_cycling(_stub_issue_file
     resolver = AnsweringResolver(impact="task")
     loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"), resolvers=[resolver])])
 
-    final = run_loop(loop, _initial_state("run-10"), _stub_llm_client())
+    final = run_graph_loop(loop, _initial_state("run-10"), _stub_llm_client())
 
     assert final.status is RunStatus.AWAITING_ISSUE
     assert persona.calls == MAX_ESCALATIONS_PER_STAGE + 1
     assert len(_stub_issue_filer) == 1
 
 
-def test_run_loop_terminal_snapshot_exists_for_every_status(tmp_path) -> None:
+def test_engine_terminal_snapshot_exists_for_every_status(tmp_path) -> None:
     # COMPLETED covered above; verify the awaiting-issue terminal snapshot
     # round-trips with pending_issue and questions intact.
     persona = QuestionAskingPersona()
     loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"))])
-    run_loop(loop, _initial_state("run-11"), _stub_llm_client())
+    run_graph_loop(loop, _initial_state("run-11"), _stub_llm_client())
 
     snapshot_path = Path("state") / "run-11" / "00_awaiting_issue.json"
     snapshot = State.model_validate(json.loads(snapshot_path.read_text()))

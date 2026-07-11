@@ -60,36 +60,18 @@ def test_cli_run_help_lists_expected_options() -> None:
         assert option in output
 
 
-def test_cli_run_dispatches_to_langgraph_engine_when_flagged(tmp_path, monkeypatch) -> None:
-    # The fresh-run path delegates to `runner.run_new`, so the engine
-    # indirection patched here lives on `loop_engine.runner`, not `cli`.
+def test_cli_run_always_drives_the_langgraph_engine(tmp_path, monkeypatch) -> None:
+    # The fresh-run path delegates to `runner.run_new`, so the engine reference
+    # patched here lives on `loop_engine.runner`, not `cli`. Phase 6: the engine
+    # is unconditional — no flag, no classic driver to fall back to.
     mock_graph = MagicMock(return_value=_completed_state())
-    mock_classic = MagicMock(return_value=_completed_state())
     monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_graph)
-    monkeypatch.setattr("loop_engine.runner.run_loop", mock_classic)
     monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
-    monkeypatch.setenv("LOOP_ENGINE_ENGINE", "langgraph")
 
     result = runner.invoke(app, ["run"])
 
     assert result.exit_code == 0
     assert mock_graph.called
-    assert not mock_classic.called
-
-
-def test_cli_run_defaults_to_classic_engine(tmp_path, monkeypatch) -> None:
-    mock_graph = MagicMock(return_value=_completed_state())
-    mock_classic = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_graph)
-    monkeypatch.setattr("loop_engine.runner.run_loop", mock_classic)
-    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
-    monkeypatch.delenv("LOOP_ENGINE_ENGINE", raising=False)
-
-    result = runner.invoke(app, ["run"])
-
-    assert result.exit_code == 0
-    assert mock_classic.called
-    assert not mock_graph.called
 
 
 def test_cli_resume_from_skips_already_completed_stages(tmp_path, monkeypatch) -> None:
@@ -98,7 +80,7 @@ def test_cli_resume_from_skips_already_completed_stages(tmp_path, monkeypatch) -
         run_id="run-1",
         stage_history=[
             {
-                "stage_name": "PMPersona",
+                "stage_name": "PMGenerator",
                 "tokens_used": 10,
                 "cost_usd": 0.0,
                 "completed_at": "2026-07-02T00:00:00Z",
@@ -109,14 +91,14 @@ def test_cli_resume_from_skips_already_completed_stages(tmp_path, monkeypatch) -
     state_path = tmp_path / "state.json"
     state_path.write_text(fixture_state.model_dump_json())
 
-    mock_run_loop = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.cli.run_loop", mock_run_loop)
+    mock_run_graph_loop = MagicMock(return_value=_completed_state())
+    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_run_graph_loop)
     monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
 
     result = runner.invoke(app, ["run", "--resume-from", str(state_path)])
 
     assert result.exit_code == 0
-    assert mock_run_loop.call_args.kwargs["start_index"] == 1
+    assert mock_run_graph_loop.call_args.kwargs["start_index"] == 1
 
 
 def test_cli_resume_from_migrates_v1_snapshot(tmp_path, monkeypatch) -> None:
@@ -125,7 +107,7 @@ def test_cli_resume_from_migrates_v1_snapshot(tmp_path, monkeypatch) -> None:
         "run_id": "run-legacy",
         "stage_history": [
             {
-                "stage_name": "PMPersona",
+                "stage_name": "PMGenerator",
                 "tokens_used": 10,
                 "cost_usd": 0.0,
                 "completed_at": "2026-07-02T00:00:00Z",
@@ -136,14 +118,14 @@ def test_cli_resume_from_migrates_v1_snapshot(tmp_path, monkeypatch) -> None:
     state_path = tmp_path / "state.json"
     state_path.write_text(json.dumps(v1_payload))
 
-    mock_run_loop = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.cli.run_loop", mock_run_loop)
+    mock_run_graph_loop = MagicMock(return_value=_completed_state())
+    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_run_graph_loop)
     monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
 
     result = runner.invoke(app, ["run", "--resume-from", str(state_path)])
 
     assert result.exit_code == 0
-    resumed_state = mock_run_loop.call_args.args[1]
+    resumed_state = mock_run_graph_loop.call_args.args[1]
     assert resumed_state.schema_version == CURRENT_SCHEMA_VERSION
 
 
@@ -179,10 +161,10 @@ def test_cli_resume_from_issue_folds_answers_and_reenters(tmp_path, monkeypatch)
         status=RunStatus.AWAITING_ISSUE,
         pending_issue=IssueRef(number=17, url="https://github.com/acme/repo/issues/17"),
         counters={"paused_stage_index": 1},
-        questions=[Question(id="q1", origin_stage="ArchitecturePersona", text="Which region?")],
+        questions=[Question(id="q1", origin_stage="ArchitectureGenerator", text="Which region?")],
         stage_history=[
             {
-                "stage_name": "PMPersona",
+                "stage_name": "PMGenerator",
                 "tokens_used": 10,
                 "cost_usd": 0.0,
                 "completed_at": "2026-07-02T00:00:00Z",
@@ -201,8 +183,8 @@ def test_cli_resume_from_issue_folds_answers_and_reenters(tmp_path, monkeypatch)
             "comments": [{"body": "```answers\n1: eu-west-1\n```"}],
         },
     )
-    mock_run_loop = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.cli.run_loop", mock_run_loop)
+    mock_run_graph_loop = MagicMock(return_value=_completed_state())
+    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_run_graph_loop)
     monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
 
     fold_result_holder = {}
@@ -220,8 +202,8 @@ def test_cli_resume_from_issue_folds_answers_and_reenters(tmp_path, monkeypatch)
     assert fold_result_holder["questions"][0].resolution == "eu-west-1"
     assert fold_result_holder["questions"][0].resolved_by == "human:17"
     # Resumes at the paused stage (no impact classified → default in fold).
-    assert mock_run_loop.call_args.kwargs["start_index"] == 1
-    assert any("eu-west-1" in f for f in mock_run_loop.call_args.kwargs["initial_findings"])
+    assert mock_run_graph_loop.call_args.kwargs["start_index"] == 1
+    assert any("eu-west-1" in f for f in mock_run_graph_loop.call_args.kwargs["initial_findings"])
 
 
 def test_cli_resume_from_issue_via_injected_mcp_reader(tmp_path, monkeypatch) -> None:
@@ -238,10 +220,10 @@ def test_cli_resume_from_issue_via_injected_mcp_reader(tmp_path, monkeypatch) ->
         status=RunStatus.AWAITING_ISSUE,
         pending_issue=IssueRef(number=17, url="https://github.com/acme/repo/issues/17"),
         counters={"paused_stage_index": 1},
-        questions=[Question(id="q1", origin_stage="ArchitecturePersona", text="Which region?")],
+        questions=[Question(id="q1", origin_stage="ArchitectureGenerator", text="Which region?")],
         stage_history=[
             {
-                "stage_name": "PMPersona",
+                "stage_name": "PMGenerator",
                 "tokens_used": 10,
                 "cost_usd": 0.0,
                 "completed_at": "2026-07-02T00:00:00Z",
@@ -268,8 +250,8 @@ def test_cli_resume_from_issue_via_injected_mcp_reader(tmp_path, monkeypatch) ->
         "loop_engine.cli._issue_reader",
         lambda n: mcp_read_issue(_FakeProvider(), n),
     )
-    mock_run_loop = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.cli.run_loop", mock_run_loop)
+    mock_run_graph_loop = MagicMock(return_value=_completed_state())
+    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_run_graph_loop)
     monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
 
     fold_result_holder = {}
@@ -287,19 +269,18 @@ def test_cli_resume_from_issue_via_injected_mcp_reader(tmp_path, monkeypatch) ->
     assert fold_result_holder["questions"][0].resolved_by == "human:17"
 
 
-def test_cli_resume_from_issue_works_under_declarative_personas(tmp_path, monkeypatch) -> None:
-    # Regression for review finding #1: under `declarative`, stage 0 is
-    # PMGenerator, which must expose fold_answers or every paused declarative
-    # run is unresumable (cli.py's resume guard raises typer.BadParameter).
+def test_cli_resume_from_issue_folds_answers_via_the_pm_generator(tmp_path, monkeypatch) -> None:
+    # Regression for review finding #1: stage 0 is PMGenerator, which must expose
+    # fold_answers or every paused run is unresumable (cli.py's resume guard
+    # raises typer.BadParameter).
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("LOOP_ENGINE_PERSONAS", "declarative")
     paused = State(
         schema_version=2,
         run_id="run-1",
         status=RunStatus.AWAITING_ISSUE,
         pending_issue=IssueRef(number=17, url="https://github.com/acme/repo/issues/17"),
         counters={"paused_stage_index": 1},
-        questions=[Question(id="q1", origin_stage="ArchitecturePersona", text="Which region?")],
+        questions=[Question(id="q1", origin_stage="ArchitectureGenerator", text="Which region?")],
         stage_history=[
             {
                 "stage_name": "PMGenerator",
@@ -321,7 +302,9 @@ def test_cli_resume_from_issue_works_under_declarative_personas(tmp_path, monkey
             "comments": [{"body": "```answers\n1: eu-west-1\n```"}],
         },
     )
-    monkeypatch.setattr("loop_engine.cli.run_loop", MagicMock(return_value=_completed_state()))
+    monkeypatch.setattr(
+        "loop_engine.cli.run_graph_loop", MagicMock(return_value=_completed_state())
+    )
     mock_llm_client = MagicMock()
     mock_llm_client.call.return_value = SimpleNamespace(text='{"spec_updates": {}, "impacts": {}}')
     monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock(return_value=mock_llm_client))
@@ -338,7 +321,7 @@ def test_cli_cost_summary_counts_each_stage_once_despite_terminal_snapshot(
     run_dir = tmp_path / "state" / "run-1"
     run_dir.mkdir(parents=True)
 
-    stage_names = ["PMPersona", "ArchitecturePersona"]
+    stage_names = ["PMGenerator", "ArchitectureGenerator"]
     tokens = [20, 80]
     history = []
     for index, (name, t) in enumerate(zip(stage_names, tokens, strict=True)):
@@ -400,11 +383,11 @@ def test_cli_run_under_worktree_isolation_runs_engine_in_worktree(tmp_path, monk
 
     seen = {}
 
-    def fake_run_loop(loop, state, client, **kwargs):
+    def fake_run_graph_loop(loop, state, client, **kwargs):
         seen["cwd"] = Path.cwd()
         return _completed_state()
 
-    monkeypatch.setattr("loop_engine.runner.run_loop", fake_run_loop)
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", fake_run_graph_loop)
     monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
 
     origin = Path.cwd()

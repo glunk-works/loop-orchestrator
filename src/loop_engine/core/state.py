@@ -83,7 +83,7 @@ class State(BaseModel):
     status: RunStatus = RunStatus.RUNNING
     questions: list[Question] = Field(default_factory=list)
     pending_issue: IssueRef | None = None
-    # Escalation/re-plan counters keyed by edge name (e.g. "escalations:CoderIacPersona",
+    # Escalation/re-plan counters keyed by edge name (e.g. "escalations:RalphCoderPersona",
     # "replans"); the engine enforces hard caps against these so feedback edges
     # cannot cycle unboundedly.
     counters: dict[str, int] = Field(default_factory=dict)

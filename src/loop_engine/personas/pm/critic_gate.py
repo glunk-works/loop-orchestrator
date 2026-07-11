@@ -1,6 +1,6 @@
 """Structural gate carrying the PM critic *checks* (Phase 4 · part 2).
 
-The classic `PMPersona.run` owned a `MAX_REVISION_CYCLES` followup loop with
+The deleted `PMPersona.run` owned a `MAX_REVISION_CYCLES` followup loop with
 hand-rolled no-progress detection. That is misplaced control flow: *personas
 generate, gates accept, the graph routes*. This gate re-expresses `critic.review`
 as a stage gate so the engine's existing revise loop drives re-extraction and
@@ -9,7 +9,7 @@ its identical-findings→escalate is the no-progress detector.
 Kept out of `core/` (the import-boundary test forbids `core` importing any
 persona module but `base`) — this is the "core-safe home" the plan calls for,
 the same pattern as `agile_sprint_breakdown/manifest.ManifestArtifactGate`. It
-imports the pure `critic.review` checks, never the `PMPersona` class.
+imports the pure `critic.review` checks.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ class CriticGate:
     """Content gate for `project_spec`, then the PM critic checks.
 
     Composes the plain `ArtifactGate` (non-empty JSON object, plus its Open
-    Questions escalation) exactly as `CoderGate`/`ManifestArtifactGate` do, then
+    Questions escalation) exactly as `ManifestArtifactGate` does, then
     runs `critic.review` on the parsed spec: any findings ⇒ REVISE naming each
     blank/vague field; none ⇒ ACCEPT.
     """

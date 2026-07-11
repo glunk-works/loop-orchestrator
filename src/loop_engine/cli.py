@@ -10,9 +10,8 @@ from loop_engine.core.engine import (
     PAUSED_STAGE_COUNTER,
     Loop,
     reentry_index,
-    run_loop,
 )
-from loop_engine.core.graph_engine import run_graph_loop, use_langgraph_engine
+from loop_engine.core.graph_engine import run_graph_loop
 from loop_engine.core.state import (
     RunStatus,
     State,
@@ -30,25 +29,17 @@ NAMED_LOOPS: dict[str, Loop] = {"default": DEFAULT_LOOP}
 
 
 def _resolve_loop(loop_name: str) -> Loop:
-    """The named loop, rebuilt for "default" so a runtime `LOOP_ENGINE_CODER`
-    flag is honored (like `_select_engine`); other names come from NAMED_LOOPS."""
+    """The named loop, rebuilt for "default" so the loop is constructed fresh
+    per run; other names come from NAMED_LOOPS."""
     if loop_name == "default":
         return build_default_loop()
     return NAMED_LOOPS[loop_name]
 
 
-def _select_engine():
-    """The engine entrypoint for this run: LangGraph when the flag is set,
-    else the classic `run_loop`. Resolved through the module global so tests
-    that patch `cli.run_loop` still take effect on the default path."""
-    return run_graph_loop if use_langgraph_engine() else run_loop
-
-
 # The `resume --from-issue` read seam: `None` (the default) keeps the classic
 # `issue_io.read_issue` path — no new feature flag, no default flip. Tests
 # inject an MCP-backed reader (e.g. `mcp_read_issue` bound to a fake provider)
-# by monkeypatching this module global, mirroring `_select_engine`'s
-# `cli.run_loop` pattern.
+# by monkeypatching this module global.
 _issue_reader: Callable[[int], dict] | None = None
 
 
@@ -124,7 +115,7 @@ def run(
 
         llm_client = LLMClient(budget_usd=budget)
         with worktree_run(initial_state.run_id, reuse=True):
-            final_state = _select_engine()(
+            final_state = run_graph_loop(
                 selected_loop, initial_state, llm_client, start_index=start_index
             )
     else:
@@ -203,7 +194,7 @@ def resume(
             if q.resolution is not None
         ]
 
-        final_state = _select_engine()(
+        final_state = run_graph_loop(
             selected_loop,
             state,
             llm_client,

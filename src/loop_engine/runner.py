@@ -12,8 +12,8 @@ import os
 import uuid
 from pathlib import Path
 
-from loop_engine.core.engine import Loop, run_loop
-from loop_engine.core.graph_engine import run_graph_loop, use_langgraph_engine
+from loop_engine.core.engine import Loop
+from loop_engine.core.graph_engine import run_graph_loop
 from loop_engine.core.state import CURRENT_SCHEMA_VERSION, State
 from loop_engine.loops.default.loop import DEFAULT_LOOP, build_default_loop
 from loop_engine.tools.llm.client import LLMClient
@@ -25,18 +25,11 @@ DEFAULT_BUDGET_USD = 5.00
 
 
 def _resolve_loop(loop_name: str) -> Loop:
-    """The named loop, rebuilt for "default" so a runtime `LOOP_ENGINE_CODER`
-    flag is honored (like `_select_engine`); other names come from NAMED_LOOPS."""
+    """The named loop, rebuilt for "default" so the loop is constructed fresh
+    per run; other names come from NAMED_LOOPS."""
     if loop_name == "default":
         return build_default_loop()
     return NAMED_LOOPS[loop_name]
-
-
-def _select_engine():
-    """The engine entrypoint for this run: LangGraph when the flag is set,
-    else the classic `run_loop`. Resolved through the module global so tests
-    that patch `runner.run_loop` still take effect on the fresh-run path."""
-    return run_graph_loop if use_langgraph_engine() else run_loop
 
 
 def run_new(
@@ -56,7 +49,7 @@ def run_new(
     )
     llm_client = LLMClient(budget_usd=budget_usd)
     with worktree_run(run_id):
-        final_state = _select_engine()(selected_loop, initial_state, llm_client, start_index=0)
+        final_state = run_graph_loop(selected_loop, initial_state, llm_client, start_index=0)
     return final_state
 
 
@@ -92,7 +85,7 @@ def run_in_tree(
     origin = Path.cwd()
     os.chdir(tree_path)
     try:
-        final_state = _select_engine()(selected_loop, initial_state, llm_client, start_index=0)
+        final_state = run_graph_loop(selected_loop, initial_state, llm_client, start_index=0)
     finally:
         os.chdir(origin)
     return final_state

@@ -1,19 +1,22 @@
 """The Ralph-loop Coder: one task per invocation, from a fresh context.
 
-Where the classic `CoderIacPersona` iterates every sprint in a single `run()`,
-the Ralph Coder does exactly ONE task per invocation and returns, letting the
+The Ralph Coder does exactly ONE task per invocation and returns, letting the
 engine's existing revise loop (`execute_stage`) re-enter it until the
-coverage-aware gate is green. Progress is the `.agent/STATE.md` task checklist;
-the manifest is the immutable backlog; the worktree filesystem is the memory.
+coverage-aware gate is green. (The classic per-sprint Coder it replaced iterated
+every sprint in a single `run()`; Phase 6 deleted it.) Progress is the
+`.agent/STATE.md` task checklist; the manifest is the immutable backlog; the
+worktree filesystem is the memory.
 
 When every task is checked off but the suite is red (a cross-task regression),
 the gate emits a `RALPH_REGRESSION_PREFIX` finding and this persona runs a
 **repair increment** instead of no-opping — so "loop until green" holds for
 regressions too, not just for unbuilt tasks.
 
-Selected by `LOOP_ENGINE_CODER=ralph`; the classic per-sprint Coder is the
-default. This is a behavior change, not a refactor — it is not parity-tested
-against the classic Coder.
+Since Phase 6 this is the only Coder — `LOOP_ENGINE_CODER` and the classic
+per-sprint Coder are deleted. It was always a behavior change rather than a
+refactor, so it was never parity-tested against the classic Coder; its sunset
+justification was a real multi-sprint host run reaching COMPLETED under the full
+production config (verification V2, sprint 27).
 """
 
 import json

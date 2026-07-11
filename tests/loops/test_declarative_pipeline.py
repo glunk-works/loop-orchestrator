@@ -1,13 +1,12 @@
-"""Cross-engine parity for the declarative document personas: a PM → Architect
-→ Sprint Breakdown pipeline drives identically under run_loop and the LangGraph
-engine, reaching the same artifacts on the happy path."""
+"""The declarative document personas drive a full PM → Architect → Sprint
+Breakdown pipeline to the expected artifacts on the happy path."""
 
 import json
 from types import SimpleNamespace
 
 import pytest
 
-from loop_engine.core.engine import Loop, Stage, run_loop
+from loop_engine.core.engine import Loop, Stage
 from loop_engine.core.gates import ArtifactGate
 from loop_engine.core.graph_engine import run_graph_loop
 from loop_engine.core.state import IssueRef, RunStatus, State
@@ -121,7 +120,9 @@ def _responses() -> list[str]:
 
 
 def test_declarative_pipeline_completes_on_happy_path() -> None:
-    final = run_loop(_declarative_loop(), _initial_state("run-classic"), _FakeLLM(_responses()))
+    final = run_graph_loop(
+        _declarative_loop(), _initial_state("run-classic"), _FakeLLM(_responses())
+    )
     assert final.status is RunStatus.COMPLETED
     assert (
         json.loads(final.artifacts["project_spec"])["problem_statement"]
@@ -132,22 +133,11 @@ def test_declarative_pipeline_completes_on_happy_path() -> None:
     assert len(json.loads(final.artifacts["task_manifest"])) == 1
 
 
-def test_declarative_pipeline_identical_across_engines() -> None:
-    classic = run_loop(_declarative_loop(), _initial_state("run-a"), _FakeLLM(_responses()))
-    graph = run_graph_loop(_declarative_loop(), _initial_state("run-b"), _FakeLLM(_responses()))
-
-    for key in ("project_spec", "architecture_definition", "sprint_plans", "task_manifest"):
-        assert classic.artifacts[key] == graph.artifacts[key], key
-    assert classic.status is graph.status is RunStatus.COMPLETED
-
-
 def test_default_loop_pm_stage_escalates_after_exhausting_revisions(monkeypatch) -> None:
     # A non-converging PM (the critic keeps finding a shrinking-but-never-empty
     # set of blank fields) must exhaust its 4-revision budget and escalate to a
     # human issue (review finding #2/#3), not raise StageGateFailedError — PM's
     # only resolver is the human, so a hard fail there is a dead end.
-    monkeypatch.setenv("LOOP_ENGINE_PERSONAS", "declarative")
-    monkeypatch.delenv("LOOP_ENGINE_CODER", raising=False)
     loop = build_default_loop()
     pm_stage = loop.stages[0]
     assert pm_stage.max_revisions == 4
@@ -165,7 +155,7 @@ def test_default_loop_pm_stage_escalates_after_exhausting_revisions(monkeypatch)
     ]
     single_stage_loop = Loop(stages=[pm_stage])
 
-    final = run_loop(single_stage_loop, _initial_state("run-pm-exhaust"), _FakeLLM(responses))
+    final = run_graph_loop(single_stage_loop, _initial_state("run-pm-exhaust"), _FakeLLM(responses))
 
     assert final.status is RunStatus.AWAITING_ISSUE
     assert final.pending_issue is not None

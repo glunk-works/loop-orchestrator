@@ -65,13 +65,13 @@ def test_budget_abort_persists_completed_snapshots_and_terminal_status(
     assert len(run_dirs) == 1
     run_dir = run_dirs[0]
 
-    pm_snapshot = State.model_validate_json((run_dir / "00_PMPersona.json").read_text())
-    assert pm_snapshot.stage_history[-1].stage_name == "PMPersona"
+    pm_snapshot = State.model_validate_json((run_dir / "00_PMGenerator.json").read_text())
+    assert pm_snapshot.stage_history[-1].stage_name == "PMGenerator"
 
     architecture_snapshot = State.model_validate_json(
-        (run_dir / "01_ArchitecturePersona.json").read_text()
+        (run_dir / "01_ArchitectureGenerator.json").read_text()
     )
-    assert architecture_snapshot.stage_history[-1].stage_name == "ArchitecturePersona"
+    assert architecture_snapshot.stage_history[-1].stage_name == "ArchitectureGenerator"
 
     # And a terminal snapshot records WHY the run stopped.
     terminal = State.model_validate_json((run_dir / "02_budget_exceeded.json").read_text())

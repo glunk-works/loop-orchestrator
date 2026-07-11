@@ -35,6 +35,18 @@
 - **Parity harness deletion.** Task 1 deletes `run_loop` **and** the classic-vs-graph parity harness/tests. Confirm no other test imports `run_loop` directly (grep) before removing it; migrate any still-valuable engine assertions onto `run_graph_loop`.
 - **`sbom.json` unchanged; audit clean.** No dependency is added or removed. `langgraph`/`mcp` were already deps; nothing about this block touches `pyproject.toml`. If a dep *becomes unused* by a deletion, that is a separate, opportunistic follow-up — do not fold a dep removal into a flag deletion.
 
+**STATUS (2026-07-11):** Tasks 0, 1, 2, 3, 4, 6, 7 are **DONE** — all four migration
+flags and their classic paths are deleted, `build_default_loop()` is one unbranched
+wiring, and the docs are reconciled. **Task 5 is DEFERRED to its own sprint** (roadmap
+decision **FD3**): its stated premise — that deleting `run_loop` leaves the LangGraph
+engine the sole reader of `State.artifacts` — is false. The readers were always the
+personas and gates, which index the inline dict directly; `artifact_refs` is a
+write-only mirror whose loader (`get_artifact`) has zero callers. The strip is therefore
+a behavior-changing refactor (disk I/O in the hot path, plus a cwd/clone hazard under
+`run_in_tree`), not the subtractive deletion this block is chartered for. **Tasks 8 and 9
+remain OPEN, gated on V3** (the forced issue-escalation host round-trip), which has not
+been run.
+
 **Tasks:**
 
 - **Task 0: Pre-deletion safety tag (the FD2 break-glass mechanism)**
