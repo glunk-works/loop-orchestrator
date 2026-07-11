@@ -15,54 +15,11 @@ from loop_engine.tools.state_io.writer import validate_artifact_relative_path
 # Tool results feed straight back into the model's context window: cap them.
 MAX_RESULT_CHARS = 20_000
 
-READ_TOOL_SCHEMAS: list[dict] = [
-    {
-        "name": "read_file",
-        "description": (
-            "Read a file from the run's artifact tree (docs/, sprints/, src/). "
-            "Use it to inspect prior sprints' outputs before building on them."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {"type": "string", "description": "Relative path, e.g. src/foo.py"}
-            },
-            "required": ["path"],
-        },
-    },
-    {
-        "name": "list_files",
-        "description": (
-            "Recursively list files under a directory in the run's artifact "
-            "tree (docs/, sprints/, src/)."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {"type": "string", "description": "Relative directory, e.g. sprints"}
-            },
-            "required": ["path"],
-        },
-    },
-    {
-        "name": "grep",
-        "description": (
-            "Search file contents under the run's artifact tree with a "
-            "regular expression; returns path:line:text matches."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "pattern": {"type": "string", "description": "Python regular expression"},
-                "path": {
-                    "type": "string",
-                    "description": "Relative file or directory to search, e.g. src",
-                },
-            },
-            "required": ["pattern", "path"],
-        },
-    },
-]
+# The model-facing tool schemas are NOT declared here: `mcp_servers/
+# coder_tools_server.py` re-fronts these functions over MCP and FastMCP derives
+# each schema from the function signature + docstring. The hand-written schema
+# dicts this module used to export existed only for the in-process tool dispatch,
+# which Phase 6 deleted.
 
 
 def truncate_result(text: str) -> str:

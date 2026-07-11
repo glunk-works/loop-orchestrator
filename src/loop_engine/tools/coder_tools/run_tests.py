@@ -19,22 +19,6 @@ TEST_TIMEOUT_SECONDS = 120
 # pytest exit code 5: no tests were collected.
 PYTEST_NO_TESTS_COLLECTED = 5
 
-RUN_TESTS_TOOL_SCHEMA: dict = {
-    "name": "run_tests",
-    "description": (
-        "Run pytest against a file or directory in the run's artifact tree "
-        "(e.g. src/). Use it to verify your implementation before claiming "
-        "any acceptance criterion is met."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "path": {"type": "string", "description": "Relative file or directory, e.g. src"}
-        },
-        "required": ["path"],
-    },
-}
-
 
 def run_pytest(path: str) -> tuple[int, str]:
     """Execute pytest on a validated path; returns (exit_code, capped output).

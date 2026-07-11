@@ -9,22 +9,11 @@ import logging
 import re
 from pathlib import Path
 
-from loop_engine.tools.coder_tools import (
-    READ_TOOL_SCHEMAS,
-    grep,
-    list_files,
-    read_file,
-    resolve_tool_path,
-)
-from loop_engine.tools.coder_tools.run_lint import RUN_LINT_TOOL_SCHEMA, run_lint
-from loop_engine.tools.coder_tools.run_tests import RUN_TESTS_TOOL_SCHEMA, run_tests
-from loop_engine.tools.isolation import IsolationUnavailableError, sandbox_runtime_mode
-from loop_engine.tools.mcp import build_coder_tool_provider, use_mcp_tools
+from loop_engine.tools.coder_tools import resolve_tool_path
+from loop_engine.tools.mcp import build_coder_tool_provider
 from loop_engine.tools.state_io.writer import write_artifact
 
 logger = logging.getLogger(__name__)
-
-CODER_TOOLS: list[dict] = [*READ_TOOL_SCHEMAS, RUN_TESTS_TOOL_SCHEMA, RUN_LINT_TOOL_SCHEMA]
 
 _FILE_BLOCK_RE = re.compile(r"^### FILEPATH:\s*(\S+)\s*$", re.MULTILINE)
 _SEARCH_REPLACE_RE = re.compile(
@@ -139,47 +128,28 @@ headers verbatim; do not repeat unchanged sections.
 """
 
 
-def _execute_tool(name: str, tool_input: dict) -> str:
-    """Dispatch a model tool call to the read/execute-only coder tool set.
-
-    File WRITES never happen here — the persona applies the model's output
-    blocks through write_artifact after the loop finishes, keeping
-    tools/state_io the sole writer.
-    """
-    if name == "read_file":
-        return read_file(tool_input["path"])
-    if name == "list_files":
-        return list_files(tool_input["path"])
-    if name == "grep":
-        return grep(tool_input["pattern"], tool_input["path"])
-    if name == "run_tests":
-        return run_tests(tool_input["path"])
-    if name == "run_lint":
-        return run_lint(tool_input["path"])
-    raise ValueError(f"Unknown tool: {name!r}")
-
-
 class _CoderToolBackend:
-    """Selects the Coder's tool set: the in-process read/execute tools, or the
-    MCP-served equivalents when LOOP_ENGINE_TOOLS=mcp. On the MCP path the
-    provider (which spawns the stdio server) is opened on first use and closed
-    once; on the default path nothing is spawned."""
+    """The Coder's tool set, served over MCP.
+
+    Tool execution runs in the server subprocess, out of the orchestrator
+    process entirely — so under container/sandbox isolation the model's tools
+    run sandboxed, which is the operating assumption `tools/coder_tools` is
+    built on. (Phase 6 deleted the in-process dispatch this used to select
+    between; there is no longer an unsandboxed path to fall back to.)
+
+    The provider (which spawns the stdio server) is opened on first use and
+    closed once.
+
+    File WRITES never happen through these tools — they are read/execute-only.
+    The persona applies the model's output blocks through `write_artifact`
+    after the tool loop finishes, keeping `tools/state_io` the sole writer.
+    """
 
     def __init__(self) -> None:
         self._provider = None
 
     def resolve(self):
         """Return (tools, execute) for a run_tool_loop call."""
-        # container/sandbox isolation only sandboxes the MCP server launch; there
-        # is nothing to sandbox on the in-process path, so refuse rather than run
-        # untrusted tools in the orchestrator process.
-        if sandbox_runtime_mode() is not None and not use_mcp_tools():
-            raise IsolationUnavailableError(
-                "container/sandbox isolation requires LOOP_ENGINE_TOOLS=mcp; "
-                "refusing to run untrusted tools in-process"
-            )
-        if not use_mcp_tools():
-            return CODER_TOOLS, _execute_tool
         if self._provider is None:
             self._provider = build_coder_tool_provider(cwd=Path.cwd())
             self._provider.__enter__()

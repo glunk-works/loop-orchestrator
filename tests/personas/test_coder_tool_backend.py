@@ -1,14 +1,15 @@
-"""The Coder's tool-backend selector: in-process by default, MCP behind the
-flag, with the provider opened once and always closed."""
+"""The Coder's tool backend: always MCP, with the provider opened once and
+always closed.
 
-import pytest
+Phase 6 deleted the in-process dispatch this used to select between. That also
+retires the old "container isolation without MCP tools refuses" guard — the
+refusal existed because the in-process path ran model-generated tools inside the
+orchestrator process with nothing to sandbox. With that path gone the hazard is
+structural rather than conditional: tool execution *only* happens in the MCP
+server subprocess, so there is no unsandboxed fallback left to refuse.
+"""
 
-from loop_engine.personas.coder_iac.shared import (
-    CODER_TOOLS,
-    _CoderToolBackend,
-    _execute_tool,
-)
-from loop_engine.tools.isolation import IsolationUnavailableError
+from loop_engine.personas.coder_iac.shared import _CoderToolBackend
 
 
 class _FakeProvider:
@@ -28,31 +29,22 @@ class _FakeProvider:
         return "mcp-result"
 
 
-def test_default_backend_is_in_process(monkeypatch) -> None:
-    monkeypatch.delenv("LOOP_ENGINE_TOOLS", raising=False)
-    backend = _CoderToolBackend()
+def test_backend_resolves_to_mcp_with_no_env_configuration(monkeypatch) -> None:
+    # No flag is consulted any more: MCP is the tool path unconditionally.
+    fake = _FakeProvider()
+    monkeypatch.setattr(
+        "loop_engine.personas.coder_iac.shared.build_coder_tool_provider",
+        lambda cwd=None: fake,
+    )
 
-    tools, execute = backend.resolve()
-    assert tools is CODER_TOOLS
-    assert execute is _execute_tool
+    tools, execute = _CoderToolBackend().resolve()
 
-    backend.close()  # no-op when nothing was opened
-
-
-def test_container_isolation_without_mcp_tools_refuses(monkeypatch) -> None:
-    """container/sandbox isolation only sandboxes the MCP server; on the
-    in-process path there is nothing to sandbox, so resolve() must refuse rather
-    than run untrusted tools in-process."""
-    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "container")
-    monkeypatch.delenv("LOOP_ENGINE_TOOLS", raising=False)
-    backend = _CoderToolBackend()
-    with pytest.raises(IsolationUnavailableError, match="LOOP_ENGINE_TOOLS=mcp"):
-        backend.resolve()
+    assert tools == fake.tools
+    assert execute == fake.execute
 
 
 def test_mcp_backend_opens_provider_once_and_closes(monkeypatch) -> None:
     fake = _FakeProvider()
-    monkeypatch.setenv("LOOP_ENGINE_TOOLS", "mcp")
     monkeypatch.setattr(
         "loop_engine.personas.coder_iac.shared.build_coder_tool_provider",
         lambda cwd=None: fake,
@@ -72,3 +64,7 @@ def test_mcp_backend_opens_provider_once_and_closes(monkeypatch) -> None:
     # Idempotent close.
     backend.close()
     assert fake.exited == 1
+
+
+def test_close_without_resolve_is_a_noop() -> None:
+    _CoderToolBackend().close()  # nothing opened, nothing to close

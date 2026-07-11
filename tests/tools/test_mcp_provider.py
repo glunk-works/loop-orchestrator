@@ -17,7 +17,6 @@ from loop_engine.tools.mcp import (
     build_github_provider,
     build_issue_provider,
     load_mcp_config,
-    use_mcp_tools,
 )
 from loop_engine.tools.mcp import config as mcp_config
 
@@ -84,13 +83,6 @@ def test_error_result_raises_mcp_tool_error(_provider) -> None:
 def test_unknown_tool_raises_mcp_tool_error(_provider) -> None:
     with pytest.raises(MCPToolError):
         _provider.execute("does_not_exist", {})
-
-
-def test_use_mcp_tools_flag(monkeypatch) -> None:
-    monkeypatch.delenv("LOOP_ENGINE_TOOLS", raising=False)
-    assert use_mcp_tools() is False
-    monkeypatch.setenv("LOOP_ENGINE_TOOLS", "mcp")
-    assert use_mcp_tools() is True
 
 
 def test_traversal_path_is_rejected_by_server(_provider) -> None:
