@@ -173,6 +173,10 @@ def test_edit_application_failure_retries_the_same_task_until_it_applies() -> No
     assert "Task id: 01_foundation::t01" in _prompt_of(second_client)
     assert read_scratchpad().completed_tasks == ["01_foundation::t01"]
     assert second.questions == []
+    # The retry's report section replaces the failed one, so the stale marker is
+    # gone — this is what un-wedges `CoderGate`'s pre-pytest `edit_findings`
+    # short-circuit. Without it the run stays blocked forever (F-RALPH-FALSE-COMPLETION).
+    assert EDIT_FAILURES_HEADER not in second.artifacts["implementation_reports"]
 
 
 def test_finalize_report_returns_report_and_failures_tuple() -> None:
