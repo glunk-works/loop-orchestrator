@@ -376,7 +376,23 @@ the Ralph run below IS the production Coder and its `COMPLETED` closes this tail
 V1 is therefore recorded **PASS for `ENGINE`/`TOOLS`/`PERSONAS`** (unblocking
 deletion Tasks 1–3), with the terminal-`COMPLETED` proof carried by V2.
 
-## V2 — Ralph convergence + cost — **BLOCKED (finding: gate not sandboxed)**
+## V2 — Ralph convergence + cost — **OPEN (unblocked; host `COMPLETED` not yet observed)**
+
+> **Status update (sprint 29, 2026-07-11).** The gate-sandbox blocker below was
+> closed in code by **sprint 28** (F-GATE-SANDBOX). A re-attempt host run (#3, the
+> tightened-spec run recorded in the sprint 29 plan) then converged **11 tasks**
+> across all 6 sprints — the container gate ACCEPTed 11× — but stopped at
+> `BUDGET_EXCEEDED` one sprint short of `COMPLETED`, and surfaced two further
+> convergence gaps, both now **resolved in code by sprint 29** (see findings
+> **F-TOOLLOOP-CAP** and **F-CODER-NO-LINT** below). **V2 nonetheless stays OPEN:**
+> a literal container-sandboxed Ralph run reaching terminal `COMPLETED` within
+> budget has still **not** been observed. The remaining obligation is that single
+> observation, now gated only on (a) sprints 28+29 in code — done — and (b)
+> **escalation-free staging** (a real remote or an injected non-crashing
+> `issue_filer`, so a stray escalation on a remote-less scratch tree pauses cleanly
+> instead of crashing `gh issue create`). Do **not** record V2 PASS until observed.
+
+*Historical record of the 2026-07-10 session (blocker since closed):*
 
 Ran the full production config **with `LOOP_ENGINE_CODER=ralph`** against a
 scaffolded src-only scratch tree. **Ralph's algorithm engaged correctly:** the
@@ -471,6 +487,52 @@ carry the host-proof obligation.
 - GitHub side effects cleaned: scratch issue #21 closed; V1 runs 2–4 and V2 had no
   remote (crashed on `gh` at escalation — a harness artifact), so nothing else was
   filed. Scratch repos are local (scratchpad), no remote cleanup needed.
+
+## Finding F-TOOLLOOP-CAP — RESOLVED IN CODE by sprint 29
+
+**Status: resolved-in-code (sprint 29 Task 1, `b0be361`).** The V2 re-attempt run #1
+reached the container gate and checked off 3 tasks, then **crashed** with an
+**uncaught** `ToolLoopExceededError` when a trivial `truncate` increment blew the
+blunt **12**-iteration inner tool-loop cap — a stuck loop aborted the whole run
+instead of failing the stage (unlike `BudgetExceededError`/`TruncatedResponseError`,
+which exit cleanly). Fix: `RalphCoderPersona._run_increment` now catches
+`ToolLoopExceededError` and degrades to the no-output path (task left unchecked →
+re-selected with fresh context → the engine's identical-findings guard escalates if
+still stuck), preserving Ralph's multi-task resilience; `core/engine.py::execute_stage`
+catches it as a safety net for every other persona, finalizing `FAILED_STAGE` +
+a persisted snapshot (iteration exhaustion treated as the sibling of dollar
+exhaustion, not a crash). `DEFAULT_MAX_TOOL_ITERATIONS` raised **12 → 40**, the USD
+budget documented as the primary bound and the cap only a finite backstop against
+near-zero-cost spin. (BL-4 — a real Ralph liveness/progress watcher — remains the
+follow-on to the blunt cap; backlogged, not this sprint.)
+
+**Remaining obligation:** none in code. The graceful-degradation + generous-cap
+behavior is exercised by the mocked suite; the *host* payoff (a run that would have
+crashed at the 12-cap now converging instead) is folded into the still-open **V2**
+`COMPLETED` observation above — not a separate host check.
+
+## Finding F-CODER-NO-LINT — RESOLVED IN CODE by sprint 29
+
+**Status: resolved-in-code (sprint 29 Task 2, `10f27d3`).** V2 re-attempt run #4
+**escalated** structurally — *"my toolset does not expose a way to execute `ruff
+check` / `ruff format --check`"* — so a task carrying a "ruff clean" acceptance
+criterion could not be self-verified and instead paused for a human (and that
+escalation then crashed on the remote-less scratch tree's `gh issue create`). Fix:
+new `tools/coder_tools/run_lint.py` gives the agentic Coder a `run_lint(path)` tool
+over `ruff check` + `ruff format --check`, mirroring `run_tests.py`'s containment
+exactly (fixed argv `sys.executable -m ruff …`, `shell=False`, hard 60s timeout,
+`truncate_result`-capped, `resolve_tool_path`-validated); wired in-process
+(`CODER_TOOLS` + `_execute_tool`) and over MCP (`@mcp.tool() run_lint`). This is the
+**fifth** sanctioned subprocess surface (`ruff`), recorded in
+`tests/tools/test_subprocess_surfaces.py` and CLAUDE.md; unlike `run_tests`' pytest,
+`ruff` statically parses the target and never executes model-generated code, so it
+is strictly lower-risk. HITL-reviewed by Opus and approved (2026-07-11). Gate-enforced
+lint stays out of scope — the Coder gets the *tool*, not a new gate.
+
+**Remaining obligation:** none in code. One item to confirm at V2 host-staging:
+`ruff` must be present in the container image so `python -m ruff` resolves — absent
+it, `run_lint` returns a misleading "lint failure" (module-not-found) rather than a
+tooling gap. That confirmation rides the V2 re-attempt, not a separate check.
 
 ---
 
