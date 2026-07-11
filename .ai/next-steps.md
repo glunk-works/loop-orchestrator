@@ -5,10 +5,11 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Phase 6 — sprint `29_coder_host_run_hardening` — `awaiting_hitl_review`.**
+**Phase 6 — sprint `29_coder_host_run_hardening` — `implementing`.**
 Planned this session from two Phase-6 **V2 host-run findings**, both orthogonal to
-the flip-block flags. **Task 1 is already implemented + green + uncommitted;**
-Task 2 (the ruff tool) is specced for a Sonnet session. **V2 is held OPEN.**
+the flip-block flags. **Task 1 is implemented + green + committed (`b0be361`);**
+Task 2 (the ruff `run_lint` tool) is the next work, for a **Sonnet** session.
+**V2 is held OPEN.**
 
 ## Just done (Opus/Architect — V2 host runs + planning, 2026-07-10)
 - **Ran 4 real container-sandboxed V2 factory runs** (`langgraph+mcp+declarative+ralph+container`, $5 cap, Seuss27, throwaway src-only scratch tree). **Run #3 converged 11 tasks across 6 sprints** — whole `textkit` library written, **`truncate` converged**, container gate **ACCEPTed 11×** (F-GATE-SANDBOX host-verified live) — and terminated cleanly at `BUDGET_EXCEEDED` **one sprint short of `COMPLETED`**. Runs that **escalated** (spec ambiguity; Coder asking for `ruff` it can't run) crashed on the remote-less tree's `gh issue create`.
@@ -17,15 +18,16 @@ Task 2 (the ruff tool) is specced for a Sonnet session. **V2 is held OPEN.**
 - **Planned sprint 29** (`sprints/29_coder_host_run_hardening/sprint_plan.md`); **backlogged BL-4** (Ralph loop watcher — progress/liveness detection vs. the blunt cap).
 
 ## Next
-1. **Opus/Architect (immediate):** approve the sprint 29 plan; **HITL-review Task 1's uncommitted diff** (ralph.py + core/engine.py + client.py + the two test files); **commit Task 1** as its own change. HITL gate is OPEN here.
-2. **Then `/handoff` → Sonnet session** to implement **Task 2 (F-CODER-NO-LINT)** — the `run_lint` Coder tool over `ruff check`/`ruff format --check`. This **adds a FIFTH sanctioned subprocess surface** → it must amend `tests/tools/test_subprocess_surfaces.py` + the CLAUDE.md "exactly four subprocess surfaces" contract, and grow the Coder tool-set to `{read_file,list_files,grep,run_tests,run_lint}`. Mandatory **Opus HITL review** after (new subprocess surface = security boundary). Then Task 3 (doc reconciliation).
+1. **Sonnet/Coder (immediate):** implement **Task 2 (F-CODER-NO-LINT)** — the `run_lint` Coder tool over `ruff check`/`ruff format --check`, mirroring `tools/coder_tools/run_tests.py`. This **adds a FIFTH sanctioned subprocess surface** → it must amend `tests/tools/test_subprocess_surfaces.py` + the CLAUDE.md "exactly four subprocess surfaces" contract, and grow the Coder tool-set to `{read_file,list_files,grep,run_tests,run_lint}`.
+2. **Then Opus HITL review** of Task 2 (new subprocess surface = security boundary), and **Task 3** (doc reconciliation — record F-TOOLLOOP-CAP/F-CODER-NO-LINT resolved; keep V2 OPEN).
 3. **Then re-attempt V2 for a real `COMPLETED`** on a host — with the ruff tool removing the structural escalation, plus **escalation-free staging** (a real remote or an injected non-crashing `issue_filer` so a stray escalation pauses cleanly instead of crashing).
 
 ## HITL gate
-**OPEN (Opus):** approve sprint 29 plan + review Task 1's already-green, uncommitted
-diff before it lands. **V2 held OPEN** — do NOT record it PASS; the literal
-container run→`COMPLETED` observation is still owed (gated on sprint 29 + staging).
-Sprint 27 flip-block deletions remain gated on their V-runs.
+Task 1 **committed** (`b0be361`) — a post-hoc Opus read of that diff is optional
+(commit was user-directed). **Mandatory Opus HITL review of Task 2** after Sonnet
+implements it (new subprocess surface). **V2 held OPEN** — do NOT record it PASS;
+the literal container run→`COMPLETED` observation is still owed (gated on sprint 29
++ staging). Sprint 27 flip-block deletions remain gated on their V-runs.
 
 ## Pointers
 - `sprints/29_coder_host_run_hardening/sprint_plan.md` — Task 1 (implemented-pending-review), Task 2 (run_lint tool), Task 3 (doc reconciliation); the four→five subprocess-surface amendment + security note (ruff parses, doesn't execute).
@@ -35,4 +37,6 @@ Sprint 27 flip-block deletions remain gated on their V-runs.
 - `docs/migration_roadmap.md` — Phase 6 row + NEXT ACTION.
 
 ## Working tree
-- HEAD `e9fd22e`. **Uncommitted:** Task 1 fix (`core/engine.py`, `personas/coder_iac/ralph.py`, `tools/llm/client.py`, `tests/core/test_engine.py`, `tests/personas/test_ralph_coder.py`), `docs/backlog.md` (BL-4), and untracked `sprints/29_coder_host_run_hardening/`. Untracked `scratch/` holds the V2 specs + run logs (not for commit). Commit Task 1 (after review) before switching sessions so `/resume` sees a matching HEAD.
+- HEAD `ba75eb0`. Task 1 fix committed at `b0be361`; sprint-29 plan + BL-4 + this
+  cursor at `ba75eb0`. Tree clean except untracked `scratch/` (the V2 specs + run
+  logs — not for commit). `.ai/state.json` is git-ignored (local mirror only).
