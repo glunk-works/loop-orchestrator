@@ -426,6 +426,13 @@ deletion Tasks 1–3), with the terminal-`COMPLETED` proof carried by V2.
 > re-run until it is fixed — this defect will reproduce deterministically any time
 > a Ralph task's edit block fails to parse, which is not a rare event.
 
+> **Status update (sprint 31, 2026-07-11).** F-RALPH-FALSE-COMPLETION's fix is now
+> **resolved-in-code** (`e5d9d98` — completion is now gated on `apply_file_blocks`
+> reporting no failure, not just on no open question). V2's last in-code blocker is
+> closed; the **only** remaining obligation is the host observation itself — a
+> fresh V2 re-attempt (#8, reusing the run-#7 staging recipe) reaching terminal
+> `COMPLETED`. Do **not** record V2 PASS until that run is observed.
+
 *Historical record of the 2026-07-10 session (blocker since closed):*
 
 Ran the full production config **with `LOOP_ENGINE_CODER=ralph`** against a
@@ -636,14 +643,15 @@ means the prompt-only fix was insufficient — escalate to the deferred gate-gua
 not recur.** The fix holds for its intended failure mode. Re-attempt #7 hit a
 different, more serious defect instead — see **F-RALPH-FALSE-COMPLETION** below.
 
-## Finding F-RALPH-FALSE-COMPLETION — OPEN, blocks V2 (host V2 re-attempt #7, 2026-07-11)
+## Finding F-RALPH-FALSE-COMPLETION — RESOLVED IN CODE by sprint 31 (host V2 re-attempt still owed)
 
-**Status: OPEN — a code fix is required, not a prompt tweak.** New finding from
+**Status: resolved-in-code (sprint 31 Task 1, `e5d9d98`).** New finding from
 V2 re-attempt #7 (run_id `e7fc2eed24fe41399089151f74754924`, `AWAITING_ISSUE`,
 $2.63/$5.00, evidence: `scratch/v2_rerun7.log`,
 `scratch/v2_escalations_rerun7.jsonl`, tree
 `scratchpad/v2_tree/.worktrees/e7fc2eed24fe41399089151f74754924/`). `CODER=ralph`
-(Task 4) stays gated on V2; V2 stays gated on this fix.
+(Task 4) stays gated on V2, and V2 stays gated on a host re-run of this fix
+(see **Remaining obligation** below).
 
 **Symptom.** `.agent/STATE.md` recorded `02_core_feature_implementation::t01`
 (implement `slugify`), `t02` (implement `word_count`), and `t03` (write
@@ -737,13 +745,39 @@ the loop. Both may be needed — (a) prevents the false-positive "done," (b)
 prevents a legitimately-blocked-and-retried task from tainting the gate forever
 once it does eventually succeed.
 
-**Remaining obligation:** a fix (own sprint, code change — not prompt-only),
-HITL-reviewed, then a fresh V2 re-attempt reaching terminal `COMPLETED`. Do
-**not** attempt another V2 re-run before this lands — the defect is
-deterministic and will very likely reproduce (any single malformed/unattempted
-edit block on a task the model doesn't also escalate a question about wedges
-the sprint the same way). Do not flip `CODER=ralph` (Task 4) until fixed and
-verified.
+**Fix (sprint 31 Task 1, `e5d9d98` — code fix, locked FD1/FD2/FD3, no
+`core/coder_gate.py` change):** implements suggested-fix-shape (a), not (b) —
+per FD1, (b)'s `edit_findings` scan-scope narrowing is a consequence-only
+mitigation that (a) makes unnecessary at the source (see FD1's reasoning in
+`sprints/31_ralph_completion_integrity/sprint_plan.md`). `_finalize_report`
+(`ralph.py`) now returns `(report, failures)` instead of just `report`, so its
+callers can observe whether this increment's edit actually applied.
+`RalphCoderPersona._task_increment`'s completion branch is broadened so a task
+is marked done only when there were no new questions **and** no edit-application
+failures; a failure-without-a-question case (FD3) leaves `blocked_items`/
+`state.questions` untouched, writes a distinct non-escalation scratchpad memory
+outcome ("edit application failed; will retry"), and leaves the task selectable
+again on the next increment. `_repair`'s call site is updated to unpack the new
+tuple shape (no behavior change there — repair never marks a task done).
+New tests pin: a malformed/unattempted edit block with no question does not
+check off the task and does not fabricate an escalation; two sequential
+increments (malformed then well-formed) retry the *same* task id and only
+check it off once the edit actually applies; `_finalize_report`'s
+`(report, failures)` shape directly. All prior Ralph persona tests pass
+unmodified; full suite, lint/format, and audit are green; `sbom.json`
+unchanged (no dependency change).
+
+**Remaining obligation:** none in code. A fresh V2 re-attempt (#8) on a
+daemon-bearing host, reusing the run-#7 staging recipe (harness
+`scratch/v2_run_harness.py`, `scratch/v2_requirements_min.md`, a fresh
+throwaway tree, `LOOP_ENGINE_DEV_IMAGE=loop-engine-dev:latest`, injected
+`issue_filer`, absolute env python), must observe terminal `COMPLETED` within
+budget — only that host observation *verifies* this finding (vs.
+resolved-in-code) and discharges V2's last blocker. Do **not** flip
+`CODER=ralph` (Task 4) until that re-run reaches `COMPLETED`. A re-run that
+still wedges on an edit-application failure means this fix was insufficient —
+re-open FD1 and reconsider the deferred `edit_findings` scan-scope narrowing
+(suggested-fix-shape (b) above), do not just re-tweak wording.
 
 ---
 
