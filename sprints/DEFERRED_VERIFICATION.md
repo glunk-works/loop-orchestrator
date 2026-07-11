@@ -376,7 +376,7 @@ the Ralph run below IS the production Coder and its `COMPLETED` closes this tail
 V1 is therefore recorded **PASS for `ENGINE`/`TOOLS`/`PERSONAS`** (unblocking
 deletion Tasks 1–3), with the terminal-`COMPLETED` proof carried by V2.
 
-## V2 — Ralph convergence + cost — **OPEN (unblocked; host `COMPLETED` not yet observed)**
+## V2 — Ralph convergence + cost — **PASS (host `COMPLETED` observed, re-attempt #8, 2026-07-11)**
 
 > **Status update (sprint 29, 2026-07-11).** The gate-sandbox blocker below was
 > closed in code by **sprint 28** (F-GATE-SANDBOX). A re-attempt host run (#3, the
@@ -432,6 +432,42 @@ deletion Tasks 1–3), with the terminal-`COMPLETED` proof carried by V2.
 > closed; the **only** remaining obligation is the host observation itself — a
 > fresh V2 re-attempt (#8, reusing the run-#7 staging recipe) reaching terminal
 > `COMPLETED`. Do **not** record V2 PASS until that run is observed.
+
+> **RESULT — V2 re-attempt #8, 2026-07-11, Opus/Architect host session: PASS.**
+> A real container-sandboxed Ralph run reached terminal **`COMPLETED`** — the
+> observation V2 has been gated on since sprint 27. Sprint 31's fix held: the
+> run-#7 edit-application wedge did **not** recur, so **FD1 does not fire** and
+> stays closed (its trigger was specifically a *re-wedge on edit application*).
+>
+> - **Config (full production target):** `ENGINE=langgraph`, `TOOLS=mcp`,
+>   `PERSONAS=declarative`, `CODER=ralph`, `ISOLATION=container`
+>   (`LOOP_ENGINE_DEV_IMAGE=loop-engine-dev:latest`), injected `issue_filer`,
+>   `v2_requirements_min.md`, budget `$5.00`. Host: Docker daemon present.
+> - **Outcome:** `run_id=0c8fdb89949c49578f891fe78f3373b4`, terminal
+>   `04_completed.json` snapshot, **cost `$2.2433` of `$5.00`** — converged well
+>   inside budget (contrast run #3's `BUDGET_EXCEEDED`). **Zero escalations.**
+> - **Convergence:** all **8** manifest tasks across 3 sprints checked off in
+>   `.agent/STATE.md`, no blocked items; the Sprint Breakdown emitted a
+>   `task_manifest` and the Coder advanced one task per iteration.
+> - **Independently verified** (not merely trusting the gate's self-report):
+>   re-ran `pytest -q` in the produced worktree → **15 passed**; `ruff check` →
+>   clean; `ruff format --check` → clean; and exercised `slugify`/`word_count`
+>   directly against **every** known case + both `TypeError` paths in the spec →
+>   all pass. Evidence: `scratch/v2_rerun8b.log`.
+>
+> **Prior invalid attempt (run #8a) — recorded so it is not mistaken for a finding.**
+> The first #8 attempt escalated (`awaiting_issue`, `$0.5120`) on a Coder question
+> about `pytest` exit `5` vs `0` on zero collected tests. That was **a staging
+> error, not a product defect**: the throwaway tree was seeded with
+> `testpaths = ["tests"]` and no `pythonpath`, contradicting the spec's stated
+> pre-seeded `pyproject.toml` (`pythonpath = ["src"]`, `testpaths = ["src"]`,
+> tests colocated under `src/textkit/tests/`). The Coder's escalation was a
+> faithful reaction to a broken tree. Re-seeded per spec ⇒ run #8b ⇒ `COMPLETED`.
+> **Lesson for future host runs: seed the target tree exactly as the spec's
+> `functional_requirements` describe the pre-seeded packaging.**
+>
+> **Consequence:** V2's obligation is discharged. Sprint 27's subtractive flag
+> deletions (Tasks 1–4) are **unblocked**.
 
 *Historical record of the 2026-07-10 session (blocker since closed):*
 
