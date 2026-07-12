@@ -361,3 +361,50 @@ cleanups and can go any time.
 `src/loop_engine/tools/repo_io/github.py`, `src/loop_engine/trigger/dispatch.py`,
 `CLAUDE.md` (the `tools/issue_io` boundary bullet). The full review reasoning is on
 PR #34 (`gh pr view 34 --comments`).
+
+### BL-10 — A bad PR title permanently starves the heavy CI chain
+*(added 2026-07-12, found during the Opus HITL review of PR #39, sprint 32)*
+
+**Why:** two individually-correct guards in `.github/workflows/ci.yml` compose into a hole
+that lets a PR reach an all-green/neutral state **having never run lint or the test suite**.
+
+The sequence, observed live on PR #39:
+
+1. The PR was opened with a 78-character title; `pr-title` enforces a 72-char limit, so it
+   **failed**.
+2. `lint` is deliberately gated on it (`needs: pr-title`, `if: needs.pr-title.result ==
+   'success' || == 'skipped'`) as a **fail-fast** measure — a bad title shouldn't burn
+   runner minutes. With `pr-title` failing, `lint` was **skipped**.
+3. `format-check` → `test` → `secrets-scan`/`dependency-audit` → `sbom` all reach `lint`
+   through `needs:`, so the entire heavy chain skipped with it.
+4. **Fixing the title cannot recover this.** A title edit fires `edited`, and `lint` carries
+   `if: github.event.action != 'edited'` — equally deliberate, so that editing prose doesn't
+   re-run the suite on an unchanged tree. So `pr-title` flips green while `lint`/`test` stay
+   `skipped` **forever**.
+
+Net: `test` reports `skipped`, not `failure`. GitHub generally treats a skipped required check
+as satisfied, so nothing blocks the merge. The suite never ran, and the PR looks fine.
+
+This is the same species of failure `hitl-review.yml`'s own preamble was written about — "the
+suite passed, CI passed, and the check that would have caught it was simply not run" — except
+here it's the suite itself that goes missing, and no amount of reviewer diligence surfaces it,
+because the checks page shows no red.
+
+**Recovery (what was done for #39):** fire a non-`edited` event. Close + reopen (`reopened`)
+is strictly better than pushing a commit (`synchronize`), because it preserves the head SHA
+and therefore does not invalidate the `architect-review` binding, which is pinned to an exact
+commit.
+
+**Shape:** the `edited`-skip needs to be conditional on the heavy chain having *already run
+successfully on this SHA*, rather than assuming it did. Options: (a) let `edited` re-run the
+chain when the prior conclusion for the SHA was `skipped`; (b) drop the `needs: pr-title`
+fail-fast gate so a bad title never suppresses the suite in the first place (costs a few
+runner minutes on a bad title — the fail-fast saving is small and this is what it bought);
+(c) make `pr-title` non-blocking for the chain and merely a required check in its own right.
+(b) is the cheapest and removes the composition entirely.
+
+**Notes / where to look:** `.github/workflows/ci.yml` — the `pr-title` job, the `lint` job's
+`if:` (the `!= 'edited'` clause and the `needs.pr-title.result` allowlist), and the `on:
+pull_request: types: [..., edited]` trigger. The rationale comments on both guards are worth
+reading before changing either — each is there for a real reason; it's their *interaction*
+that's wrong.
