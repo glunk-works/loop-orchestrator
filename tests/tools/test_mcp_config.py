@@ -83,3 +83,40 @@ def test_top_level_unknown_key_raises_validation_error(tmp_path) -> None:
     config_path.write_text(json.dumps({"servers": {}, "bogus": True}), encoding="utf-8")
     with pytest.raises(ValidationError):
         load_mcp_config(config_path)
+
+
+def test_bare_python_command_is_substituted_with_sys_executable(tmp_path) -> None:
+    """R7: a committed stanza's bare "python" must not fail to spawn on a
+    python3-only host — substituted at launch time, matching the
+    `coder_tools` built-in default."""
+    config_path = tmp_path / "loop_engine.mcp.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "servers": {
+                    "issue": {
+                        "command": "python",
+                        "args": ["-m", "loop_engine.mcp_servers.issue_io_server"],
+                    },
+                    "github": {
+                        "command": "python",
+                        "args": ["-m", "loop_engine.mcp_servers.github_server"],
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    servers = load_mcp_config(config_path)
+    assert servers["issue"].command == sys.executable
+    assert servers["github"].command == sys.executable
+
+
+def test_non_python_command_is_left_untouched(tmp_path) -> None:
+    config_path = tmp_path / "loop_engine.mcp.json"
+    config_path.write_text(
+        json.dumps({"servers": {"github": {"command": "github-server", "args": ["--stdio"]}}}),
+        encoding="utf-8",
+    )
+    servers = load_mcp_config(config_path)
+    assert servers["github"].command == "github-server"

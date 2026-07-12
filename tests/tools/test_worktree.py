@@ -106,6 +106,30 @@ def test_resume_reuse_enters_existing_worktree(repo):
         assert wt.resolve() == created.resolve()
 
 
+def test_resume_under_none_errors_when_paused_run_has_a_worktree(repo, monkeypatch):
+    """R10: the converse of `test_resume_reuse_errors_when_worktree_missing`
+    — a run paused under a worktree-isolated mode left a real worktree on
+    disk; resuming under `none` must not silently passthrough against the
+    wrong tree."""
+    create("run007")
+    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "none")
+
+    with pytest.raises(WorktreeError, match="isolation"):
+        with worktree_run("run007", reuse=True):
+            pass
+
+
+def test_resume_under_none_passthrough_when_no_worktree_exists(repo, monkeypatch):
+    """A run that was never worktree-isolated resumes fine under `none` —
+    the R10 guard only fires when a worktree actually exists."""
+    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "none")
+    origin = Path.cwd()
+
+    with worktree_run("run008", reuse=True) as wt:
+        assert wt is None
+        assert Path.cwd() == origin
+
+
 def test_create_rejects_traversal_run_id(repo):
     with pytest.raises(ValueError, match="run_id"):
         create("../../etc")

@@ -1,5 +1,5 @@
+import functools
 import json
-from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -20,6 +20,7 @@ from loop_engine.core.state import (
 from loop_engine.loops.default.loop import DEFAULT_LOOP, build_default_loop
 from loop_engine.runner import DEFAULT_BUDGET_USD
 from loop_engine.tools import issue_io
+from loop_engine.tools.issue_io import default_issue_filer, default_issue_reader
 from loop_engine.tools.llm.client import LLMClient
 from loop_engine.tools.worktree import prune_all, worktree_run
 
@@ -34,19 +35,6 @@ def _resolve_loop(loop_name: str) -> Loop:
     if loop_name == "default":
         return build_default_loop()
     return NAMED_LOOPS[loop_name]
-
-
-# The `resume --from-issue` read seam: `None` (the default) keeps the classic
-# `issue_io.read_issue` path — no new feature flag, no default flip. Tests
-# inject an MCP-backed reader (e.g. `mcp_read_issue` bound to a fake provider)
-# by monkeypatching this module global.
-_issue_reader: Callable[[int], dict] | None = None
-
-
-def _resolve_issue_reader() -> Callable[[int], dict]:
-    """The issue reader for `resume --from-issue`. Classic `issue_io.read_issue`
-    by default; an injected `_issue_reader` (test-only today) takes over."""
-    return _issue_reader or issue_io.read_issue
 
 
 _BUDGET_HELP = "Hard cap on cumulative LLM spend for the run, in USD."
@@ -113,10 +101,19 @@ def run(
         initial_state = _load_state(resume_from)
         start_index = _start_index_for(initial_state, selected_loop)
 
+        # Captured before worktree_run's chdir so a re-escalation deep inside
+        # the run still targets the repo this CLI was launched against (R8),
+        # not whatever cwd `gh`'s implicit resolution would see from inside
+        # the worktree.
+        launch_cwd = str(Path.cwd())
         llm_client = LLMClient(budget_usd=budget)
         with worktree_run(initial_state.run_id, reuse=True):
             final_state = run_graph_loop(
-                selected_loop, initial_state, llm_client, start_index=start_index
+                selected_loop,
+                initial_state,
+                llm_client,
+                start_index=start_index,
+                issue_filer=functools.partial(default_issue_filer, cwd=launch_cwd),
             )
     else:
         human_input = input.read_text() if input is not None else ""
@@ -137,7 +134,11 @@ def resume(
     """Resume a run paused on a GitHub issue, folding in the human's answers."""
     selected_loop = _resolve_loop(loop)
 
-    issue_data = _resolve_issue_reader()(from_issue)
+    # Captured before worktree_run's chdir — same rationale as `run`'s
+    # --resume-from branch above (R8).
+    launch_cwd = str(Path.cwd())
+
+    issue_data = default_issue_reader(from_issue)
     snapshot_path = snapshot or (
         Path(p) if (p := issue_io.parse_snapshot_path(issue_data)) else None
     )
@@ -153,7 +154,13 @@ def resume(
             f"(pending issue: {state.pending_issue})."
         )
 
-    answers = issue_io.read_issue_answers(from_issue, issue_data)
+    try:
+        answers = issue_io.parse_issue_answers(issue_data, from_issue)
+    except issue_io.IssueClosedWithoutAnswersError as exc:
+        # R5: a clean, informative abort instead of an uncaught traceback —
+        # this is the documented way a human aborts a paused run.
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
     if not answers:
         typer.echo(f"Issue #{from_issue} has no answers comment yet; nothing to resume.")
         raise typer.Exit(code=2)
@@ -200,6 +207,7 @@ def resume(
             llm_client,
             start_index=start_index,
             initial_findings=findings,
+            issue_filer=functools.partial(default_issue_filer, cwd=launch_cwd),
         )
     _report_outcome(final_state)
 

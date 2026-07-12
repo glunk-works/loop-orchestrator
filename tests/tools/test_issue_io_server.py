@@ -39,6 +39,7 @@ def test_create_issue_schema_has_expected_string_params() -> None:
     assert props["title"]["type"] == "string"
     assert props["body"]["type"] == "string"
     assert props["label"]["type"] == "string"
+    assert "repo" in props
     required = set(schema["input_schema"].get("required", []))
     assert required == {"title", "body", "label"}
 
@@ -48,6 +49,7 @@ def test_read_issue_schema_has_expected_int_param() -> None:
         schema = next(t for t in provider.tools if t["name"] == "read_issue")
     props = schema["input_schema"]["properties"]
     assert props["issue_number"]["type"] == "integer"
+    assert "repo" in props
 
 
 def test_issue_io_server_module_imports_no_keyring_or_subprocess() -> None:
@@ -68,13 +70,22 @@ def test_create_issue_verb_delegates_and_returns_issue_ref_json() -> None:
             number=42, url="https://github.com/acme/repo/issues/42"
         )
         result = issue_io_server.create_issue("t", "b", "l")
-    create_issue.assert_called_once_with("t", "b", "l")
+    create_issue.assert_called_once_with("t", "b", "l", repo=None)
     assert json.loads(result) == {"number": 42, "url": "https://github.com/acme/repo/issues/42"}
+
+
+def test_create_issue_verb_forwards_explicit_repo() -> None:
+    with patch.object(issue_io_server, "_create_issue") as create_issue:
+        create_issue.return_value = IssueRef(
+            number=42, url="https://github.com/acme/repo/issues/42"
+        )
+        issue_io_server.create_issue("t", "b", "l", repo="acme/repo")
+    create_issue.assert_called_once_with("t", "b", "l", repo="acme/repo")
 
 
 def test_read_issue_verb_delegates_and_returns_view_json() -> None:
     with patch.object(issue_io_server, "_read_issue") as read_issue:
         read_issue.return_value = {"state": "OPEN", "body": "b", "comments": []}
         result = issue_io_server.read_issue(42)
-    read_issue.assert_called_once_with(42)
+    read_issue.assert_called_once_with(42, repo=None)
     assert json.loads(result) == {"state": "OPEN", "body": "b", "comments": []}
