@@ -220,8 +220,10 @@ attribution quality, not a live hole.
 ### BL-7 — The PM stage has no channel to ask a human a question
 
 **Why:** the PM can *detect* a requirements problem and has no way to *raise* it. Found on
-the V3b host run (2026-07-12) and recorded as finding **R9** in
-`sprints/DEFERRED_VERIFICATION.md` — logged here because Task 9 deletes that file.
+the V3b host run (2026-07-12) as finding **R9**. It was originally recorded in
+`sprints/DEFERRED_VERIFICATION.md`; sprint 27's Task 9 retired that file's Phase-6
+sections and folded the V-run findings into `docs/migration_roadmap.md`'s Phase 6 row,
+which is now the record of point for R9.
 
 Given a deliberately unsatisfiable requirements doc (entries both immutable and erasable;
 storage both memory-only and durable across hardware failure), the PM **correctly
@@ -295,3 +297,67 @@ lock can never safely come out again until this lands.
 `tools/state_io/writer.py::state_root`, `trigger/dispatch.py::InProcessDispatcher`,
 `runner.py::run_in_tree` (the other CWD-dependent entrypoint, used by
 `flows/maintenance`).
+
+
+### BL-9 — Retire the implicit-CWD destination from the issue path's remaining surfaces
+
+**Why:** the five non-blocking notes from the Opus HITL review of PR #34 (2026-07-12,
+sprint `27_phase6_flip_block`, approved). Task 8/Task 10 fixed R8 — escalation issues
+for managed repos were being filed on loop-engine, because `gh` derived the destination
+from an ambient CWD that, inside a run's worktree, resolved to loop-engine itself. The
+*write* side is now explicit (`default_issue_filer` resolves `worktree.origin_cwd()` and
+refuses to file without a named destination — no `repo=None` fallback anywhere). These
+are the surfaces that fix did not reach.
+
+**Items, highest value first:**
+
+1. **`resume --from-issue` still defaults to a CWD-derived destination** and merely
+   *echoes* what it guessed (`cli.py`, the `read_repo = repo or resolve_repo_slug(Path.cwd())`
+   branch). This is the same class of defect the sprint exists to kill, one surface over:
+   an implicit CWD-derived destination that silently does the wrong thing. The review
+   established there is genuinely **no oracle** here — given only an issue number and a
+   CWD, two same-numbered issues in two repos are indistinguishable, because each is
+   internally consistent — so the only real fix is to *refuse to guess*: require an
+   explicit `--repo` (or `--snapshot`, which is already authoritative). An echo is a
+   defense only when a human is reading, and this CLI runs in scripts.
+   `test_cli_resume_from_issue_silently_resumes_a_same_numbered_wrong_repo_issue`
+   already documents the hole honestly — it asserts exit 0 and the wrong run resumed.
+
+2. **`IssueDestinationUnresolvedError` escapes as an uncaught traceback → exit 1**, so
+   "could not name a destination for the escalation issue" is indistinguishable from a
+   crash. Sprint 27 just added exit code **4** on the argument that a distinct outcome
+   deserves a distinct code; this is exactly such an outcome. (The run's work is *not*
+   lost — `_pause_for_issue` persists the `AWAITING_ISSUE` snapshot before filing, and
+   `_start_index_for` resumes a paused run at its paused stage, so `run --resume-from`
+   recovers it. Only the exit contract and the traceback are wrong.)
+
+3. **`resolve_repo_slug` catches only `CalledProcessError`** (`tools/repo_io/github.py`).
+   `FileNotFoundError` (no `gh` on PATH) and `subprocess.TimeoutExpired` still cross the
+   module boundary raw — the precise leak `RepoNotResolvableError` was introduced to
+   stop, and the reason `issue_io` can catch it without importing `subprocess`.
+
+4. **`repo_from_issue_url` raises a bare `ValueError`** (`tools/issue_io/github.py`) on a
+   non-canonical `pending_issue.url`, surfacing from `cli.resume` as a traceback rather
+   than a `typer.BadParameter`.
+
+5. **The trigger surface's escalations land on loop-engine, not the requesting repo.**
+   `runner.run_new` opens `worktree_run` in the loop-engine checkout, so `origin_cwd()`
+   resolves there, and `RunRequest.repo_full_name` — the managed repo whose webhook
+   started the run — never reaches the filer. **Not a regression** (the old implicit path
+   landed in the same place) and arguably correct, since `run_new` does not clone the
+   managed repo, so loop-engine genuinely *is* the tree it operates on. But `CLAUDE.md`
+   now claims **every** entrypoint (`cli`, `runner.run_new`, `run_in_tree`, the trigger
+   surface) "is correct without threading a cwd", and for the trigger that holds only in
+   that narrow sense. Either qualify the claim or close the gap — do not leave the docs
+   stronger than the code.
+
+**Relationship to [BL-8]:** BL-8 is the structural fix (stop using process CWD as an
+isolation mechanism at all); items 1 and 5 here are instances of the same root cause and
+would largely dissolve if BL-8 lands first. Items 2–4 are independent error-handling
+cleanups and can go any time.
+
+**Notes / where to look:** `src/loop_engine/cli.py` (`resume`),
+`src/loop_engine/tools/issue_io/mcp_client.py`, `src/loop_engine/tools/issue_io/github.py`,
+`src/loop_engine/tools/repo_io/github.py`, `src/loop_engine/trigger/dispatch.py`,
+`CLAUDE.md` (the `tools/issue_io` boundary bullet). The full review reasoning is on
+PR #34 (`gh pr view 34 --comments`).

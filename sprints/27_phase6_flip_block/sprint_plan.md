@@ -37,13 +37,14 @@
 
 **STATUS (2026-07-12):** V3 is **PASS (qualified)**. **Task 8 landed** (PR #32) and its
 post-merge review produced findings **R8/R10** plus a wrong-repo escalation leak that #32's
-fix only half-closed. **PR #34** (`sprint/27-task8-followup`) carries that repair and is
-**open with changes requested** — the Opus/Architect HITL review of 2026-07-12 found that two
-of its three mechanisms do not hold (see **Task 10**, which lands on #34's own branch: this is
-ordinary review-fix flow, not a new sprint). The review-gate workflow (`hitl-review.yml`, PRs
-#35/#36) is now live and enforces a fresh-session Architect review on any PR touching `src/`.
-**Task 9 stays blocked on Task 10** — do not delete `DEFERRED_VERIFICATION.md` while the issue
-path still has an open correctness defect.
+fix only half-closed. **PR #34** (`sprint/27-task8-followup`) carried that repair. Its
+2026-07-12 Opus/Architect HITL review found two of its three mechanisms did not hold; the
+fixes landed as **Task 10** on #34's own branch, were **re-reviewed in a fresh Opus session
+and approved (2026-07-12)**, and **PR #34 is merged (`796610a`)**. The review-gate workflow
+(`hitl-review.yml`, PRs #35/#36) is live and enforces a fresh-session Architect review on any
+PR touching `src/`. **Task 9 is now unblocked and DONE** — but see its entry: its premise
+("delete `DEFERRED_VERIFICATION.md`") turned out **false**, exactly as Task 5's did, and it
+was executed as a *prune* instead.
 
 **STATUS (2026-07-11):** Tasks 0, 1, 2, 3, 4, 6, 7 are **DONE** — all four migration
 flags and their classic paths are deleted, `build_default_loop()` is one unbranched
@@ -155,9 +156,15 @@ been run.
   - **Target Files:** `src/loop_engine/cli.py`, `src/loop_engine/core/engine.py`, `src/loop_engine/tools/issue_io/github.py`, `src/loop_engine/tools/issue_io/mcp_client.py`, `src/loop_engine/tools/worktree/manager.py`, `src/loop_engine/tools/state_io/writer.py`, `src/loop_engine/trigger/dispatch.py`, `CLAUDE.md`, `docs/backlog.md` (add BL-8), `tests/test_cli.py`, `tests/core/test_engine.py`, `tests/tools/test_worktree.py`, `tests/trigger/`
   - **Acceptance Criteria:** F1–F7 all land. `resume --snapshot` derives repo+number from `pending_issue.url` and never consults CWD; `resume --from-issue` echoes the resolved repo before acting; the rewritten wrong-repo test constructs the *real* scenario. `_ORIGIN_CWD` and `_STATE_ROOT` are `ContextVar`s restored by token; `InProcessDispatcher` serializes runs. A raising `issue_filer` leaves a **loadable `AWAITING_ISSUE` snapshot** (new test). No `repo=None` fallback exists anywhere in the filer. `core/engine` no longer imports the MCP stack at import time and the CLAUDE.md boundary bullet is reverted accordingly. BL-8 filed. Suite green; lint/format/audit clean; `sbom.json` unchanged. **Fresh-session Opus HITL review required** (the `hitl-review.yml` gate enforces it — the session that writes this diff cannot review it).
 
-- **Task 9: Decommission `DEFERRED_VERIFICATION.md` + final handoff**
-  - **Description:** Once V1–V3 (and the other still-open §-checks this host session covers) are recorded PASSED and any findings fixed, **delete `sprints/DEFERRED_VERIFICATION.md`** (its own closing line instructs this). Final roadmap pass: mark Phase 6 Done, the migration collapsed to one path. `/handoff` to Opus for the block's HITL review (per-deletion review may have happened along the way; this is the closing review + archive prep).
-  - **Target Files:** `sprints/DEFERRED_VERIFICATION.md` (delete), `docs/migration_roadmap.md`, `.ai/next-steps.md`
-  - **Acceptance Criteria:** `DEFERRED_VERIFICATION.md` is gone; the roadmap records Phase 6 complete (flags collapsed, `State` at v4, one path); full suite green; lint/format/audit clean; `sbom.json` unchanged; Opus HITL review + `/archive-sprint` prepared.
+- **Task 9: Retire `DEFERRED_VERIFICATION.md`'s spent sections + close Phase 6** — **DONE (2026-07-12)**, as its own **docs-only PR** cut fresh from `feat/mcp-langgraph-migration` after #34 merged.
+
+  - **⚠ The original premise was FALSE — recorded here rather than quietly edited away.** This task was specced as *"delete `sprints/DEFERRED_VERIFICATION.md`; its own closing line instructs this."* The closing line's condition is *"once the checks have been performed"* — **they had not been.** Of the file's nine original sections, only §3/§4/§9 were discharged (superseded by V2/V1/V3) and §2 was made moot by Phase 6 deleting the classic agentic Coder. **Five checks — §1 (caching + USD budget smoke), §5 (`github_server` live launch), §6 (trigger surface live webhook), §7 (maintenance flow live clone→PR), §8 (bootstrap flow live create→push) — had never been run at all**, and `docs/backlog.md`'s BL-3 actively depends on §1. Deleting the file would have discarded the project's only record that these things were never verified against a real host — precisely the kind of unproven-but-forgotten surface Phase 6 exists to eliminate. This is the same failure mode as **Task 5/FD3**: a subtractive task whose premise dissolved on inspection. **Do not re-delete this file.**
+
+  - **What was actually done:** the file was **pruned, not deleted** (1007 → 210 lines) and retitled — it is no longer a "sprints 09–14" artifact but the project's **standing register of unmet proof obligations**, which *outlives the migration*. Retired from it: §2 (moot), §3/§4/§9 (superseded), the V1/V2/V3 results, and the five resolved findings — all folded into `docs/migration_roadmap.md`'s Phase 6 row, now the record of point. **Section numbers were deliberately NOT renumbered** (BL-3 cites §1; archived sprint plans cite §3/§6/§9 — renumbering would silently redirect every one of those). The roadmap's Phase 6 row is 🟩 Done and its NEXT ACTION advanced to the FD3 `artifacts`-strip sprint, stating explicitly that Task 5 is **not** part of Phase 6's completion.
+
+  - **Why its own docs-only PR (do not fold this back onto a `src/`-touching branch):** `hitl-review.yml` binds a review to an exact head SHA. Any commit pushed to a branch whose PR touches `src/` moves the head and re-fails `architect-review`, demanding another full fresh-session Opus review — for a docs edit. A PR confined to `sprints/`, `docs/`, `.ai/` hits the workflow's docs-only exemption (`gh api .../files | grep -q '^src/'`) and needs no review. That exemption only holds if the PR contains **zero** `src/` changes.
+
+  - **Target Files:** `sprints/DEFERRED_VERIFICATION.md` (**prune**, not delete), `docs/migration_roadmap.md`, `docs/backlog.md` (BL-7's stale "Task 9 deletes that file" note corrected; **BL-9** filed for PR #34's five non-blocking review notes), `.ai/next-steps.md`, this plan.
+  - **Acceptance Criteria (met):** the five never-run checks survive with their original numbers; Phase 6 is 🟩 Done in the roadmap with V1–V3's results folded in; the NEXT ACTION points at FD3; Task 5's deferral is stated so "Phase 6 done" cannot be misread as "the strip shipped"; the PR changes **no file under `src/`** and `architect-review` skips accordingly; suite green, lint/format/audit clean, `sbom.json` unchanged.
 
 **Model routing note:** the **verification runs (V1–V3)** are human-operated on the host (real budget + GitHub side effects) — an Opus/Architect judgement call on PASS/FAIL, not a Sonnet task. The **deletion tasks (1–9)** are mechanical once verification passes and are **Sonnet/Coder** work (execute the defined deletion, run the green gate), each landing as its own reviewable commit with an **Opus HITL review** gate per deletion or coherent group (per the phase Discipline). Do not begin any deletion before its gating V-run is recorded PASSED.
