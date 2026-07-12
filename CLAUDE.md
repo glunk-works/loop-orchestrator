@@ -46,6 +46,13 @@ Opus HITL review on it with `gh pr review --comment` (**never `--approve`** — 
 is the approval, and `gh` authenticates as the PR author anyway). **Never merge, and never
 force-push a pushed branch.** Full protocol in `.ai/context/workflow.md`.
 
+> **The Opus review is a CI gate, not a courtesy.** Any PR touching `src/` fails the
+> `architect-review` check until a review headed `**Opus/Architect HITL review (automated)**`
+> is posted against its **current head commit** (`.github/workflows/hitl-review.yml`). It is a
+> gate because the convention failed: sprint 27's Task 8 shipped green with an R8 fix that
+> covered `cli.py` and left every fresh-run path still filing issues on the wrong repo — the
+> review that would have caught it was skipped and nothing noticed. Docs-only PRs are exempt.
+
 ## Commands
 
 ```bash
@@ -70,7 +77,7 @@ hatch run loop-engine cost-summary --run-id <run_id>
 Exit codes from `run`/`resume`: 0 completed, 2 awaiting a GitHub issue answer, 3 budget exceeded.
 (The `loop-engine resume` CLI subcommand is unrelated to the `/resume` dev-workflow skill.)
 
-CI (`.github/workflows/ci.yml`) runs, in order: `lint` → `format-check` → `test` → `secrets-scan` (gitleaks) → `sbom`. All must pass; see `sprints/GLOBAL_DEFINITION_OF_DONE.md` for the full merge bar. The API key is **never** a CLI flag or env var — it comes only from the OS keyring (setup + fallback detail in `.ai/context/modules.md`).
+CI (`.github/workflows/ci.yml`) runs, in order: `pr-title` → `lint` → `format-check` → `test` → `secrets-scan` (gitleaks) / `dependency-audit` → `sbom` (the heavy chain gates on `pr-title`, so a bad title fails fast instead of burning the suite). A second workflow, `hitl-review.yml`, enforces the Architect review on any PR touching `src/`. All must pass; see `sprints/GLOBAL_DEFINITION_OF_DONE.md` for the full merge bar. The API key is **never** a CLI flag or env var — it comes only from the OS keyring (setup + fallback detail in `.ai/context/modules.md`).
 
 ## Enforced module boundaries
 

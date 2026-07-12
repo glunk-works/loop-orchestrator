@@ -83,6 +83,23 @@ without it. Claude commits and pushes freely on a sprint branch, opens the PR, a
 
 ### The Architect's HITL review is a posted GitHub review, not just prose
 
+**It is a CI gate** (`.github/workflows/hitl-review.yml`): any PR touching `src/` fails
+the `architect-review` check until a review carrying the header below is posted **against
+that PR's current head commit**. Docs / sprint-plan / `.ai/`-cursor PRs are exempt (no
+runtime behavior to get wrong). A review of an *earlier* commit does not count — push
+first, then review the final diff.
+
+This is a check rather than a convention because the convention failed. Sprint 27's Task 8
+shipped as a fully green PR (#32) whose R8 fix covered `cli.py` and silently left every
+fresh-run path — `runner.run_new`, the trigger surface, `flows/maintenance` — still filing
+escalation issues against the wrong repo. The suite passed, CI passed, and the review that
+would have caught it was simply never run. It was caught only by a review done *after* the
+merge (findings in PR #34). A rule that lives only in prose is a rule that gets skipped.
+
+What the gate can and cannot do: it verifies a review **was posted** against this diff. It
+cannot verify the review was any *good*. It turns a silent omission into a deliberate act —
+which is exactly the failure that occurred.
+
 Two distinct artifacts — do not conflate them:
 
 - **The PR *description*** says what the change is and why (scope, links to the
