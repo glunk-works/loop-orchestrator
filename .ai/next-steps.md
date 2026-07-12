@@ -5,61 +5,71 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Phase 6 — sprint `27_phase6_flip_block`: Task 8 landed (PR #32); its follow-up PR #34 is
-OPEN with CHANGES REQUESTED.** Task 10 (the review fixes) is the live task. Task 9 — deleting
-`DEFERRED_VERIFICATION.md` and closing Phase 6 — is **blocked on it**: the issue path is not
-proven while it carries an open correctness defect.
+**Phase 6 — sprint `27_phase6_flip_block`: Task 10 (the F1–F7 review fixes) has landed**
+on PR #34, head commit `654d14a`. It has **not yet been re-reviewed** — the prior
+CHANGES REQUESTED review was against the old head (`be50d61`) and is invalidated by the
+push. Task 9 (delete `DEFERRED_VERIFICATION.md`, close Phase 6) stays **blocked** until
+this review passes.
 
-## Just done (Opus/Architect, 2026-07-12)
-- **Resolved PR #34's merge conflict** against the updated base (#35/#36 had landed). Only
-  `tests/test_ci_config.py` conflicted — base and branch each appended a test at the same
-  point; both kept. 528 green. *(The merge commit also swept in the untracked `scratch/` tree
-  via `git add -A`; removed again in `fc3e9db`, and `scratch/` is now gitignored — `.gitignore`
-  had only `.scratch/`. No credential material was involved.)*
-- **Posted the fresh-session Opus/Architect HITL review of #34** — the first PR through the new
-  `hitl-review.yml` gate. `architect-review` is green.
-- **Verdict: changes requested.** #34's *altitude* is right — the escalation destination
-  belongs inside `default_issue_filer`, not threaded from each entrypoint — but two of its
-  three mechanisms don't hold, and it made a run-losing crash path reachable.
-- **Specced the fixes as Task 10** (`1ad2dcd`), findings **F1–F7**, on the same branch.
+## Just done (Sonnet/Coder, 2026-07-12)
+Implemented all seven Task 10 findings on `sprint/27-task8-followup`, commit `654d14a`:
+- **F1/F2 — resume guard.** `cli.py`'s `resume --snapshot` now derives repo *and* issue
+  number from the snapshot's own `pending_issue.url` via a new
+  `issue_io.repo_from_issue_url` (never CWD). `resume --from-issue` alone resolves its
+  repo explicitly and **echoes it** before doing any work — the echo is the actual
+  defense; no downstream comparison can detect a human resuming from the wrong
+  checkout. Rewrote `test_cli_resume_rejects_a_same_numbered_issue_from_the_wrong_repo`
+  to construct the *real* scenario (a genuine, unrelated same-numbered issue) and assert
+  what actually happens — it resumes, silently, with only the echo as the tell.
+- **F3/F6 — concurrency.** `tools/state_io/writer.py`'s `_STATE_ROOT` and
+  `tools/worktree/manager.py`'s `_ORIGIN_CWD` are now `contextvars.ContextVar`s, set/
+  reset by token (closes F6's non-re-entrancy in the same change — nesting no longer
+  clobbers to `None`). `trigger/dispatch.py`'s `InProcessDispatcher` gained a lock
+  serializing actual loop execution, since `os.chdir` itself stays process-global
+  regardless. Filed **BL-8** (`docs/backlog.md`) for the real fix.
+- **F4 — crash-losing pause path.** `core/engine.py::_pause_for_issue` now persists the
+  `AWAITING_ISSUE` snapshot *before* filing. A new `RepoNotResolvableError`
+  (`tools/repo_io/github.py`) lets `tools/issue_io/mcp_client.py` raise a typed
+  `IssueDestinationUnresolvedError` on an unresolvable destination **without** itself
+  importing `subprocess` (kept `resolve_repo_slug`'s failure mode from leaking a raw
+  `CalledProcessError` across the module boundary — and incidentally kept
+  `test_subprocess_surfaces.py` green). No `repo=None` fallback anywhere.
+- **F5 — soft-fail guard.** A missing `url` on a read issue now raises instead of
+  skipping the integrity check.
+- **F7 — import-time coupling.** `mcp_client.py`'s `tools/mcp`/`tools/repo_io`/
+  `tools/worktree` imports moved into `default_issue_filer`/`default_issue_reader`
+  (function-scoped). `CLAUDE.md`'s `core/` boundary bullet reverted to its pre-#34
+  wording: `core/engine` no longer pulls the MCP client stack in at import time.
 
-### The three that matter
-- **F1/F2 — the wrong-repo resume guard is a tautology.** It compares the issue read against a
-  snapshot parsed *out of that same issue*, so both sides agree by construction. The real
-  hazard (reading loop-engine's own #17 instead of `acme/managed#17`) sails straight through
-  and **silently resumes the wrong run**. Its test passes only by stubbing an impossible
-  pairing. **The reframe that drives the fix: there is no inconsistent state to detect** — the
-  resumed run genuinely *is* paused on the issue genuinely read; it just isn't the one the
-  human meant. Fix the *input* ambiguity; don't strengthen the comparison.
-- **F3/F6 — `_ORIGIN_CWD` is a process-global and the trigger runs loops concurrently.**
-  `InProcessDispatcher` dedupes only on `(repo, issue)`, so concurrent runs clobber each
-  other's origin — **the R8 leak returns** in the one surface built for many runs.
-  `ContextVar` + a dispatcher lock. (`os.chdir` stays process-global — that's **BL-8**.)
-- **F4 — a failed escalation destroys the run.** `_pause_for_issue` files the issue *before*
-  `_finalize` persists, so a raise in the filer loses everything. #34 made it reachable via an
-  unconditional `gh repo view`. Persist first, file second.
+Suite green (538 passed), `lint`/`format`/`audit` clean, `sbom.json` unchanged (no dep
+changes). Pushed to `sprint/27-task8-followup`.
 
 ## Next
-1. **Task 10 — implement F1–F7** on the **existing** `sprint/27-task8-followup` branch (not a
-   new one: #34 is open, this is review-fix flow). Order: **F4 → F1/F2 → F3/F6 → F5/F7**.
-   Full spec + fix designs are in the sprint plan; the failure traces are in the PR #34 review
-   comment (`gh pr view 34 --comments`).
-2. **A fresh Opus session re-reviews** — pushing to the branch invalidates the current review,
-   and the gate rejects a review from the session that wrote the diff.
-3. Then **Task 9** (delete `DEFERRED_VERIFICATION.md`, close Phase 6), then the deferred
-   `State.artifacts` strip as its own sprint (FD3), then `/archive-sprint`.
+1. **A fresh Opus session reviews PR #34 at head `654d14a`** and posts via
+   `gh pr review 34 --comment` with the required header + fresh-session attestation
+   (`.github/workflows/hitl-review.yml`). Cross-check each F1–F7 fix against the prior
+   review's reasoning/failure traces (`gh pr view 34 --comments`), not just the sprint
+   plan's fix designs.
+2. **If approved:** Task 9 (delete `sprints/DEFERRED_VERIFICATION.md`, mark Phase 6 done
+   in the roadmap) on the same branch, then the deferred `State.artifacts` strip as its
+   own sprint (FD3), then `/archive-sprint`.
+3. **If changes are requested:** spec the new findings as a follow-up task the same way
+   Task 10 was specced, and hand back to Sonnet/Coder.
 
-**Model: Sonnet/Coder** — the spec is fully determined. Opus returns only for the review.
+**Model: Opus/Architect** for the review; Sonnet/Coder only returns if it comes back
+with changes requested.
 
 ## HITL gate
-**PR #34: changes requested.** It must not merge until Task 10 lands and a **fresh** Opus
-session re-reviews against the new head SHA. The owner's merge is the approval; Claude never
-merges or force-pushes.
+**PR #34, head `654d14a`: awaiting a fresh-session review.** Must not merge until that
+review passes (or its findings are fixed and re-reviewed). The owner's merge is the
+approval; Claude never merges or force-pushes.
 
 ## Pointers
-- `sprints/27_phase6_flip_block/sprint_plan.md` — **Task 10** is live (F1–F7 + fix designs).
-  Tasks 0–4/6/7/8 done, 5 deferred (FD3), 9 blocked on 10.
-- PR **#34**'s review comment — the reasoning and failure traces behind F1–F7.
+- `sprints/27_phase6_flip_block/sprint_plan.md` — Task 10 (F1–F7) now DONE. Tasks
+  0–4/6/7/8/10 done, 5 deferred (FD3), 9 blocked on this review.
+- PR **#34**'s prior review comment — the F1–F7 reasoning and failure traces
+  (`gh pr view 34 --comments`); the new review should verify the fixes against it.
+- `docs/backlog.md` — **BL-8**, filed by Task 10.
 - `docs/migration_roadmap.md` — decisions log (FD1/FD2/FD3), NEXT ACTION.
 - `.ai/context/workflow.md` — PR-gated integration + the fresh-session review rule.
 - `.github/workflows/hitl-review.yml` — the gate itself (#35/#36).
@@ -72,9 +82,7 @@ merges or force-pushes.
   worth trimming while you're there).
 
 ## Working tree
-- Work continues on **`sprint/27-task8-followup`** (at `1ad2dcd`), which *is* PR #34. Sprint
-  branches squash-merge, so the merge commit + scratch-removal commit in its history vanish on
-  merge; only the tip tree ships.
-- `scratch/` is untracked **and now gitignored**. It stays out of all commits.
-- `.ai/state.json` is git-ignored (local mirror); **`.ai/next-steps.md` is tracked** and lands
-  via a PR like the previous cursor resyncs (#27, #29, #31).
+- Work continues on **`sprint/27-task8-followup`** (at `654d14a`), which *is* PR #34.
+  Sprint branches squash-merge, so only the tip tree ships.
+- `.ai/state.json` is git-ignored (local mirror); **`.ai/next-steps.md` is tracked** and
+  lands via a PR like the previous cursor resyncs (#27, #29, #31).
