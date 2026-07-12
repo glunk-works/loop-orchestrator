@@ -9,7 +9,7 @@ from loop_engine.core.state import (
 )
 
 VALID_PAYLOAD = {
-    "schema_version": 3,
+    "schema_version": 4,
     "run_id": "run-001",
     "status": "running",
     "questions": [],
@@ -26,7 +26,6 @@ VALID_PAYLOAD = {
         }
     ],
     "artifacts": {"spec": "docs/project_spec.json"},
-    "artifact_refs": {},
 }
 
 
@@ -54,6 +53,14 @@ def test_state_rejects_negative_tokens_used() -> None:
 
 def test_state_rejects_unrecognized_top_level_field() -> None:
     payload = {**VALID_PAYLOAD, "api_key": "sk-should-not-exist"}
+    with pytest.raises(ValidationError):
+        State.model_validate(payload)
+
+
+def test_state_rejects_retired_artifact_refs_field() -> None:
+    # A v3 payload's artifact_refs must go through migrate_state_payload, not
+    # straight into State — extra="forbid" rejects it unmigrated.
+    payload = {**VALID_PAYLOAD, "artifact_refs": {}}
     with pytest.raises(ValidationError):
         State.model_validate(payload)
 
@@ -137,37 +144,36 @@ def test_migrate_v1_payload_fills_v2_defaults() -> None:
     assert state.pending_issue is None
 
 
-def test_migrate_v2_payload_bumps_to_v3_and_defaults_refs() -> None:
-    v2_payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "artifact_refs"}
+def test_migrate_v2_payload_bumps_to_current() -> None:
+    v2_payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "schema_version"}
     v2_payload["schema_version"] = 2
     state = State.model_validate(migrate_state_payload(v2_payload))
     assert state.schema_version == CURRENT_SCHEMA_VERSION
-    assert state.artifact_refs == {}
-    # Inline bodies carry forward untouched for the pre-LangGraph run_loop.
+    # Inline bodies carry forward untouched.
     assert state.artifacts == {"spec": "docs/project_spec.json"}
 
 
-def test_v2_snapshot_without_artifact_refs_still_validates() -> None:
-    # A defaulted field must not force a re-mint of old snapshots.
-    payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "artifact_refs"}
-    state = State.model_validate(payload)
-    assert state.artifact_refs == {}
+def test_migrate_v3_payload_pops_populated_artifact_refs() -> None:
+    # FD4 — the sharp edge. A naive pop-less migration would pass an empty
+    # {} fixture; this one carries a REAL ref entry, so a missed pop surfaces
+    # as a ValidationError under extra="forbid".
+    v3_payload = {
+        **VALID_PAYLOAD,
+        "schema_version": 3,
+        "artifact_refs": {
+            "spec": {"path": "docs/artifacts/run-001/spec", "digest": "abc123", "size_bytes": 42}
+        },
+    }
+    migrated = migrate_state_payload(v3_payload)
+    assert "artifact_refs" not in migrated
+
+    state = State.model_validate(migrated)
+    assert state.schema_version == CURRENT_SCHEMA_VERSION
+    # Every other field, including the inline artifacts bodies, carries forward.
+    assert state.artifacts == {"spec": "docs/project_spec.json"}
+    assert state.run_id == "run-001"
 
 
 def test_migrate_unknown_version_raises() -> None:
     with pytest.raises(ValueError, match="Unsupported"):
         migrate_state_payload({"schema_version": 99})
-
-
-def test_artifact_ref_rejects_negative_size() -> None:
-    from loop_engine.core.state import ArtifactRef
-
-    with pytest.raises(ValidationError):
-        ArtifactRef(path="docs/x", digest="abc", size_bytes=-1)
-
-
-def test_artifact_ref_forbids_extra_fields() -> None:
-    from loop_engine.core.state import ArtifactRef
-
-    with pytest.raises(ValidationError):
-        ArtifactRef(path="docs/x", digest="abc", size_bytes=1, bogus="y")

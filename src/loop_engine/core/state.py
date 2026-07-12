@@ -1,15 +1,9 @@
-import hashlib
 from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CURRENT_SCHEMA_VERSION = 3
-
-
-def artifact_digest(body: str) -> str:
-    """Stable content digest for an artifact body (sha256 hex)."""
-    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+CURRENT_SCHEMA_VERSION = 4
 
 
 def default_artifact_path(run_id: str, key: str) -> str:
@@ -63,18 +57,6 @@ class IssueRef(BaseModel):
     url: str
 
 
-class ArtifactRef(BaseModel):
-    """A pointer to an artifact body that lives on disk rather than inline in
-    State. The routing state carries the path + digest, not the full text —
-    the substrate the LangGraph state (Phase 1d) is stripped down to."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    path: str
-    digest: str
-    size_bytes: int = Field(ge=0)
-
-
 class State(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -88,31 +70,32 @@ class State(BaseModel):
     # cannot cycle unboundedly.
     counters: dict[str, int] = Field(default_factory=dict)
     stage_history: list[StageRecord]
-    # Inline artifact bodies (schema v2 and earlier). Retained during the
-    # migration so the pre-LangGraph run_loop and its tests keep working; the
-    # bodies are ALSO mirrored to disk and pointed at by artifact_refs. The
-    # inline bodies are dropped once the LangGraph engine (Phase 1d) is the
-    # only reader.
+    # Inline artifact bodies — the single source of truth for artifact
+    # content. Fed directly into the prompt-cache prefix (declarative/node.py),
+    # so it is never externalized to disk on the read side; `artifact_store`
+    # publishes it to `docs/artifacts/<run_id>/` as a side effect, not a
+    # migration.
     artifacts: dict[str, str]
-    # Disk pointers (path + digest) for each artifact body. Defaulted so v2
-    # snapshots validate unchanged; populated by tools/artifact_store.
-    artifact_refs: dict[str, ArtifactRef] = Field(default_factory=dict)
+
+
+_RETIRED_V3_KEY = "artifact_refs"
 
 
 def migrate_state_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Upgrade a persisted snapshot payload to CURRENT_SCHEMA_VERSION.
 
-    v1 predates status/questions/pending_issue/counters; v2 predates
-    artifact_refs. Every field added since is defaulted, so migration is a
-    version bump. Raises ValueError for versions this build can't read.
+    v1 predates status/questions/pending_issue/counters; v2 predates a
+    since-retired disk-ref field carried by v3 only; under `extra="forbid"`
+    that field must be popped, not merely versioned past, or a v3 payload
+    fails validation. Raises ValueError for versions this build can't read.
     """
     version = payload.get("schema_version")
     if version == CURRENT_SCHEMA_VERSION:
         return payload
-    # v1 predates status/questions/pending_issue/counters; v2 predates
-    # artifact_refs. Every field added since has a default, so upgrading is a
-    # version bump — the inline `artifacts` bodies carry forward untouched and
-    # are re-mirrored to disk (and pointed at by artifact_refs) on the next run.
-    if version in (1, 2):
-        return {**payload, "schema_version": CURRENT_SCHEMA_VERSION}
+    if version in (1, 2, 3):
+        # An unconditional pop covers all three prior versions (v1/v2 never
+        # had the key) — the inline `artifacts` bodies carry forward untouched.
+        upgraded = {**payload, "schema_version": CURRENT_SCHEMA_VERSION}
+        upgraded.pop(_RETIRED_V3_KEY, None)
+        return upgraded
     raise ValueError(f"Unsupported State schema_version: {version!r}")

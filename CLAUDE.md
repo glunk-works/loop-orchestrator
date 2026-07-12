@@ -20,9 +20,10 @@ loop-engine runs a named sequence of decoupled AI "persona" stages against a sin
 > engine/tools/personas/Coder are recoverable in history at the **`pre-phase6-classic`**
 > tag. **`LOOP_ENGINE_ISOLATION` survives** — it is genuine runtime config
 > (`none` for local dev, `container` for the factory host), never old-vs-new.
-> Still open in Phase 6: the `State.artifacts` strip (deferred — see the roadmap;
-> it is a refactor, not a deletion) and the issue-path flip onto MCP (gated on the
-> V3 host verification).
+> The issue-path flip onto MCP has landed (Phase 6 Task 8/10). The `State.artifacts`
+> strip is also resolved — sprint 32 inverted it (roadmap FD1): `artifact_refs` (never
+> read back off disk) was deleted; `State.artifacts` stays as the permanent source of
+> truth and the prompt-cache prefix.
 
 ## Working here: personas & model routing
 
