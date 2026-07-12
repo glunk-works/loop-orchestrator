@@ -5,77 +5,78 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 copy them. Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**The migration is fully closed** (Phases 1–6 complete; sprint 32 discharged the last
-dangling task). No roadmap phase is open, and nothing here is migration work.
+**The migration is fully closed** (Phases 1–6). Nothing here is migration work.
 
-**Current unit: sprint `33_ci_title_starvation` (BL-10) — status `planning`.**
-No `sprint_plan.md` exists yet. **Writing it is the next action.** Opus/Architect.
+**Current unit: sprint `33_ci_title_starvation` (BL-10) — status `implementing`.**
+The plan is **written and HITL-approved**. **Sonnet/Coder** implements Tasks 1–4.
+Work on the **existing** branch `sprint/33-ci-title-starvation` — **don't cut a new one**
+(it's based on `docs/handoff-sprint-33`, so the orphaned handoff commit `da1c6eb` rides
+along in this PR instead of needing one of its own).
 
-## Just done (Opus/Architect review session, 2026-07-12)
-- **Sprint 32 (`artifact_refs` strip) merged and approved** — PR #39, squash `3db3237`.
-  HITL review posted in a fresh session; 8 findings, none blocking. Both of the plan's
-  sharp questions held (the 8 reader modules came out **byte-identical**; a *populated*
-  `artifact_refs` v3 snapshot really does still load across the 3→4 bump).
-- **Found BL-10 and logged it** — PR #40, `46458af`.
-- **Archived sprint 32** — PR #41, `6a9c77a`. Roadmap reconciled; all three sprint
-  branches squash-merged and pruned.
+## Just done (Opus/Architect planning session, 2026-07-12)
+- **Planned sprint 33** — [`sprints/33_ci_title_starvation/sprint_plan.md`](../sprints/33_ci_title_starvation/sprint_plan.md), commit `4500d68`. Five locked decisions, five tasks. **Owner read and approved it.**
+- **Chose the fix shape: split the workflows** (not BL-10's minimal option). `ci.yml` makes one
+  workflow serve a cheap prose check that *must* re-run on `edited` and a heavy code chain that
+  *must not*; every guard in the file is scar tissue from that conflict. Two files → all three
+  guards delete themselves.
+- **Found a second starvation path BL-10 missed (FD2)** — `concurrency`'s group is identical for
+  `opened` and `edited`, so a title edit *mid-run* cancels the suite and the replacement run skips
+  it. Fires even on PRs whose title was **never invalid**. BL-10's preferred fix wouldn't close it.
+- **Found that a green test asserts the defect (FD3)** — `test_lint_job_gates_on_pr_title_to_fail_fast`.
+- **Scoped the PR to touch no `src/`** so `hitl-review.yml`'s `^src/` filter exempts it and it lands
+  fast — every open PR is exposed to BL-10 until it does.
 
-## Next — sprint 33 planning pass (BL-10)
-**Read [`docs/backlog.md`](../docs/backlog.md) BL-10 first.** It is the sprint's whole
-subject and already carries the diagnosis, the recovery, and three candidate fixes.
+## Next — Sonnet implements Tasks 1–4 (four commits, in order)
+Read the plan; **FD3 and FD5 before touching anything.**
 
-**This is a live defect, not a backlog idea.** In `.github/workflows/ci.yml`: `pr-title`
-enforces a 72-char limit; `lint` is gated on it (`needs: pr-title`); and `format-check` →
-`test` → `secrets-scan`/`dependency-audit` → `sbom` all reach `lint` through `needs:`.
-**One over-long title skips all six jobs.** And fixing the title *cannot* recover it — a
-title edit fires `edited`, and `lint` carries `if: github.event.action != 'edited'`, so the
-suite is never re-run. `pr-title` flips green while `test` stays `skipped` forever.
+1. **New `.github/workflows/pr-title.yml`** — the job moved **verbatim** out of `ci.yml`.
+2. **`ci.yml`** — delete the `pr-title` job, `edited` from the trigger types, and **both**
+   `needs: pr-title` *and* the whole `if:` block on `lint`. Concurrency block **stays**.
+3. **`tests/test_ci_config.py`** — delete the test that pins the bug; assert the real invariant.
+4. **Docs** — `CLAUDE.md` L86 is now false; close BL-10 in `docs/backlog.md`.
 
-**`skipped` is not `failure`**, and GitHub treats a skipped required check as satisfied —
-so the PR merges, untested, with a fully green checks page. **Sprint 32's own PR #39 hit
-exactly this and came within one click of merging with its suite never having run.** It
-will happen again to the next long-titled PR.
+> **Task 2 leaves the suite RED on purpose (FD3).** `test_lint_job_gates_on_pr_title_to_fail_fast`
+> asserts `needs: pr-title` — it was written to hold this exact structure in place. **A failing test
+> there is the sprint working.** Task 3 makes it green. **Do not "fix" the red by reverting Task 2.**
 
-Leading candidate: **drop the `needs: pr-title` fail-fast gate entirely** — the few runner
-minutes it saves on a bad title is a poor trade for a silently-untested merge. Weigh it
-against (a) letting `edited` re-run the chain when the prior conclusion for that SHA was
-`skipped`, and (c) making `pr-title` a standalone required check that gates nothing.
+> **FD5 — the job id `pr-title` is FROZEN.** Branch protection matches required checks by check-run
+> name, and that name is the **job id**, not the workflow file. Rename it and every future PR hangs
+> forever on a check that never arrives. Claude **cannot** verify this (403 on branch protection —
+> the PAT has no `Administration` scope by design).
 
-> **Read the rationale comments on *both* guards before changing either.** Each is there
-> for a real reason (fail fast on a bad title; don't re-run the suite for a prose edit).
-> It is their **interaction** that is wrong, not either one alone.
+> **YAML trap for Task 3:** a bare `on:` key parses as the **boolean `True`** — `cfg["on"]` raises
+> `KeyError`. Use `cfg.get("on") or cfg[True]`, and `yaml.safe_load`, never `yaml.load`.
 
-Then: `/handoff` → Sonnet implements → fresh-session Opus review → PR.
+Then push, open a PR (**base `feat/mcp-langgraph-migration`**), and **stop**.
 
 ## HITL gate
-**NONE OPEN.** Sprint 33 hasn't started; it needs a planning pass before a gate exists.
+**Planning gate PASSED** (owner approved the plan). **None open right now.**
+A new one opens when the PR is up: **Task 5** — live verification against GitHub, which is
+**Opus/human work, not Sonnet's**. Open the PR with a deliberately **>72-char** valid title and
+watch `pr-title` go red while the **whole heavy chain runs green anyway** — the state that is
+unreachable today. Then fix the title and confirm no `ci.yml` run fires at all. A fresh-session
+Opus review should still be posted even though CI exempts this PR — the diff's subject *is* the
+gate machinery.
 
-## Standing obligations (not sprint-33 tasks; both still real)
-- **`sprints/DEFERRED_VERIFICATION.md`** — five checks (§1, §5, §6, §7, §8) that have
-  **never been run**. A green `hatch run test` says nothing about them. **Do not delete it.**
-- **Two unfixed findings from PR #39's review** — `publish_artifacts` does a full disk read
-  of every artifact on every stage while both its docstrings claim it *"does no I/O"*, and
-  that read-back uses `Path.read_text()` with no explicit encoding. Fold in before that code
-  is load-bearing. `gh pr view 39 --comments`.
+## Standing obligations (not sprint-33 tasks; all still real)
+- **`sprints/DEFERRED_VERIFICATION.md`** — five checks (§1, §5, §6, §7, §8) **never run**. Don't delete it.
+- **Two unfixed findings from PR #39** — `publish_artifacts` reads every artifact off disk on every
+  stage while both docstrings claim it *"does no I/O"*; that read-back uses `Path.read_text()` with
+  no explicit encoding. **Deliberately out of sprint 33's scope** (they touch `src/`).
+- **Human:** delete the now-redundant `docs/handoff-sprint-33` branch after the sprint PR merges;
+  `glunk-works/loop-engine-v3-scratch` (private, issues #1–#6) is still live and needs deleting in
+  the UI, then trimming from the PAT's repo list.
 
 ## Pointers
-- `docs/backlog.md` — **BL-10** (this sprint) + BL-1…BL-9.
-- `.github/workflows/ci.yml` — the target. `pr-title` (L28, limit at L43), `lint` (L64, the
-  `needs:` + `!= 'edited'` clause at L66), the `edited` trigger (L11).
-- `sprints/33_ci_title_starvation/sprint_plan.md` — **to be written.**
-- `docs/migration_roadmap.md` — every phase closed. Sprint 33 is **not** a phase; don't add a row.
+- [`sprints/33_ci_title_starvation/sprint_plan.md`](../sprints/33_ci_title_starvation/sprint_plan.md) — **the sprint.** FD1–FD5 + Tasks 1–5.
+- [`docs/backlog.md`](../docs/backlog.md) — **BL-10** (this sprint; its diagnosis is right but *incomplete* — it misses FD2) + BL-1…BL-9.
+- `.github/workflows/ci.yml` — the target. `pr-title` (L28), `lint` (L64, `needs:` L65, `if:` L66–68), the `edited` trigger (L11), `concurrency` (L20–22, **stays**).
+- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — every phase closed. Sprint 33 is **not** a phase; **don't add a row.**
 - `.ai/context/workflow.md` — PR-gated integration + the fresh-session review rule.
 
-## Live external state — needs cleanup (HUMAN ACTION)
-- **`glunk-works/loop-engine-v3-scratch`** (private) is still live, holding issues **#1–#6**.
-  Delete it in the GitHub UI, then remove it from the fine-grained PAT's repo list (the PAT
-  has no `Administration` permission by design, so it cannot delete repos — that stays a
-  human checkpoint on the one irreversible action; it also carries an unexpected
-  `Contents: Write` worth trimming while you're there).
-
 ## Working tree
-- `main` ← `feat/mcp-langgraph-migration` is the integration branch (now at `6a9c77a`);
-  sprint work lands via `sprint/NN-slug` PRs based on it. Branches squash-merge, so only the
-  tip ships — **a squash-merged branch is dead; never reuse one.**
-- `.ai/state.json` + `.ai/archive/` are git-ignored (local mirrors); **`.ai/next-steps.md` is
-  tracked**.
+- `sprint/33-ci-title-starvation` (at `4500d68`) is the active branch, based on
+  `docs/handoff-sprint-33` = `feat/mcp-langgraph-migration` + `da1c6eb`. PR base is
+  **`feat/mcp-langgraph-migration`**. Branches squash-merge — **a squash-merged branch is dead;
+  never reuse one.**
+- `.ai/state.json` + `.ai/archive/` are git-ignored (local mirrors); **`.ai/next-steps.md` is tracked.**
