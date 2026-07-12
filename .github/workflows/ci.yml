@@ -52,8 +52,20 @@ jobs:
   # downstream too (`format-check` → `test` → `secrets-scan`/`dependency-audit` →
   # `sbom` all reach it through `needs:`), so this one guard covers the chain.
   # On `push` events `github.event.action` is empty, so the condition holds there.
+  #
+  # `needs: pr-title` is the fail-fast gate: without it, `pr-title` and `lint` start
+  # in parallel, so a bad title doesn't stop the heavy chain — it just fails
+  # alongside it a few minutes later, burning the runner minutes for nothing.
+  # `needs.pr-title.result == 'skipped'` is load-bearing: `pr-title` only runs on
+  # `pull_request` (guarded by its own `if`), so on `push` it reports `skipped`, not
+  # `success` — the default `needs` gate treats a skipped dependency as a failure
+  # and would skip `lint` on every push. Allowing `skipped` here means "no title to
+  # check, don't block."
   lint:
-    if: github.event.action != 'edited'
+    needs: pr-title
+    if: >
+      github.event.action != 'edited' &&
+      (needs.pr-title.result == 'success' || needs.pr-title.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
