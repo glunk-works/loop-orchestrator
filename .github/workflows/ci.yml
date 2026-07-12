@@ -2,13 +2,12 @@ name: CI
 
 on:
   pull_request:
-    # `edited` is load-bearing: without it the default set is
-    # [opened, synchronize, reopened], so a PR whose *title* fails `pr-title` can
-    # never turn that check green by fixing the title — the check only re-runs on a
-    # new commit, forcing a dummy push. `edited` fires on title/body edits, so the
-    # title gate re-validates the thing it actually gates. The heavy jobs opt out of
-    # it below (see `lint`) — editing prose must not re-run the suite.
-    types: [opened, synchronize, reopened, edited]
+    # No `edited` here (BL-10 / sprint 33): this is the heavy code chain, and a
+    # prose-only edit must never wake, cancel, or skip it. The title check that
+    # *does* need `edited` lives in its own workflow, pr-title.yml, precisely so
+    # the two concerns don't have to share a trigger list — or this concurrency
+    # group (see below).
+    types: [opened, synchronize, reopened]
   push:
     # Integration branches only. Sprint branches (`sprint/**`) are covered by their
     # PR, so listing them here would double every run for no extra signal. `feat/**`
@@ -22,50 +21,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The merge is a squash, so the PR title becomes the commit subject on the
-  # integration branch — it is the only message that survives, and so the only
-  # one worth enforcing. WIP commits inside the branch stay free-form.
-  pr-title:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Validate Conventional Commits title
-        env:
-          TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          pattern='^(feat|fix|docs|test|refactor|perf|chore|ci|revert)(\([a-z0-9._/-]+\))?!?: [a-z].*[^.]$'
-          if [[ ! "$TITLE" =~ $pattern ]]; then
-            echo "::error::PR title is not a valid Conventional Commits subject: '$TITLE'"
-            echo "Expected: type(scope): imperative subject   (lower-case, no trailing period)"
-            echo "Types: feat|fix|docs|test|refactor|perf|chore|ci|revert   '!' marks a breaking change."
-            exit 1
-          fi
-          if [[ ${#TITLE} -gt 72 ]]; then
-            echo "::error::PR title is ${#TITLE} chars; the limit is 72."
-            exit 1
-          fi
-          echo "OK: $TITLE"
-
-  # Gate for the whole heavy chain. An `edited` event means the title/body changed,
-  # not the tree — the code checks already ran on this exact SHA, so re-running them
-  # would burn minutes for identical results. Skipping `lint` skips everything
-  # downstream too (`format-check` → `test` → `secrets-scan`/`dependency-audit` →
-  # `sbom` all reach it through `needs:`), so this one guard covers the chain.
-  # On `push` events `github.event.action` is empty, so the condition holds there.
-  #
-  # `needs: pr-title` is the fail-fast gate: without it, `pr-title` and `lint` start
-  # in parallel, so a bad title doesn't stop the heavy chain — it just fails
-  # alongside it a few minutes later, burning the runner minutes for nothing.
-  # `needs.pr-title.result == 'skipped'` is load-bearing: `pr-title` only runs on
-  # `pull_request` (guarded by its own `if`), so on `push` it reports `skipped`, not
-  # `success` — the default `needs` gate treats a skipped dependency as a failure
-  # and would skip `lint` on every push. Allowing `skipped` here means "no title to
-  # check, don't block."
+  # `lint` (and everything chained after it via `needs:`) is unconditional by
+  # design: no `if:` on any job in this file means no job can ever report
+  # `skipped`, which is what closes BL-10 — a PR used to be able to reach an
+  # all-green checks page having never run lint or the test suite, because a
+  # gate keyed on `pr-title` would itself report `skipped` on the wrong event
+  # and satisfy `needs:` without anything downstream having run. The PR title
+  # check now lives in its own workflow, pr-title.yml, and gates nothing here;
+  # a bad title costs runner minutes instead of stopping the chain, which is
+  # the accepted trade (see sprint 33 / BL-10).
   lint:
-    needs: pr-title
-    if: >
-      github.event.action != 'edited' &&
-      (needs.pr-title.result == 'success' || needs.pr-title.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
