@@ -91,11 +91,14 @@ def test_ci_workflow_pull_request_trigger_excludes_edited() -> None:
 
 
 def test_pr_title_workflow_defines_the_frozen_job_id() -> None:
-    """FD5: branch protection matches required checks by check-run name, which
-    is the job id, not the workflow file. If the job id here drifts from
-    `pr-title`, the required check never arrives and every future PR hangs."""
+    """FD5: branch protection matches required checks by check-run name, not by
+    workflow file. That name is `jobs.<id>.name` when present and falls back to
+    the job id only when it is absent — so a `name:` override renames the check
+    run just as surely as renaming the job does. Either drift and the required
+    check never arrives, hanging every future PR on a check that cannot resolve."""
     cfg = _load_workflow("pr-title.yml")
     assert "pr-title" in cfg["jobs"]
+    assert "name" not in cfg["jobs"]["pr-title"]
 
 
 def test_pr_title_workflow_trigger_types_reopen_the_check() -> None:
