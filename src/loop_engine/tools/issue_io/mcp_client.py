@@ -21,10 +21,24 @@ direct `gh` calls that used to be the default.
 
 import json
 from collections.abc import Callable
+from pathlib import Path
 
 from loop_engine.core.state import IssueRef, Question, State
-from loop_engine.tools.issue_io.github import render_question_issue, resolve_repo_slug
-from loop_engine.tools.mcp import build_issue_provider
+from loop_engine.tools.issue_io.github import render_question_issue
+
+# `tools/mcp`, `tools/repo_io`, and `tools/worktree` are deliberately imported
+# inside `default_issue_filer`/`default_issue_reader` (F7), not here: those
+# are the only two callers that need them, and importing them at module scope
+# meant importing `core/engine` (which imports this module for the write
+# seam) transitively dragged in the whole MCP client stack at import time.
+
+
+class IssueDestinationUnresolvedError(Exception):
+    """`default_issue_filer` could not name a destination repo for the
+    escalation issue — e.g. the origin CWD is not a GitHub repository.
+    Raised instead of falling back to an unnamed (`repo=None`) destination,
+    which would silently restore the R8 leak this default exists to
+    prevent."""
 
 
 def mcp_issue_filer(
@@ -59,22 +73,56 @@ def mcp_issue_reader(provider, *, repo: str | None = None) -> Callable[[int], di
 
 
 def default_issue_filer(
-    state: State, questions: list[Question], snapshot_path: str, *, cwd: str | None = None
+    state: State, questions: list[Question], snapshot_path: str, *, cwd: str | Path | None = None
 ) -> IssueRef:
-    """The runtime default `issue_filer`. Resolves the destination repo
-    lazily — only if an issue is actually filed — from `cwd`: pass the
-    caller's cwd captured *before* any worktree chdir (R8), so an escalation
-    raised from deep inside a run's worktree still targets the repo the
-    orchestrator was launched against, not wherever `gh`'s own implicit
-    cwd-based resolution would land inside the worktree. `cwd=None` (the
-    default when a caller hasn't captured one) falls back to `gh`'s implicit
-    resolution, matching the classic path's pre-existing behavior."""
-    repo = resolve_repo_slug(cwd) if cwd is not None else None
+    """The runtime default `issue_filer`: names the destination repo explicitly
+    (R8) instead of letting `gh` infer it from whatever CWD it happens to run in.
+
+    The destination defaults to `worktree.origin_cwd()` — the directory the
+    orchestrator was launched from — NOT the process CWD, which by the time a
+    stage escalates is the run's worktree, whose remote is loop-engine itself.
+    That distinction is the whole finding: escalation issues for managed repos
+    were landing on the project repo. Defaulting here rather than making each
+    caller pass `cwd` is deliberate — the first cut of this fix threaded it from
+    `cli.py` only, and `runner.run_new`/`run_in_tree` (fresh runs, the trigger
+    surface, `flows/maintenance`) silently kept leaking.
+
+    `cwd` is an override for a caller that knows better. Resolution is lazy:
+    the `gh repo view` costs nothing on a run that never escalates.
+    """
+    from loop_engine.tools.mcp import build_issue_provider
+    from loop_engine.tools.repo_io import RepoNotResolvableError, resolve_repo_slug
+    from loop_engine.tools.worktree import origin_cwd
+
+    origin = cwd if cwd is not None else origin_cwd()
+    try:
+        repo = resolve_repo_slug(origin)
+    except RepoNotResolvableError as exc:
+        # F4: make the failure legible instead of a raw resolve_repo_slug
+        # error surfacing from inside the pause path — and do NOT fall back
+        # to repo=None, which would silently restore the R8 leak.
+        raise IssueDestinationUnresolvedError(
+            f"Could not resolve a destination repo for the escalation issue: {exc} "
+            "Refusing to file without an explicit destination."
+        ) from exc
     with build_issue_provider() as provider:
         return mcp_issue_filer(provider, repo=repo)(state, questions, snapshot_path)
 
 
-def default_issue_reader(issue_number: int) -> dict:
-    """The runtime default issue reader, mirroring `default_issue_filer`."""
+def default_issue_reader(issue_number: int, *, repo: str | None = None) -> dict:
+    """The runtime default issue reader, mirroring `default_issue_filer`.
+
+    `repo` (owner/repo) names the repo to read the issue *from*. It cannot be
+    defaulted the way the filer's can: on `resume --from-issue N` the snapshot
+    is not loaded yet (its path comes out of the issue body), so the run's own
+    repo is not yet knowable — hence `cli.resume`'s `--repo` option. Left
+    unset, `cli.resume` resolves and echoes an explicit repo before calling
+    this (F1b: never `gh`'s implicit CWD resolution) -- `resume --snapshot`
+    instead derives the repo from the snapshot's own `pending_issue.url`
+    (F1a), which is unambiguous and never reaches this default's own `repo`
+    argument as `None`.
+    """
+    from loop_engine.tools.mcp import build_issue_provider
+
     with build_issue_provider() as provider:
-        return mcp_issue_reader(provider)(issue_number)
+        return mcp_issue_reader(provider, repo=repo)(issue_number)

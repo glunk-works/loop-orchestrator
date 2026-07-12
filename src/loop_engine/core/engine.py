@@ -214,6 +214,11 @@ def _pause_for_issue(
     state = state.model_copy(
         update={"counters": {**state.counters, PAUSED_STAGE_COUNTER: stage_index}}
     )
+    # F4: persist before filing. A raise inside the filer (e.g. an
+    # unresolvable escalation destination) must leave a resumable
+    # AWAITING_ISSUE snapshot behind rather than discarding the run's work —
+    # the snapshot is written again below once the issue is actually filed.
+    state = _finalize(state, stage_index, RunStatus.AWAITING_ISSUE)
     snapshot_hint = f"state/{state.run_id}/{stage_index:02d}_{RunStatus.AWAITING_ISSUE.value}.json"
     issue = (issue_filer or default_issue_filer)(state, questions, snapshot_hint)
     state = state.model_copy(update={"pending_issue": issue})

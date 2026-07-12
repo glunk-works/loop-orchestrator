@@ -21,6 +21,15 @@ from pathlib import Path, PurePosixPath
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class RepoNotResolvableError(Exception):
+    """`resolve_repo_slug` could not determine the repo `cwd` belongs to --
+    e.g. `cwd` is not inside a GitHub repository. Raised instead of letting a
+    raw `subprocess.CalledProcessError` cross this module's boundary, so a
+    caller (F4: `tools/issue_io`'s `default_issue_filer`) can catch it
+    without itself importing `subprocess` -- `repo_io` stays the only owner
+    of that surface."""
+
+
 class RepoRef(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -35,15 +44,36 @@ class PullRef(BaseModel):
     url: str
 
 
-def _run_gh(args: list[str]) -> str:
+def _run_gh(args: list[str], *, cwd: str | Path | None = None) -> str:
     result = subprocess.run(  # noqa: S603 -- fixed executable, no shell, args are not attacker-controlled strings
         ["gh", *args],  # noqa: S607 -- resolved via PATH intentionally: gh's install location varies by platform
         capture_output=True,
         text=True,
         check=True,
         timeout=60,
+        cwd=cwd,
     )
     return result.stdout
+
+
+def resolve_repo_slug(cwd: str | Path | None = None) -> str:
+    """The `owner/repo` slug of the GitHub repo `cwd` belongs to.
+
+    Repo *introspection*, so it lives here rather than in `issue_io` (whose
+    charter is filing/reading escalation issues) — but its motivating caller is
+    the issue filer. `gh` otherwise derives an issue's destination from its own
+    ambient CWD; naming the destination explicitly is what finding R8 asked for,
+    and that name has to come from somewhere. Resolve it against a CWD you have
+    deliberately chosen (the orchestrator's origin — see `worktree.origin_cwd`),
+    not one you inherited.
+    """
+    args = ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]
+    try:
+        return _run_gh(args, cwd=cwd).strip()
+    except subprocess.CalledProcessError as exc:
+        raise RepoNotResolvableError(
+            f"{cwd} is not a GitHub repository (`gh repo view` failed): {exc}"
+        ) from exc
 
 
 def _validate_clone_dest(dest: str) -> Path:

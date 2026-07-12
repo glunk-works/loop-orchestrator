@@ -6,9 +6,10 @@ from loop_engine.tools.issue_io.github import (
     parse_snapshot_path,
     read_issue,
     render_question_issue,
-    resolve_repo_slug,
+    repo_from_issue_url,
 )
 from loop_engine.tools.issue_io.mcp_client import (
+    IssueDestinationUnresolvedError,
     default_issue_filer,
     default_issue_reader,
     mcp_issue_filer,
@@ -17,6 +18,7 @@ from loop_engine.tools.issue_io.mcp_client import (
 
 __all__ = [
     "IssueClosedWithoutAnswersError",
+    "IssueDestinationUnresolvedError",
     "apply_answers_to_questions",
     "create_issue",
     "default_issue_filer",
@@ -27,5 +29,5 @@ __all__ = [
     "parse_snapshot_path",
     "read_issue",
     "render_question_issue",
-    "resolve_repo_slug",
+    "repo_from_issue_url",
 ]

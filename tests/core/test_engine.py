@@ -340,6 +340,31 @@ def test_engine_unresolved_questions_file_issue_and_pause(_stub_issue_filer) -> 
     assert (Path("state") / "run-8" / "00_awaiting_issue.json").exists()
 
 
+def test_engine_pause_for_issue_persists_before_filing_survives_a_raising_filer() -> None:
+    """F4: a raise inside the filer (e.g. an unresolvable escalation
+    destination) must not destroy the run -- an AWAITING_ISSUE snapshot is
+    persisted BEFORE the filer runs, so the run stays resumable."""
+    persona = QuestionAskingPersona()
+    loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"))])
+
+    def raising_filer(state, questions, snapshot_path):
+        raise RuntimeError("gh repo view failed: not a git repository")
+
+    with pytest.raises(RuntimeError, match="not a git repository"):
+        run_graph_loop(
+            loop, _initial_state("run-9b"), _stub_llm_client(), issue_filer=raising_filer
+        )
+
+    snapshot_path = Path("state") / "run-9b" / "00_awaiting_issue.json"
+    assert snapshot_path.exists(), "a raising filer must not discard the run's snapshot"
+    persisted = State.model_validate(json.loads(snapshot_path.read_text()))
+    assert persisted.status is RunStatus.AWAITING_ISSUE
+    # The filer raised before returning an IssueRef, so pending_issue is
+    # still unset -- but the run itself, and its questions, survive.
+    assert persisted.pending_issue is None
+    assert persisted.questions[0].text == "Which region?"
+
+
 class _FakeIssueProvider:
     """Stands in for an entered MCPToolProvider scoped to the `issue` server —
     no subprocess, no real `gh`."""
@@ -370,6 +395,57 @@ def test_engine_injected_mcp_issue_filer_routes_through_provider() -> None:
         number=99, url="https://github.com/example/repo/issues/99"
     )
     assert provider.calls[0][0] == "create_issue"
+
+
+def test_engine_uninjected_default_filer_names_an_explicit_destination_repo(monkeypatch) -> None:
+    """The path `runner.run_new` actually takes: NO `issue_filer` injected, so
+    `_pause_for_issue` falls through to `default_issue_filer`.
+
+    Every other test in this module stubs that default out via the autouse
+    fixture, which is precisely why the original R8 fix shipped covering only
+    `cli.py` — the fresh-run paths kept filing issues against whatever repo the
+    worktree CWD resolved to, and CI stayed green. This test opts out of the
+    stub and pins the real default: it must dispatch `create_issue` with an
+    explicit, non-null `repo`.
+    """
+    from loop_engine.tools.issue_io import default_issue_filer as real_default_issue_filer
+
+    provider = _FakeIssueProvider()
+    # Restore the real default over the autouse stub (a bare `monkeypatch.undo()`
+    # would also undo `_isolated_cwd`, spraying snapshots into the repo).
+    monkeypatch.setattr("loop_engine.core.engine.default_issue_filer", real_default_issue_filer)
+    monkeypatch.setattr(
+        "loop_engine.tools.mcp.build_issue_provider",
+        lambda: _ContextManagerProvider(provider),
+    )
+    monkeypatch.setattr(
+        "loop_engine.tools.repo_io.resolve_repo_slug", lambda cwd: "acme/managed-repo"
+    )
+
+    loop = Loop(stages=[Stage(persona=QuestionAskingPersona(), gate=ArtifactGate("doc"))])
+    final = run_graph_loop(loop, _initial_state("run-8c"), _stub_llm_client())
+
+    assert final.status is RunStatus.AWAITING_ISSUE
+    verb, args = provider.calls[0]
+    assert verb == "create_issue"
+    assert args["repo"] == "acme/managed-repo", (
+        "the un-injected default must name its destination explicitly, not let "
+        "`gh` infer it from the worktree CWD (finding R8)"
+    )
+
+
+class _ContextManagerProvider:
+    """Wraps a fake provider so it can stand in for `build_issue_provider()`,
+    which the default filer enters as a context manager."""
+
+    def __init__(self, inner: _FakeIssueProvider) -> None:
+        self._inner = inner
+
+    def __enter__(self) -> _FakeIssueProvider:
+        return self._inner
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
 
 
 def test_engine_injected_mcp_issue_filer_routes_through_provider_at_escalation_cap() -> None:

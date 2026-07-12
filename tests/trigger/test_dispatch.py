@@ -126,6 +126,38 @@ def test_in_flight_task_is_strongly_referenced_and_released_on_completion(monkey
     asyncio.run(main())
 
 
+def test_dispatcher_serializes_concurrent_runs_for_different_issues(monkeypatch) -> None:
+    """F3/F6: `os.chdir` inside `worktree_run` is still process-global, so two
+    *different* issues' runs must not actually execute concurrently -- the
+    dispatcher lock makes that chdir race unreachable rather than merely
+    unlikely (the ContextVar fix alone only stops `_ORIGIN_CWD`/`_STATE_ROOT`
+    from crossing between runs, not the chdir itself)."""
+    order = []
+    release_first = threading.Event()
+
+    def fake_run_new(human_input, *, budget_usd, loop_name):
+        order.append(f"start:{human_input}")
+        if human_input == "first":
+            assert release_first.wait(timeout=5), "test deadlocked waiting for release"
+        order.append(f"end:{human_input}")
+        return MagicMock()
+
+    monkeypatch.setattr("loop_engine.runner.run_new", fake_run_new)
+    dispatcher = InProcessDispatcher()
+
+    async def main() -> None:
+        await dispatcher.dispatch(_request(issue_number=1, human_input="first"))
+        await dispatcher.dispatch(_request(issue_number=2, human_input="second"))
+        await asyncio.sleep(0.1)
+        # "second" must not have started yet -- the lock is held by "first".
+        assert order == ["start:first"]
+        release_first.set()
+        await asyncio.sleep(0.2)
+        assert order == ["start:first", "end:first", "start:second", "end:second"]
+
+    asyncio.run(main())
+
+
 def test_run_failure_is_logged_and_releases_the_dedupe_key(monkeypatch, caplog) -> None:
     calls = []
 

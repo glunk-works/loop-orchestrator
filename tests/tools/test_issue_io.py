@@ -12,7 +12,6 @@ from loop_engine.tools.issue_io import (
     parse_snapshot_path,
     read_issue,
     render_question_issue,
-    resolve_repo_slug,
 )
 
 
@@ -143,24 +142,5 @@ def test_read_issue_forwards_explicit_repo_as_flag() -> None:
         read_issue(42, repo="acme/repo")
 
     run_gh.assert_called_once_with(
-        ["issue", "view", "42", "--json", "state,body,comments", "--repo", "acme/repo"]
+        ["issue", "view", "42", "--json", "state,body,comments,url", "--repo", "acme/repo"]
     )
-
-
-def test_resolve_repo_slug_shells_gh_repo_view() -> None:
-    with patch("loop_engine.tools.issue_io.github._run_gh") as run_gh:
-        run_gh.return_value = "acme/repo\n"
-        slug = resolve_repo_slug()
-
-    run_gh.assert_called_once_with(
-        ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"], cwd=None
-    )
-    assert slug == "acme/repo"
-
-
-def test_resolve_repo_slug_passes_cwd_through() -> None:
-    with patch("loop_engine.tools.issue_io.github._run_gh") as run_gh:
-        run_gh.return_value = "acme/other\n"
-        resolve_repo_slug("/some/dir")
-
-    assert run_gh.call_args.kwargs["cwd"] == "/some/dir"

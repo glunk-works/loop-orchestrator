@@ -24,6 +24,7 @@ inspectable). Removal is explicit — `cleanup()` / the CLI `prune-worktrees`
 command.
 """
 
+import contextvars
 import os
 import subprocess
 from collections.abc import Iterator
@@ -31,7 +32,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from loop_engine.tools.isolation import worktree_needed
-from loop_engine.tools.state_io.writer import set_state_root, validate_run_id
+from loop_engine.tools.state_io.writer import reset_state_root, set_state_root, validate_run_id
 
 _WORKTREE_ROOT_ENV_VAR = "LOOP_ENGINE_WORKTREE_ROOT"
 _DEFAULT_WORKTREE_DIRNAME = ".worktrees"
@@ -42,6 +43,43 @@ _GIT_TIMEOUT_S = 60
 class WorktreeError(Exception):
     """A git worktree operation failed, or a resume targeted a worktree that no
     longer exists."""
+
+
+# The orchestrator's CWD as it was *before* `worktree_run` chdir'd into the
+# per-run worktree. Mirrors `state_io`'s `set_state_root`/`state_root` pair, and
+# for the same reason: a collaborator that runs deep inside the worktree may
+# still need to act against the tree the orchestrator was launched from.
+#
+# The issue filer is the motivating consumer (finding R8): `gh` resolves an
+# issue's destination repo from its CWD, and inside `.worktrees/<run_id>` that
+# is loop-engine's own remote — which is how real escalation issues for managed
+# repos ended up filed on the project repo. Making every call site remember to
+# capture the pre-chdir CWD is exactly the coupling that failed; recording it
+# here means no caller has to.
+#
+# A `ContextVar`, not a plain module global (F3): the trigger surface
+# (`InProcessDispatcher`) can have several runs' `worktree_run`s alive at
+# once via `asyncio.to_thread`, which copies the context per worker thread —
+# so one run's `set()` never leaks into another's `origin_cwd()` reads, and
+# `reset(token)` on exit restores the prior value instead of clobbering to
+# `None` (closing F6, non-re-entrancy, in the same change). `os.chdir` itself
+# stays process-global regardless — see `InProcessDispatcher`'s lock, which
+# is what actually makes a concurrent chdir race unreachable (BL-8 is the
+# real fix: stop using process CWD as an isolation mechanism at all).
+_ORIGIN_CWD: contextvars.ContextVar[Path | None] = contextvars.ContextVar(
+    "_ORIGIN_CWD", default=None
+)
+
+
+def origin_cwd() -> Path:
+    """The directory the orchestrator was launched from.
+
+    Inside `worktree_run`, the main checkout (NOT the worktree the process has
+    chdir'd into). Outside it — no isolation, or a `flows/*` run pinned to a
+    foreign clone — the current CWD, which is then genuinely the intended tree.
+    """
+    origin = _ORIGIN_CWD.get()
+    return origin if origin is not None else Path.cwd()
 
 
 def use_worktree_isolation() -> bool:
@@ -176,17 +214,26 @@ def worktree_run(run_id: str, *, reuse: bool = False) -> Iterator[Path | None]:
     if reuse:
         path = worktree_path(run_id)
         if not _is_registered(path):
+            # R10, the direction V3 actually hit: a run paused under
+            # ISOLATION=none never created a worktree, so resuming it under a
+            # worktree-bearing mode lands here. Naming only "pruned" sent that
+            # session hunting for a tree that was never supposed to exist.
             raise WorktreeError(
-                f"cannot resume run {run_id!r}: its worktree {path} does not exist "
-                "(it may have been pruned; the artifact tree cannot be reconstructed)."
+                f"cannot resume run {run_id!r}: its worktree {path} does not exist. "
+                "Either it was pruned (the artifact tree cannot be reconstructed), or "
+                "the run was paused under LOOP_ENGINE_ISOLATION=none, which creates no "
+                "worktree — a run must be resumed under the same isolation mode it was "
+                "paused under."
             )
     else:
         path = create(run_id)
 
-    set_state_root(origin)
+    state_root_token = set_state_root(origin)
+    origin_cwd_token = _ORIGIN_CWD.set(origin)
     os.chdir(path)
     try:
         yield path
     finally:
         os.chdir(origin)
-        set_state_root(None)
+        reset_state_root(state_root_token)
+        _ORIGIN_CWD.reset(origin_cwd_token)

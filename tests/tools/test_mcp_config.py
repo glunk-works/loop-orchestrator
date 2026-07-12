@@ -112,6 +112,34 @@ def test_bare_python_command_is_substituted_with_sys_executable(tmp_path) -> Non
     assert servers["github"].command == sys.executable
 
 
+def test_bare_python3_command_is_also_substituted(tmp_path) -> None:
+    """R7 follow-up: `python3` is the very interpreter name the finding is about
+    — a python3-only host. Substituting only the literal `python` left it, and any
+    other bare alias, pointing at whatever PATH resolves rather than the env that
+    actually holds `loop_engine`."""
+    config_path = tmp_path / "loop_engine.mcp.json"
+    config_path.write_text(
+        json.dumps({"servers": {"issue": {"command": "python3", "args": ["-m", "x"]}}}),
+        encoding="utf-8",
+    )
+    servers = load_mcp_config(config_path)
+    assert servers["issue"].command == sys.executable
+
+
+def test_absolute_interpreter_path_is_left_untouched(tmp_path) -> None:
+    """An absolute path is a deliberate choice, not an alias for "the active
+    interpreter" — substituting it would silently override the author."""
+    config_path = tmp_path / "loop_engine.mcp.json"
+    config_path.write_text(
+        json.dumps(
+            {"servers": {"issue": {"command": "/opt/venv/bin/python", "args": ["-m", "x"]}}}
+        ),
+        encoding="utf-8",
+    )
+    servers = load_mcp_config(config_path)
+    assert servers["issue"].command == "/opt/venv/bin/python"
+
+
 def test_non_python_command_is_left_untouched(tmp_path) -> None:
     config_path = tmp_path / "loop_engine.mcp.json"
     config_path.write_text(

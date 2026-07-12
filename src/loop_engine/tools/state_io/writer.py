@@ -1,3 +1,4 @@
+import contextvars
 import re
 from pathlib import Path, PurePosixPath
 
@@ -12,20 +13,40 @@ _ALLOWED_ARTIFACT_ROOTS = ("docs", "sprints", "src")
 # stay in the orchestrator's main checkout — `worktree_run` pins this to the
 # original CWD before the chdir. Only snapshots honor it; model-facing artifacts
 # (`write_artifact`) deliberately follow the CWD into the worktree.
-_STATE_ROOT: Path | None = None
+#
+# A `ContextVar`, not a plain module global (F3): `asyncio.to_thread` copies
+# the current context per worker thread, so a `set()` in one concurrent run
+# (the trigger surface dispatches several) never leaks into another's reads,
+# and `reset(token)` restores the prior value on exit rather than clobbering
+# to `None` — re-entrant, unlike the plain-global version this replaced.
+_STATE_ROOT: contextvars.ContextVar[Path | None] = contextvars.ContextVar(
+    "_STATE_ROOT", default=None
+)
 
 
-def set_state_root(root: Path | None) -> None:
-    """Pin (or, with None, reset to CWD) the anchor for state snapshots."""
-    global _STATE_ROOT
-    _STATE_ROOT = root
+def set_state_root(root: Path | None) -> contextvars.Token:
+    """Pin (or, with None, reset to CWD) the anchor for state snapshots.
+
+    Returns the `Token` from the underlying `ContextVar.set()`; a caller that
+    wants proper re-entrant restoration should pass it to `reset_state_root`
+    in a `finally` rather than calling `set_state_root(None)`, which merely
+    pins the anchor back to "unset" instead of restoring whatever it was
+    before this call.
+    """
+    return _STATE_ROOT.set(root)
+
+
+def reset_state_root(token: contextvars.Token) -> None:
+    """Restore the anchor `set_state_root` held before the matching `set()`."""
+    _STATE_ROOT.reset(token)
 
 
 def state_root() -> Path:
     """The directory `state/` is written under: the pinned root when set (an
     absolute main-checkout path, under worktree isolation), else `Path(".")`
     (the CWD, keeping the snapshot path relative as before)."""
-    return _STATE_ROOT if _STATE_ROOT is not None else Path(".")
+    root = _STATE_ROOT.get()
+    return root if root is not None else Path(".")
 
 
 def _validate_safe_name(value: str, *, label: str) -> None:

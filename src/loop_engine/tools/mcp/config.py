@@ -26,6 +26,10 @@ from pydantic import BaseModel, ConfigDict, Field
 _CONFIG_FILENAME = "loop_engine.mcp.json"
 _CODER_TOOLS_SERVER_MODULE = "loop_engine.mcp_servers.coder_tools_server"
 
+# Bare interpreter names in a config stanza that mean "the active interpreter"
+# (substituted for `sys.executable` at load time) rather than a literal PATH lookup.
+_INTERPRETER_ALIASES = frozenset({"python", "python3"})
+
 CODER_TOOLS_SERVER_NAME = "coder_tools"
 # The github factory-verb server's logical name in loop_engine.mcp.json — no
 # built-in default (unlike coder_tools): it exists only via the committed
@@ -101,10 +105,13 @@ def load_mcp_config(path: str | Path | None = None) -> dict[str, MCPServerSpec]:
     raw = config_path.read_text(encoding="utf-8")
     parsed = MCPConfigFile.model_validate(json.loads(raw))
     for name, spec in parsed.servers.items():
-        # R7: a committed stanza's bare "python" is a launch-side alias for
-        # "the active interpreter" (matching the coder_tools built-in below),
-        # not a literal PATH lookup — a python3-only host has no `python`.
-        if spec.command == "python":
+        # R7: a committed stanza's bare interpreter name is a launch-side alias
+        # for "the active interpreter" (matching the coder_tools built-in above),
+        # not a literal PATH lookup. `python` may not exist at all on a
+        # python3-only host, and neither bare name is guaranteed to resolve to
+        # the env that actually holds `loop_engine`. An absolute path is left
+        # alone — that is a deliberate choice, not an alias.
+        if spec.command in _INTERPRETER_ALIASES:
             parsed.servers[name] = spec.model_copy(update={"command": sys.executable})
     servers.update(parsed.servers)
     return servers

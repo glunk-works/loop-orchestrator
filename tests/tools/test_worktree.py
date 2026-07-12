@@ -1,17 +1,20 @@
 """Phase 3a worktree isolation. Uses a real git repo in tmp_path so the
 `git worktree` subprocess surface is exercised end to end."""
 
+import asyncio
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from loop_engine.tools.state_io import writer as state_writer
+from loop_engine.tools.state_io.writer import state_root
 from loop_engine.tools.worktree.manager import (
     WorktreeError,
     branch_name,
     cleanup,
     create,
+    origin_cwd,
     prune_all,
     use_worktree_isolation,
     worktree_path,
@@ -104,6 +107,92 @@ def test_resume_reuse_enters_existing_worktree(repo):
     created = create("run006")
     with worktree_run("run006", reuse=True) as wt:
         assert wt.resolve() == created.resolve()
+
+
+def test_origin_cwd_is_the_main_checkout_while_inside_the_worktree(repo):
+    """The invariant the issue filer leans on (R8): inside a worktree the process
+    CWD is the worktree — whose remote is loop-engine itself — while `origin_cwd()`
+    is still the checkout the orchestrator was launched from."""
+    assert origin_cwd() == repo  # outside a worktree: just the CWD
+
+    with worktree_run("run020") as wt:
+        assert Path.cwd() == wt.resolve()
+        assert origin_cwd().resolve() == repo.resolve()
+        assert origin_cwd().resolve() != Path.cwd()
+
+    assert origin_cwd() == repo  # restored on exit
+
+
+def test_nested_worktree_run_restores_the_prior_origin_not_none(repo):
+    """F6: exiting an inner `worktree_run` must restore whatever
+    `_ORIGIN_CWD`/`_STATE_ROOT` held before it -- via `ContextVar.reset(token)`
+    -- not clobber to `None`. With the plain-global version this replaced,
+    the inner exit's `_set_origin_cwd(None)` left the outer context's
+    `origin_cwd()` falling back to `Path.cwd()`, which by then is the OUTER
+    worktree (not the real origin) -- a distinguishable wrong answer, not
+    just a theoretical one."""
+    create("run032")
+
+    with worktree_run("run032") as outer_wt:
+        outer_origin = origin_cwd()
+        outer_state_root = state_root()
+        assert outer_origin == repo
+
+        with worktree_run("run033") as inner_wt:
+            assert origin_cwd().resolve() == outer_wt.resolve()
+            assert inner_wt != outer_wt
+
+        # Restored to what was active before the inner run -- not None
+        # (which would fall back to Path.cwd(), now wrongly == outer_wt).
+        assert origin_cwd() == outer_origin
+        assert state_root() == outer_state_root
+        assert Path.cwd() == outer_wt
+
+
+def test_origin_cwd_context_does_not_leak_into_a_worker_thread(repo):
+    """F3: `_ORIGIN_CWD` is a `ContextVar`, not a plain module global --
+    `asyncio.to_thread` (what `InProcessDispatcher` uses to run each loop)
+    copies the calling context into its worker thread, so a `set()` made
+    from inside that thread cannot cross back into the caller's context,
+    and the caller's own value is unaffected by whatever the thread does."""
+    create("run034")
+    assert origin_cwd() == repo
+
+    def in_thread() -> Path:
+        with worktree_run("run034", reuse=True):
+            return origin_cwd().resolve()
+
+    async def main() -> Path:
+        return await asyncio.to_thread(in_thread)
+
+    result = asyncio.run(main())
+
+    assert result == repo.resolve()
+    # The calling (outer) context's origin is untouched by the thread's own
+    # set/reset -- there was nothing to leak back.
+    assert origin_cwd() == repo
+
+
+def test_origin_cwd_is_the_cwd_when_isolation_is_off(repo, monkeypatch):
+    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "none")
+    with worktree_run("run021") as wt:
+        assert wt is None
+        # No worktree, so the CWD *is* the intended tree (e.g. a flows/ clone).
+        assert origin_cwd() == Path.cwd()
+
+
+def test_missing_worktree_error_names_the_isolation_mismatch_cause(repo):
+    """R10, the direction V3 actually hit: paused under ISOLATION=none (which
+    creates no worktree), resumed under a worktree-bearing mode. Reporting only
+    'pruned' sent that session hunting for a tree that never existed."""
+    with pytest.raises(WorktreeError) as exc:
+        with worktree_run("neverpaused", reuse=True):
+            pass
+
+    message = str(exc.value)
+    assert "pruned" in message
+    assert "LOOP_ENGINE_ISOLATION=none" in message
+    assert "same isolation mode" in message
 
 
 def test_resume_under_none_errors_when_paused_run_has_a_worktree(repo, monkeypatch):

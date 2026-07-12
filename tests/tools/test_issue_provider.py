@@ -2,11 +2,15 @@
 `mcp_issue_filer`/`mcp_issue_reader` client adapters (against a fake provider —
 no real `gh`, no subprocess)."""
 
+import ast
 import json
 from pathlib import Path
 
+import pytest
+
 from loop_engine.core.state import IssueRef, Question, State
 from loop_engine.tools.issue_io import (
+    IssueDestinationUnresolvedError,
     default_issue_filer,
     default_issue_reader,
     mcp_issue_filer,
@@ -30,6 +34,27 @@ def test_mcp_client_adapter_module_imports_no_keyring() -> None:
         Path(__file__).resolve().parents[2] / "src/loop_engine/tools/issue_io/mcp_client.py"
     ).read_text(encoding="utf-8")
     assert "keyring" not in source
+
+
+def test_mcp_client_module_scope_imports_no_mcp_stack() -> None:
+    """F7: `tools/mcp`, `tools/repo_io`, and `tools/worktree` must be imported
+    only inside `default_issue_filer`/`default_issue_reader` (called lazily),
+    not at module scope -- otherwise importing `core/engine` (which imports
+    this module for the write seam) transitively drags in the whole MCP
+    client stack at import time, contradicting the CLAUDE.md boundary claim
+    that only `core/coder_gate.py` reaches `tools/mcp` directly."""
+    source = (
+        Path(__file__).resolve().parents[2] / "src/loop_engine/tools/issue_io/mcp_client.py"
+    ).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    module_level_modules = {
+        node.module for node in tree.body if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert not module_level_modules & {
+        "loop_engine.tools.mcp",
+        "loop_engine.tools.repo_io",
+        "loop_engine.tools.worktree",
+    }
 
 
 class _FakeProvider:
@@ -112,9 +137,8 @@ def test_mcp_issue_reader_forwards_explicit_repo() -> None:
 
 def test_default_issue_filer_opens_a_fresh_provider_per_call(monkeypatch) -> None:
     provider = _FakeProvider()
-    monkeypatch.setattr(
-        "loop_engine.tools.issue_io.mcp_client.build_issue_provider", lambda: provider
-    )
+    monkeypatch.setattr("loop_engine.tools.mcp.build_issue_provider", lambda: provider)
+    monkeypatch.setattr("loop_engine.tools.repo_io.resolve_repo_slug", lambda cwd: "acme/repo")
 
     ref = default_issue_filer(_state(), _questions(), "state/run-1/01_awaiting_issue.json")
 
@@ -122,13 +146,51 @@ def test_default_issue_filer_opens_a_fresh_provider_per_call(monkeypatch) -> Non
     assert provider.calls[0][0] == "create_issue"
 
 
-def test_default_issue_filer_resolves_repo_from_cwd_when_given(monkeypatch) -> None:
+def test_default_issue_filer_raises_a_typed_error_instead_of_falling_back_to_repo_none(
+    monkeypatch,
+) -> None:
+    """F4: an orchestrator launched from a non-repo CWD (a systemd unit with
+    WorkingDirectory=/, a container entrypoint) must get a legible, typed
+    failure -- and must NOT fall back to repo=None, which would silently
+    restore the R8 leak this default exists to prevent."""
+    from loop_engine.tools.repo_io import RepoNotResolvableError
+
+    def _raise_not_resolvable(cwd):
+        raise RepoNotResolvableError(f"{cwd} is not a GitHub repository")
+
+    monkeypatch.setattr("loop_engine.tools.repo_io.resolve_repo_slug", _raise_not_resolvable)
+
+    with pytest.raises(IssueDestinationUnresolvedError):
+        default_issue_filer(_state(), _questions(), "state/run-1/01_awaiting_issue.json")
+
+
+def test_default_issue_filer_names_the_origin_not_the_worktree_as_destination(
+    monkeypatch, tmp_path
+) -> None:
+    """The R8 regression: by the time a stage escalates, the process CWD is the
+    run's worktree, whose remote is loop-engine itself. The destination must be
+    resolved against `origin_cwd()` — where the orchestrator was launched — and
+    no caller should have to pass it."""
     provider = _FakeProvider()
+    monkeypatch.setattr("loop_engine.tools.mcp.build_issue_provider", lambda: provider)
+    monkeypatch.setattr("loop_engine.tools.repo_io.resolve_repo_slug", lambda cwd: f"resolved{cwd}")
+    # Stand where a paused stage stands: inside the worktree, with the
+    # orchestrator's origin recorded elsewhere.
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        "loop_engine.tools.issue_io.mcp_client.build_issue_provider", lambda: provider
+        "loop_engine.tools.worktree.origin_cwd", lambda: Path("/orchestrator/checkout")
     )
+
+    default_issue_filer(_state(), _questions(), "state/run-1/01.json")
+
+    assert provider.calls[0][1]["repo"] == "resolved/orchestrator/checkout"
+
+
+def test_default_issue_filer_cwd_override_wins_over_origin(monkeypatch) -> None:
+    provider = _FakeProvider()
+    monkeypatch.setattr("loop_engine.tools.mcp.build_issue_provider", lambda: provider)
     monkeypatch.setattr(
-        "loop_engine.tools.issue_io.mcp_client.resolve_repo_slug", lambda cwd: f"resolved/{cwd}"
+        "loop_engine.tools.repo_io.resolve_repo_slug", lambda cwd: f"resolved/{cwd}"
     )
 
     default_issue_filer(_state(), _questions(), "state/run-1/01.json", cwd="/orig")
@@ -136,11 +198,18 @@ def test_default_issue_filer_resolves_repo_from_cwd_when_given(monkeypatch) -> N
     assert provider.calls[0][1]["repo"] == "resolved//orig"
 
 
+def test_default_issue_reader_forwards_explicit_repo(monkeypatch) -> None:
+    provider = _FakeProvider()
+    monkeypatch.setattr("loop_engine.tools.mcp.build_issue_provider", lambda: provider)
+
+    default_issue_reader(17, repo="acme/managed")
+
+    assert provider.calls == [("read_issue", {"issue_number": 17, "repo": "acme/managed"})]
+
+
 def test_default_issue_reader_opens_a_fresh_provider_per_call(monkeypatch) -> None:
     provider = _FakeProvider()
-    monkeypatch.setattr(
-        "loop_engine.tools.issue_io.mcp_client.build_issue_provider", lambda: provider
-    )
+    monkeypatch.setattr("loop_engine.tools.mcp.build_issue_provider", lambda: provider)
 
     result = default_issue_reader(17)
 
