@@ -216,3 +216,45 @@ commit identity is a bigger question.
 **Not urgent.** GitHub already refuses self-approval, so the dangerous failure (Claude
 approving its own PR) is blocked by the platform, not just by convention. This is about
 attribution quality, not a live hole.
+
+### BL-7 — The PM stage has no channel to ask a human a question
+
+**Why:** the PM can *detect* a requirements problem and has no way to *raise* it. Found on
+the V3b host run (2026-07-12) and recorded as finding **R9** in
+`sprints/DEFERRED_VERIFICATION.md` — logged here because Task 9 deletes that file.
+
+Given a deliberately unsatisfiable requirements doc (entries both immutable and erasable;
+storage both memory-only and durable across hardware failure), the PM **correctly
+identified every contradiction** and wrote them into its `risks_and_assumptions` field — and
+the gate **ACCEPTed anyway**, sending the pipeline off to architect a service whose own spec
+says the requirements are impossible.
+
+Three things compose to make PM→human escalation unreachable for *semantic* problems:
+
+1. `personas/pm/critic_gate.py::CriticGate` is **purely structural** — `critic.review()` is
+   blank/vague-field checks with **no LLM**, and `check_internal_consistency` tests only
+   whether `in_scope` string-equals `out_of_scope`.
+2. The PM's artifact contract is **JSON** with no `open_questions` key
+   (`open_questions_for_architect` was retired in State schema v2).
+3. `personas/declarative/configs/pm.yaml` sets **`extract_open_questions: false`**, disabling
+   the `ArtifactGate` ESCALATE-on-`## Open Questions` channel that the Architect and Sprint
+   Breakdown stages *do* use — in the same V3b run, the Architect raised 6 questions and
+   escalated correctly.
+
+So the only reachable PM escalation is `escalate_on_exhaustion` after 4 *structural* REVISE
+cycles — "the model kept leaving fields blank", a model-failure trigger, not a
+requirements-ambiguity one. The stage whose whole job is to interrogate requirements is the
+one stage that cannot ask.
+
+**Shape:** either give the PM an open-questions channel (a spec field the gate reads, or
+`extract_open_questions: true` plus a prompt that populates it), or make the PM gate
+semantic (an LLM critic that can fail a self-contradictory spec). The first is cheap and
+deterministic; the second is the honest fix. Note the PM stage already has `resolvers=[]` +
+`escalate_on_exhaustion=True`, so an escalation routes straight to the human — the ladder is
+ready, the question just can't get onto it.
+
+**Not urgent, but not cosmetic:** the failure is silent, and it fires precisely when the
+requirements are worst.
+
+**Notes / where to look:** `personas/pm/critic.py`, `personas/pm/critic_gate.py`,
+`personas/declarative/configs/pm.yaml`, `core/gates.py::extract_open_questions`.

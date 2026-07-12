@@ -498,11 +498,198 @@ routed through the MCP sandbox (the deferred sprint-18 / Phase-3b-completion wor
 *algorithm* remains separately verifiable under `ISOLATION=worktree`/`none` (gate
 runs in-process) on a trusted pure-Python task.
 
-## V3 — forced issue-escalation round-trip — NOT STARTED
+## V3 — forced issue-escalation round-trip — **PASS (qualified)**
 
-Not run (budget/side-effect scope not authorized this session). Independent of the
-gate-sandbox gap below (V3 forces a *pause*, it does not need a Coder ACCEPT), but
-it has real GitHub side effects, so it is left for a future host session.
+Host session 2026-07-11/12, Opus/Architect. Harnesses: `scratch/v3a_verbs.py` (verb-level,
+no LLM) and `scratch/v3b_engine.py` + `v3b_forcing_input.md` (engine-level). Plan:
+`scratch/v3_run_plan.md`. Disposable private scratch repo `glunk-works/loop-engine-v3-scratch`,
+deleted afterward.
+
+Run in two layers so a defect in the verb layer costs nothing: **V3a** proves the MCP
+`create_issue`/`read_issue` verbs and the `mcp_issue_filer`/`mcp_read_issue` adapters
+against a real `gh` and real GitHub Issues (§9 bullets 1–3, zero budget); **V3b** proves
+the engine's `issue_filer` write seam and `cli`'s reader seam under a real forced pause
+(§9 bullet 4 + the R1–R7 wiring).
+
+**Qualified on two counts, neither a seam defect:** the resumed run did not reach terminal
+`COMPLETED` — it **re-paused** at the *next* stage on six genuine new Architect questions
+(which is the escalation ladder working, and is what confirmed **R2** live); and the
+Coder was never reached, so this run exercised container isolation's launch path but not
+model-code execution (V2 already covers that).
+
+### V3a — verb-level round-trip — **PASS** (2026-07-11, $0)
+
+- **Provider launch (B3/R7).** `build_issue_provider()` launched the `issue` server and
+  exposed exactly `{create_issue, read_issue}`. **R7 is a latent fragility, not a blocker**
+  — `loop_engine.mcp.json` launches with `"command": "python"`, which resolves only because
+  the hatch env python is on PATH. Stays a Task-8 finding.
+- **Real `create_issue` through the server.** Issues **#1–#3** created on the scratch repo,
+  carrying the `loop-engine/needs-human` label; the returned `IssueRef`'s number/url agree
+  with `gh issue view`.
+- **Real `read_issue` through the server.** With an ` ```answers ` comment posted, the
+  server's returned JSON was **byte-identical** to `gh issue view --json state,body,comments`
+  run directly. *This is the bullet the hermetic suite structurally cannot cover — every
+  Sprint-26 test saw a monkeypatched shape, never `gh`'s real payload.*
+- **Adapters vs classic.** The same `State`/`Question` pair filed through
+  `mcp_issue_filer(provider)` and through classic `file_question_issue` produced issues
+  **identical** in title/body/labels, and `mcp_read_issue` + classic `read_issue_answers`
+  returned the same answers map for the same issue.
+- Evidence: `scratch/v3a_evidence/`. Cost: **$0** (no LLM).
+
+### V3b — engine-level round-trip — **PASS (qualified)** (2026-07-12)
+
+- **Config.** Both legs `LOOP_ENGINE_ISOLATION=container`
+  (`LOOP_ENGINE_DEV_IMAGE=loop-engine-dev:latest`); pause budget `$1.00` with injected
+  `issue_filer=mcp_issue_filer(provider)`, resume budget `$5.00` with injected
+  `cli._issue_reader = mcp_read_issue(provider, …)`. Cwd pinned to the scratch clone
+  throughout, with the provider entered **before** `worktree_run`'s chdir (B1).
+  *The plan's `none`-pause / `container`-resume asymmetry proved unrunnable — see **R10**.*
+- **Trigger: `--force-gate`** (deterministic always-ESCALATE PM gate). The honest trigger —
+  an unsatisfiable requirements doc — **cannot work, structurally**; see **R9**. Both
+  triggers exploit the same fact: the PM stage has `resolvers=[]` and
+  `escalate_on_exhaustion=True`, so a PM escalation has no automated resolver above it and
+  `_pause_for_issue` fires at stage 0, the cheapest reachable pause in the pipeline.
+- **Pause.** `run_id=v3bctr` reached terminal **`AWAITING_ISSUE`**, wrote a
+  `00_awaiting_issue.json` snapshot, and filed **real issue #5** on the scratch repo
+  **through the MCP server** — `state.pending_issue` populated, **2** questions in the
+  engine's unresolved order, issue body carrying the `Snapshot:` line and the numbered
+  questions. Cost: **$0.0131**.
+- **Answer.** One ` ```answers ` comment, one `N: answer` line per filed question.
+- **Resume.** `cli.resume --from-issue 5` read the issue **through the MCP reader**, parsed
+  the answers, located the snapshot from the issue body, marked both questions
+  `resolved_by: human:5` with the human text as their `resolution`, folded them in via the
+  PM (which then **re-ACCEPTed**, $0.0610), and re-entered at stage 0. **The run advanced
+  past the stage it paused on**, reaching stage 1 (`ArchitectureGenerator`), which produced
+  a real `architecture_definition` artifact. Every clause of the resume assertion holds.
+- **Re-pause? YES — R2 firing live.** The Architect raised **6 genuine new questions**
+  (storage engine, authn/authz, regulatory framework, PII, throughput/latency, region); the
+  PM resolver could not resolve them, so the ladder escalated to a human and the run
+  re-paused at stage 1, filing **issue #6**. `cli.resume` threads **no `issue_filer`** into
+  its inner `run_graph_loop` ([`cli.py`'s `run_graph_loop(...)` call]), so that second issue
+  went through the **classic in-process `gh` path, not the MCP server** — the seam gap R2
+  names, now **observed** rather than inferred.
+- Evidence: `scratch/v3b_evidence/`.
+
+### Independently verified (not merely trusting the harness's self-report)
+
+- `gh issue view {4,5,6}` on the scratch repo matches the evidence captured through MCP:
+  #5 carries the `loop-engine/needs-human` label, the `Snapshot:` line, and both questions;
+  #6 is the re-pause issue with 6 questions.
+- The `AWAITING_ISSUE` snapshot's `pending_issue.number` (5, then 6) matches the real issues.
+- The post-resume snapshot (`state/v3bctr/01_awaiting_issue.json`) shows
+  `questions[0..1].resolved_by == "human:5"` with populated resolutions,
+  `counters.paused_stage_index == 1` (was 0), and
+  `counters == {escalations:PMGenerator: 1, escalations:ArchitectureGenerator: 1}` — the run
+  demonstrably advanced a stage.
+- **No leak to the project repo.** `gh issue list --repo glunk-works/loop-engine --label
+  'loop-engine/needs-human' --state all` still returns **exactly #16, #19, #21** (all
+  pre-existing). B1/R8 did not bite — but only incidentally; see R8.
+- The run's worktree contains only `README.md` + `docs/` (no `src/`), confirming the Coder
+  was never reached and **no model-generated code executed**.
+
+### Finding R8 (pre-existing, confirmed) — the issue verbs have no explicit repo target
+
+**Confirmed pre-existing, not an MCP regression.** `issue_io.create_issue` shells
+`gh issue create` with **no `--repo`**, so `gh` resolves the destination from the **cwd's**
+git remote. Under isolation, `worktree_run` does `os.chdir(<cwd>/.worktrees/<run_id>)` — so
+an **in-process** `gh` call resolves to whatever repo the orchestrator's cwd belongs to.
+When the orchestrator runs from its own checkout, that is **loop-engine itself**. That is
+how issues **#16, #19, #21** came to be filed on `glunk-works/loop-engine` by earlier host
+sessions: real escalation issues for managed-repo runs, landing on the project repo,
+silently.
+
+An **MCP-launched** server instead keeps the cwd it was *launched* with, so the MCP path
+incidentally **fixes** this when the provider is entered before the chdir (which both V3
+harnesses do). The classic in-process path is the one that leaks.
+
+**V3 did not leak only because the harness ran with cwd inside the scratch clone**, so the
+worktree was a worktree *of the scratch repo* and even the classic filer (issue #6)
+resolved there. The leak is latent, not absent.
+
+Route into **Task 8** alongside R1–R7: the destination of a human-escalation issue should be
+**explicit** (a repo argument threaded to the verb), not implicit cwd coupling. Under
+`flows/maintenance` the cwd-pinned-to-the-clone behavior is plausibly the *intended*
+semantics — which is the argument for making it explicit rather than accidental.
+
+### Finding R9 (new, from V3b) — the PM stage cannot escalate a requirements contradiction
+
+**A product defect, not a migration defect — but it invalidates the V3 plan's honest trigger.**
+The plan's trigger 1 was an unsatisfiable requirements doc, on the theory that the PM
+`CriticGate` could not accept it in 4 revise cycles. **It converged on the first pass**
+($0.0364, `budget_exceeded` downstream), and it always will, because three things compose:
+
+1. `CriticGate` is **purely structural**: `critic.review()` runs blank-field / vague-field
+   checks with **no LLM**, and its one consistency check
+   (`critic.check_internal_consistency`) tests only whether `in_scope` string-equals
+   `out_of_scope`. It cannot detect a semantic contradiction.
+2. The PM's artifact contract is **JSON**, with no `open_questions` key
+   (`open_questions_for_architect` was retired in State schema v2).
+3. `configs/pm.yaml` sets **`extract_open_questions: false`**, so the `ArtifactGate`
+   ESCALATE-on-`## Open Questions` channel — the one the Architect and Sprint Breakdown use
+   — is **disabled for the PM stage**.
+
+The observed behavior is the sharp end of this: given a doc demanding entries be both
+immutable and erasable, and storage be both memory-only and hardware-failure-durable, the
+PM **correctly identified all three contradictions** and wrote them into its
+`risks_and_assumptions` field as prose — and the gate **ACCEPTed anyway**, sending the
+pipeline off to architect a service whose own spec says the requirements are impossible.
+
+So the only reachable PM→human escalation is `escalate_on_exhaustion` after 4 *structural*
+REVISE cycles — i.e. "the model kept leaving fields blank", a model-failure trigger. **A PM
+that has a genuine question for the human has no channel to ask it.** (Contrast the
+Architect, whose `extract_open_questions` is on: in this very run it raised 6 questions and
+escalated correctly.)
+
+Not a Phase-6 regression and **not a blocker for Tasks 8/9** — the issue *seam* is proven.
+Route to the **product backlog**: either give the PM an open-questions channel (a spec field
+the gate reads, or `extract_open_questions: true`), or make the PM gate semantic.
+
+### Finding R10 (new, from V3b) — a run cannot be paused and resumed under different isolation modes
+
+`cli.resume` calls `worktree_run(state.run_id, reuse=True)`, which **hard-fails** with
+`WorktreeError` if the worktree does not already exist. A run paused under
+`LOOP_ENGINE_ISOLATION=none` creates **no** worktree, so resuming it under `container` is
+impossible — observed directly (run `v3bforced`, issue #4: the MCP read seam, the answer
+parse, and `apply_answers_to_questions` all succeeded, then `worktree_run` raised).
+
+The failure is **honest, not silent**, which is the right design. But nothing documents or
+enforces the constraint, and the V3 plan's own advice ("pause leg: `none` is sufficient and
+honest; resume leg: `container` is mandatory") walked straight into it. The converse
+(pause under `container`, resume under `none`) is worse in kind: `worktree_run` becomes a
+passthrough, so the run would silently resume against a **different artifact tree**.
+
+Minor; route to **Task 8** as a documentation/guard item — resume should either assert the
+isolation mode matches the paused run's, or record the mode in the snapshot.
+
+### Cost
+
+Well under every cap. Pause legs: $0.0364 (converged trigger-1 attempt) + $0.0160
+(`v3bforced`) + $0.0131 (`v3bctr`). Resume leg: $0.0610 for the re-accepted PM stage in
+`stage_history` (only *accepted* stages are recorded, so the escalating Architect stage's
+cost is not captured there). Total observed ≈ **$0.13**, against a $1.00 pause cap and a
+$5.00 resume cap.
+
+### Consequence
+
+**V3's obligation is discharged.** §9 bullets 1–3 are cleared by V3a; bullet 4 — the
+engine's `issue_filer` write seam and `cli`'s reader seam under a real forced pause — is
+cleared by V3b, against a real `gh`, real issues, and the real server subprocess. Sprint
+27's **Task 8** (issue-path flip onto MCP, carrying findings **R1–R7 + R8 + R10**) and
+**Task 9** (delete this file, close Phase 6) are **unblocked**.
+
+Task 8 now has a **live, observed** motivation rather than an inferred one: R2's seam gap
+put a real escalation issue through the classic path during this very run.
+
+**R9 does not gate Tasks 8/9** — it is a product defect in the PM's question channel, not in
+the issue path. Route it to the backlog.
+
+### Sprint-plan correction (for Task 8/9 to apply)
+
+Sprint 27's security consideration (5) says V3 **must** run under
+`LOOP_ENGINE_ISOLATION=container` because it "executes model-generated code on the host".
+That is **wrong for a pause leg** — a PM-stage pause is upstream of the Coder and executes
+none. It is **right for a resume leg**, which can reach the Coder. (In the event, R10 forces
+`container` on both legs anyway, for an unrelated reason.)
 
 ## Finding F-GATE-SANDBOX — RESOLVED IN CODE by sprint 28
 
