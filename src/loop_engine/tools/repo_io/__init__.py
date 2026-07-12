@@ -1,5 +1,6 @@
 from loop_engine.tools.repo_io.github import (
     PullRef,
+    RepoNotResolvableError,
     RepoRef,
     clone_repo,
     create_branch,
@@ -10,6 +11,7 @@ from loop_engine.tools.repo_io.github import (
 
 __all__ = [
     "PullRef",
+    "RepoNotResolvableError",
     "RepoRef",
     "clone_repo",
     "create_branch",

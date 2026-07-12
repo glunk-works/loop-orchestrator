@@ -21,6 +21,7 @@ from loop_engine.runner import DEFAULT_BUDGET_USD
 from loop_engine.tools import issue_io
 from loop_engine.tools.issue_io import default_issue_reader
 from loop_engine.tools.llm.client import LLMClient
+from loop_engine.tools.repo_io import resolve_repo_slug
 from loop_engine.tools.worktree import prune_all, worktree_run
 
 app = typer.Typer()
@@ -122,52 +123,90 @@ def run(
 
 @app.command()
 def resume(
-    from_issue: Annotated[int, typer.Option("--from-issue")],
+    from_issue: Annotated[
+        int | None, typer.Option("--from-issue", help="Issue number to resume from.")
+    ] = None,
     loop: Annotated[str, typer.Option("--loop")] = "default",
     budget: Annotated[float, typer.Option("--budget", help=_BUDGET_HELP)] = DEFAULT_BUDGET_USD,
     snapshot: Annotated[
         Path | None,
-        typer.Option("--snapshot", help="Override the snapshot path recorded in the issue."),
+        typer.Option(
+            "--snapshot",
+            help="Resume this snapshot directly. The issue number and repo are "
+            "derived from its own pending_issue -- unambiguous, never from CWD "
+            "or a passed --from-issue/--repo.",
+        ),
     ] = None,
     repo: Annotated[
         str | None,
         typer.Option(
             "--repo",
-            help="owner/repo the issue lives on. Defaults to the repo of the current "
-            "directory — pass this when resuming a run whose issue was filed on a "
-            "managed repo (e.g. a flows/maintenance run).",
+            help="owner/repo the issue lives on, when using --from-issue without "
+            "--snapshot. Defaults to the repo of the current directory — pass "
+            "this when resuming a run whose issue was filed on a managed repo "
+            "(e.g. a flows/maintenance run).",
         ),
     ] = None,
 ) -> None:
     """Resume a run paused on a GitHub issue, folding in the human's answers."""
     selected_loop = _resolve_loop(loop)
 
-    issue_data = default_issue_reader(from_issue, repo=repo)
-    snapshot_path = snapshot or (
-        Path(p) if (p := issue_io.parse_snapshot_path(issue_data)) else None
-    )
+    if snapshot is not None:
+        # F1a: --snapshot is the unambiguous path. The snapshot's own
+        # pending_issue -- recorded at pause time by the process that
+        # actually filed the issue -- is the only first-hand record of where
+        # it lives. Neither CWD nor a passed --from-issue/--repo enters.
+        state = _load_state(snapshot)
+        if state.pending_issue is None:
+            raise typer.BadParameter(f"Snapshot {snapshot} is not paused on any issue.")
+        from_issue = state.pending_issue.number
+        read_repo = issue_io.repo_from_issue_url(state.pending_issue.url)
+        snapshot_path = snapshot
+    else:
+        if from_issue is None:
+            raise typer.BadParameter("Pass --from-issue, or --snapshot to resume unambiguously.")
+        # F1b: never leave the destination to gh's implicit CWD resolution.
+        # The echo below is the actual defense here -- the reframe behind
+        # F1/F2 is that no comparison downstream can detect a human resuming
+        # from the wrong checkout; only a human reading this line can.
+        read_repo = repo or resolve_repo_slug(Path.cwd())
+        typer.echo(f"Reading issue #{from_issue} from {read_repo}")
+        snapshot_path = None
+
+    issue_data = default_issue_reader(from_issue, repo=read_repo)
+
     if snapshot_path is None:
-        raise typer.BadParameter(
-            f"Issue #{from_issue} does not reference a snapshot; pass --snapshot explicitly."
-        )
-    state = _load_state(snapshot_path)
+        snapshot_path = Path(p) if (p := issue_io.parse_snapshot_path(issue_data)) else None
+        if snapshot_path is None:
+            raise typer.BadParameter(
+                f"Issue #{from_issue} does not reference a snapshot; pass --snapshot explicitly."
+            )
+        state = _load_state(snapshot_path)
 
-    if state.pending_issue is None or state.pending_issue.number != from_issue:
-        raise typer.BadParameter(
-            f"Snapshot {snapshot_path} is not paused on issue #{from_issue} "
-            f"(pending issue: {state.pending_issue})."
-        )
+        if state.pending_issue is None or state.pending_issue.number != from_issue:
+            raise typer.BadParameter(
+                f"Snapshot {snapshot_path} is not paused on issue #{from_issue} "
+                f"(pending issue: {state.pending_issue})."
+            )
 
-    # Issue numbers are per-repo, so "#7" is only unambiguous once the repo is.
-    # Matching the issue's own URL against the one recorded at pause time is what
-    # makes reading the WRONG repo's #7 — itself a real, unrelated escalation
-    # issue that would otherwise sail through every check above — impossible.
+    # F1c: a snapshot<->issue integrity check (did the link survive?), not a
+    # wrong-repo defense -- the repo actually queried above was already
+    # pinned, either by the snapshot's own pending_issue (--snapshot) or
+    # explicitly resolved and echoed (--from-issue), so this can only catch
+    # link corruption (e.g. a repo rename or issue transfer).
     issue_url = issue_data.get("url")
-    if issue_url and issue_url != state.pending_issue.url:
+    if issue_url is None:
+        # F5: read_issue always requests `url`; a missing one means something
+        # already went wrong, which is exactly when skipping is worst.
+        raise typer.BadParameter(
+            f"Issue #{from_issue} read from {read_repo} returned no URL; refusing "
+            "to resume without confirming which issue was read."
+        )
+    if issue_url != state.pending_issue.url:
         raise typer.BadParameter(
             f"Issue #{from_issue} read from {issue_url}, but snapshot {snapshot_path} "
-            f"is paused on {state.pending_issue.url}. These are different repos' "
-            "issues that happen to share a number — pass --repo to name the right one."
+            f"is paused on {state.pending_issue.url}. The issue's own link does not "
+            "match what was recorded at pause time."
         )
 
     try:

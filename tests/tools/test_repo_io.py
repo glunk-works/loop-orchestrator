@@ -1,9 +1,11 @@
+import subprocess
 from unittest.mock import patch
 
 import pytest
 
 from loop_engine.tools.repo_io import (
     PullRef,
+    RepoNotResolvableError,
     RepoRef,
     clone_repo,
     create_branch,
@@ -180,3 +182,16 @@ def test_resolve_repo_slug_resolves_against_the_given_cwd() -> None:
         resolve_repo_slug("/orchestrator/checkout")
 
     assert run_gh.call_args.kwargs["cwd"] == "/orchestrator/checkout"
+
+
+def test_resolve_repo_slug_raises_a_typed_error_when_gh_fails() -> None:
+    """F4: a caller (`default_issue_filer`) needs to catch this without
+    itself importing `subprocess` -- `repo_io` stays the sole owner of that
+    surface, so a raw `CalledProcessError` must not cross this module's
+    boundary."""
+    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+        run_gh.side_effect = subprocess.CalledProcessError(
+            1, ["gh", "repo", "view"], stderr="not a git repository"
+        )
+        with pytest.raises(RepoNotResolvableError):
+            resolve_repo_slug("/not/a/repo")

@@ -24,6 +24,7 @@ inspectable). Removal is explicit — `cleanup()` / the CLI `prune-worktrees`
 command.
 """
 
+import contextvars
 import os
 import subprocess
 from collections.abc import Iterator
@@ -31,7 +32,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from loop_engine.tools.isolation import worktree_needed
-from loop_engine.tools.state_io.writer import set_state_root, validate_run_id
+from loop_engine.tools.state_io.writer import reset_state_root, set_state_root, validate_run_id
 
 _WORKTREE_ROOT_ENV_VAR = "LOOP_ENGINE_WORKTREE_ROOT"
 _DEFAULT_WORKTREE_DIRNAME = ".worktrees"
@@ -55,12 +56,19 @@ class WorktreeError(Exception):
 # repos ended up filed on the project repo. Making every call site remember to
 # capture the pre-chdir CWD is exactly the coupling that failed; recording it
 # here means no caller has to.
-_ORIGIN_CWD: Path | None = None
-
-
-def _set_origin_cwd(origin: Path | None) -> None:
-    global _ORIGIN_CWD
-    _ORIGIN_CWD = origin
+#
+# A `ContextVar`, not a plain module global (F3): the trigger surface
+# (`InProcessDispatcher`) can have several runs' `worktree_run`s alive at
+# once via `asyncio.to_thread`, which copies the context per worker thread —
+# so one run's `set()` never leaks into another's `origin_cwd()` reads, and
+# `reset(token)` on exit restores the prior value instead of clobbering to
+# `None` (closing F6, non-re-entrancy, in the same change). `os.chdir` itself
+# stays process-global regardless — see `InProcessDispatcher`'s lock, which
+# is what actually makes a concurrent chdir race unreachable (BL-8 is the
+# real fix: stop using process CWD as an isolation mechanism at all).
+_ORIGIN_CWD: contextvars.ContextVar[Path | None] = contextvars.ContextVar(
+    "_ORIGIN_CWD", default=None
+)
 
 
 def origin_cwd() -> Path:
@@ -70,7 +78,8 @@ def origin_cwd() -> Path:
     chdir'd into). Outside it — no isolation, or a `flows/*` run pinned to a
     foreign clone — the current CWD, which is then genuinely the intended tree.
     """
-    return _ORIGIN_CWD if _ORIGIN_CWD is not None else Path.cwd()
+    origin = _ORIGIN_CWD.get()
+    return origin if origin is not None else Path.cwd()
 
 
 def use_worktree_isolation() -> bool:
@@ -219,12 +228,12 @@ def worktree_run(run_id: str, *, reuse: bool = False) -> Iterator[Path | None]:
     else:
         path = create(run_id)
 
-    set_state_root(origin)
-    _set_origin_cwd(origin)
+    state_root_token = set_state_root(origin)
+    origin_cwd_token = _ORIGIN_CWD.set(origin)
     os.chdir(path)
     try:
         yield path
     finally:
         os.chdir(origin)
-        set_state_root(None)
-        _set_origin_cwd(None)
+        reset_state_root(state_root_token)
+        _ORIGIN_CWD.reset(origin_cwd_token)

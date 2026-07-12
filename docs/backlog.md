@@ -258,3 +258,40 @@ requirements are worst.
 
 **Notes / where to look:** `personas/pm/critic.py`, `personas/pm/critic_gate.py`,
 `personas/declarative/configs/pm.yaml`, `core/gates.py::extract_open_questions`.
+
+### BL-8 — Stop using process CWD as an isolation mechanism
+
+**Why:** found during Task 10 (sprint `27_phase6_flip_block`), fixing the Opus HITL
+review findings on PR #34 (F3/F6). `worktree_run`'s `_ORIGIN_CWD`/`state_io`'s
+`_STATE_ROOT` were plain module globals mutated via `os.chdir` bracketing — safe only
+because the orchestrator ran one loop at a time. The trigger surface
+(`InProcessDispatcher`) breaks that assumption: it dispatches concurrent
+`asyncio.to_thread(runner.run_new)` calls, and two different issues' runs sharing one
+process CWD is a real hazard, not a theoretical one — the R8 leak (escalation issues
+filed on loop-engine instead of the managed repo) returns the moment two runs'
+`worktree_run`s are open at once, because `os.chdir` is inherently process-global no
+matter what wraps it.
+
+Task 10 fixed the *symptom* two ways: `_ORIGIN_CWD`/`_STATE_ROOT` are now
+`contextvars.ContextVar`s (so reads/resets no longer cross between concurrently-running
+`asyncio.to_thread` workers — each gets its own copied context), and
+`InProcessDispatcher` gained a lock serializing actual loop execution (so the
+`os.chdir` race itself is unreachable, not just less likely). Both are honest
+mitigations, not the real fix — the review was explicit that `os.chdir` staying
+process-global is "pre-existing and concurrency-hostile."
+
+**Shape:** thread the tree path explicitly through the call chain (engine, personas,
+tools) instead of relying on `Path.cwd()` to communicate "which run's tree is this."
+That likely means every tool that currently reads `Path.cwd()` implicitly (artifact
+writes, the coder tools, `resolve_repo_slug`'s default) takes an explicit root/cwd
+argument instead. A bigger refactor than Task 10's scope — the dispatcher lock buys
+time by making the factory single-loop-at-a-time in practice, at the cost of the
+throughput it isn't currently using anyway.
+
+**Not urgent while the dispatcher lock holds**, but it is the load-bearing reason the
+lock can never safely come out again until this lands.
+
+**Notes / where to look:** `tools/worktree/manager.py::worktree_run`/`origin_cwd`,
+`tools/state_io/writer.py::state_root`, `trigger/dispatch.py::InProcessDispatcher`,
+`runner.py::run_in_tree` (the other CWD-dependent entrypoint, used by
+`flows/maintenance`).

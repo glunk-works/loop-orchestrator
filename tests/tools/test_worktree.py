@@ -1,12 +1,14 @@
 """Phase 3a worktree isolation. Uses a real git repo in tmp_path so the
 `git worktree` subprocess surface is exercised end to end."""
 
+import asyncio
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from loop_engine.tools.state_io import writer as state_writer
+from loop_engine.tools.state_io.writer import state_root
 from loop_engine.tools.worktree.manager import (
     WorktreeError,
     branch_name,
@@ -119,6 +121,56 @@ def test_origin_cwd_is_the_main_checkout_while_inside_the_worktree(repo):
         assert origin_cwd().resolve() != Path.cwd()
 
     assert origin_cwd() == repo  # restored on exit
+
+
+def test_nested_worktree_run_restores_the_prior_origin_not_none(repo):
+    """F6: exiting an inner `worktree_run` must restore whatever
+    `_ORIGIN_CWD`/`_STATE_ROOT` held before it -- via `ContextVar.reset(token)`
+    -- not clobber to `None`. With the plain-global version this replaced,
+    the inner exit's `_set_origin_cwd(None)` left the outer context's
+    `origin_cwd()` falling back to `Path.cwd()`, which by then is the OUTER
+    worktree (not the real origin) -- a distinguishable wrong answer, not
+    just a theoretical one."""
+    create("run032")
+
+    with worktree_run("run032") as outer_wt:
+        outer_origin = origin_cwd()
+        outer_state_root = state_root()
+        assert outer_origin == repo
+
+        with worktree_run("run033") as inner_wt:
+            assert origin_cwd().resolve() == outer_wt.resolve()
+            assert inner_wt != outer_wt
+
+        # Restored to what was active before the inner run -- not None
+        # (which would fall back to Path.cwd(), now wrongly == outer_wt).
+        assert origin_cwd() == outer_origin
+        assert state_root() == outer_state_root
+        assert Path.cwd() == outer_wt
+
+
+def test_origin_cwd_context_does_not_leak_into_a_worker_thread(repo):
+    """F3: `_ORIGIN_CWD` is a `ContextVar`, not a plain module global --
+    `asyncio.to_thread` (what `InProcessDispatcher` uses to run each loop)
+    copies the calling context into its worker thread, so a `set()` made
+    from inside that thread cannot cross back into the caller's context,
+    and the caller's own value is unaffected by whatever the thread does."""
+    create("run034")
+    assert origin_cwd() == repo
+
+    def in_thread() -> Path:
+        with worktree_run("run034", reuse=True):
+            return origin_cwd().resolve()
+
+    async def main() -> Path:
+        return await asyncio.to_thread(in_thread)
+
+    result = asyncio.run(main())
+
+    assert result == repo.resolve()
+    # The calling (outer) context's origin is untouched by the thread's own
+    # set/reset -- there was nothing to leak back.
+    assert origin_cwd() == repo
 
 
 def test_origin_cwd_is_the_cwd_when_isolation_is_off(repo, monkeypatch):

@@ -110,6 +110,25 @@ def parse_snapshot_path(issue_data: dict) -> str | None:
     return match.group(1) if match else None
 
 
+_ISSUE_URL_RE = re.compile(r"^https://github\.com/([^/]+/[^/]+)/issues/\d+/?$")
+
+
+def repo_from_issue_url(url: str) -> str:
+    """The `owner/repo` slug a canonical GitHub issue URL
+    (`https://github.com/owner/repo/issues/N`) belongs to.
+
+    F1a: makes `resume --snapshot` unambiguous. A snapshot's own
+    `pending_issue.url` is the only first-hand record of where its escalation
+    was actually filed, recorded at pause time by the process that filed it
+    -- so deriving the read repo from it (rather than CWD or a guess) is what
+    closes the destination ambiguity CWD-based resolution cannot.
+    """
+    match = _ISSUE_URL_RE.match(url)
+    if not match:
+        raise ValueError(f"Not a recognizable GitHub issue URL: {url!r}")
+    return match.group(1)
+
+
 def parse_issue_answers(issue_data: dict, issue_number: int | None = None) -> dict[int, str]:
     """Pure: {question number: answer} from an already-fetched issue view's
     latest answers block. No `gh`.

@@ -21,6 +21,15 @@ from pathlib import Path, PurePosixPath
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class RepoNotResolvableError(Exception):
+    """`resolve_repo_slug` could not determine the repo `cwd` belongs to --
+    e.g. `cwd` is not inside a GitHub repository. Raised instead of letting a
+    raw `subprocess.CalledProcessError` cross this module's boundary, so a
+    caller (F4: `tools/issue_io`'s `default_issue_filer`) can catch it
+    without itself importing `subprocess` -- `repo_io` stays the only owner
+    of that surface."""
+
+
 class RepoRef(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -59,7 +68,12 @@ def resolve_repo_slug(cwd: str | Path | None = None) -> str:
     not one you inherited.
     """
     args = ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]
-    return _run_gh(args, cwd=cwd).strip()
+    try:
+        return _run_gh(args, cwd=cwd).strip()
+    except subprocess.CalledProcessError as exc:
+        raise RepoNotResolvableError(
+            f"{cwd} is not a GitHub repository (`gh repo view` failed): {exc}"
+        ) from exc
 
 
 def _validate_clone_dest(dest: str) -> Path:
