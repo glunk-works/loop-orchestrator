@@ -83,7 +83,7 @@ hatch run loop-engine cost-summary --run-id <run_id>
 Exit codes from `run`/`resume`: 0 completed, 2 awaiting a GitHub issue answer, 3 budget exceeded, 4 aborted by the human (the pending issue was closed without an answers comment — distinct from 1, an unexpected failure).
 (The `loop-engine resume` CLI subcommand is unrelated to the `/resume` dev-workflow skill.)
 
-CI (`.github/workflows/ci.yml`) runs, in order: `pr-title` → `lint` → `format-check` → `test` → `secrets-scan` (gitleaks) / `dependency-audit` → `sbom` (the heavy chain gates on `pr-title`, so a bad title fails fast instead of burning the suite). A second workflow, `hitl-review.yml`, enforces the Architect review on any PR touching `src/`. All must pass; see `sprints/GLOBAL_DEFINITION_OF_DONE.md` for the full merge bar. The API key is **never** a CLI flag or env var — it comes only from the OS keyring (setup + fallback detail in `.ai/context/modules.md`).
+CI (`.github/workflows/ci.yml`) runs the unconditional chain `lint` → `format-check` → `test` → `secrets-scan` (gitleaks) / `dependency-audit` → `sbom`; no job carries an `if:`, so none can ever report `skipped` (BL-10, sprint 33). A separate `pr-title.yml` workflow validates the PR title as its own required check — it gates nothing in `ci.yml` and is gated by nothing, so a bad title costs runner minutes instead of stopping the chain. A third workflow, `hitl-review.yml`, enforces the Architect review on any PR touching `src/`. All must pass; see `sprints/GLOBAL_DEFINITION_OF_DONE.md` for the full merge bar. The API key is **never** a CLI flag or env var — it comes only from the OS keyring (setup + fallback detail in `.ai/context/modules.md`).
 
 ## Enforced module boundaries
 

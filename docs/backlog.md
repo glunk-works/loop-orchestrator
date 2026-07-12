@@ -408,3 +408,23 @@ runner minutes on a bad title — the fail-fast saving is small and this is what
 pull_request: types: [..., edited]` trigger. The rationale comments on both guards are worth
 reading before changing either — each is there for a real reason; it's their *interaction*
 that's wrong.
+
+**Resolved by sprint 33** (`sprints/33_ci_title_starvation/sprint_plan.md`). This entry's
+diagnosis was correct but incomplete in two ways the planning pass found:
+
+- **FD2 — a second, independent starvation path through `concurrency`.** `github.ref` for a
+  `pull_request` event is `refs/pull/N/merge`, identical across `opened` and `edited`, and
+  `ci.yml`'s `concurrency` group is keyed on it with `cancel-in-progress: true`. Editing the
+  title *while the suite is running* — even a title that was **always valid** — cancels the
+  in-flight run; the replacement run then hits `if: != 'edited'` and skips the heavy chain.
+  This entry's preferred option (b), dropping `needs: pr-title`, does **not** close this path:
+  the killer is the shared concurrency group plus the `edited` guard, not the `needs:`.
+- **FD3 — a green test was pinning the bug in place.** `test_lint_job_gates_on_pr_title_to_fail_fast`
+  asserted the exact `needs`/`if:` wiring that caused the starvation, so any fix had to make it
+  fail before replacing it — not soften it into something that passed either way.
+
+The actual fix was a **split**, not a rewiring of `needs:`: `pr-title` moved to its own
+workflow, `pr-title.yml`, with its own trigger list and its own concurrency group. `ci.yml`
+lost the `edited` trigger entirely (closing FD2) and `lint` lost both `needs: pr-title` and its
+`if:` block, so no job in `ci.yml` carries an `if:` and none can ever report `skipped` — the
+invariant sprint 33 pins by test, structurally, rather than pinning the new wiring.
