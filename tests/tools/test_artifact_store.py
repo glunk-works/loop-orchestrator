@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from loop_engine.core.state import State, artifact_digest, default_artifact_path
-from loop_engine.tools.artifact_store import get_artifact, has_artifact, mirror_to_disk
+from loop_engine.tools.artifact_store import has_artifact, mirror_to_disk
 
 
 @pytest.fixture(autouse=True)
@@ -38,17 +38,6 @@ def test_mirror_repoints_on_body_change() -> None:
 
     assert remirrored.artifact_refs["spec"].digest == artifact_digest("v2")
     assert Path(remirrored.artifact_refs["spec"].path).read_text() == "v2"
-
-
-def test_get_artifact_prefers_disk_then_inline_then_default() -> None:
-    mirrored = mirror_to_disk(_state(spec="on-disk"))
-    assert get_artifact(mirrored, "spec") == "on-disk"
-
-    # Inline fallback when no ref exists yet (dual-field phase).
-    inline_only = _state(spec="inline")
-    assert get_artifact(inline_only, "spec") == "inline"
-
-    assert get_artifact(inline_only, "missing", default="fallback") == "fallback"
 
 
 def test_has_artifact_reflects_nonempty_body() -> None:

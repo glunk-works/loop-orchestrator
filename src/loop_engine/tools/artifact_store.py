@@ -8,15 +8,12 @@ pointer for each. This module is the mediator:
   changed) and refreshes its ref. The engine calls this at snapshot time, so
   personas keep populating `state.artifacts` unchanged and externalization
   happens centrally.
-- `get_artifact` / `has_artifact` read through the ref (falling back to the
-  inline body during the dual-field phase), so new (LangGraph) readers never
-  touch `state.artifacts` directly.
+- `has_artifact` checks the inline body directly; nothing reads a body back
+  off disk (the mirrored copy is for publication, not for engine reads).
 
 All writes are delegated to `tools/state_io` so the single-writer boundary
-holds; reads go straight to the filesystem.
+holds.
 """
-
-from pathlib import Path
 
 from loop_engine.core.state import ArtifactRef, State, artifact_digest, default_artifact_path
 from loop_engine.tools.state_io.writer import write_artifact
@@ -44,19 +41,6 @@ def mirror_to_disk(state: State) -> State:
     return state.model_copy(update={"artifact_refs": refs})
 
 
-def get_artifact(state: State, key: str, default: str = "") -> str:
-    """Read an artifact body via its disk ref, falling back to the inline body
-    (dual-field phase) and then to `default`."""
-    ref = state.artifact_refs.get(key)
-    if ref is not None:
-        path = Path(ref.path)
-        if path.exists():
-            return path.read_text()
-    if key in state.artifacts:
-        return state.artifacts[key]
-    return default
-
-
 def has_artifact(state: State, key: str) -> bool:
     """Whether a non-empty artifact body is available for `key`."""
-    return bool(get_artifact(state, key).strip())
+    return bool(state.artifacts.get(key, "").strip())
