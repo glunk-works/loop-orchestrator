@@ -5,66 +5,56 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Phase 6 is CLOSED.** The migration is collapsed to one path — LangGraph engine + MCP
-tool dispatch + declarative `GeneratorNode` personas / PM `CriticGate` + Ralph Coder.
-Four flags deleted; classic recoverable at the **`pre-phase6-classic`** tag;
-`LOOP_ENGINE_ISOLATION` survives as genuine runtime config. V1/V2/V3 all PASS.
+**The migration is over.** Phases 1–6 are complete: one path (LangGraph engine + MCP tool
+dispatch + declarative `GeneratorNode` personas / PM `CriticGate` + Ralph Coder), four flags
+deleted, classic recoverable at the **`pre-phase6-classic`** tag. `LOOP_ENGINE_ISOLATION`
+survives as genuine runtime config.
 
-Sprint `27_phase6_flip_block` is complete pending this PR's merge, then `/archive-sprint`.
+**Next unit: sprint `32_state_artifacts_strip` — the deferred `State.artifacts` strip
+(decision FD3). Status: `planning`. No sprint plan exists yet; it needs one.**
 
 ## Just done (Opus/Architect, 2026-07-12)
-- **PR #34 (Task 8's R8 repair + Task 10's F1–F7) reviewed in a fresh Opus session and
-  approved; merged as `796610a`.** The review is on the PR. Headline: F1/F2 were closed by
-  *correcting the finding* — given only an issue number and a CWD there is **no oracle** for
-  which of two same-numbered issues a human meant, so `resume --snapshot` was made
-  authoritative (repo + number from the snapshot's own `pending_issue.url`) and
-  `--from-issue` echoes its resolved destination. F3/F6: `_ORIGIN_CWD`/`_STATE_ROOT` are
-  `ContextVar`s + an `InProcessDispatcher` lock. F4: `_pause_for_issue` persists before filing.
-- **Task 9 — and it did NOT go as specced.** Its premise ("delete
-  `sprints/DEFERRED_VERIFICATION.md`; its closing line says to") was **false**, the same way
-  Task 5's was. The closing line's condition is *"once the checks have been performed"* —
-  **five had never been run**: §1 (caching + USD smoke), §5 (`github_server` live launch),
-  §6 (trigger webhook), §7 (maintenance flow live), §8 (bootstrap flow live). BL-3 depends on
-  §1. Deleting would have destroyed the only record that these were never verified against a
-  real host. **So the file was pruned, not deleted** (1007 → 210 lines) and retitled: it is now
-  the standing register of unmet proof obligations and **outlives the migration**. The spent
-  parts (§2 moot; §3/§4/§9 superseded by V1–V3; the V-run results; the resolved findings) are
-  folded into the roadmap's Phase 6 row. **Section numbers were not renumbered** on purpose.
-- **BL-9 filed** — PR #34's five non-blocking review notes.
+Sprint `27_phase6_flip_block` is **complete and archived** (`ddd28a8`, PR #37). Its final
+cursor is snapshotted at `.ai/archive/27_phase6_flip_block-next-steps.md`.
 
 ## Next
-1. **Merge this docs-only PR** (`architect-review` skips it — no `src/` changes), then
-   **`/archive-sprint`** for `27_phase6_flip_block`.
-2. **Plan the `State.artifacts` strip (decision FD3) as its own sprint — Opus.** This is the
-   roadmap's NEXT ACTION. It is a **behavior-changing refactor, not a deletion**: the
-   `artifacts` readers were always the personas and gates, never `run_loop`, which is why it
-   was cut from Phase 6.
+**Plan FD3 (Opus).** Read `docs/migration_roadmap.md`'s decisions log for FD3 before writing
+the plan. The one thing to carry in:
 
-**Model: Opus/Architect** to plan FD3. Sonnet/Coder once that sprint's tasks are defined.
+> **FD3 is a behavior-changing refactor, NOT a deletion.** Task 5 was originally specced as a
+> deletion on the premise that removing `run_loop` would make the engine the sole `artifacts`
+> reader. That premise was **false** — the readers were always the **personas and gates**. Any
+> plan that treats this as "delete a `State` field" will be wrong for the same reason.
 
-## Standing obligations that survive Phase 6 (neither is a migration task; both are real)
-- **`sprints/DEFERRED_VERIFICATION.md`** — five checks that have **never been run** (§1, §5,
-  §6, §7, §8). They need a real Anthropic key, a real authenticated `gh`, or a daemon-bearing
-  host that can bind a port. **A green `hatch run test` says nothing about any of them.**
-- **FD3** — the deferred `State.artifacts` strip (above).
+It touches `State`, so it must keep `schema_version` accurate (bump + extend
+`migrate_state_payload` for a breaking shape change) and keep `extra="forbid"` intact.
+
+## Standing obligations (neither is a migration task; both are real)
+- **`sprints/DEFERRED_VERIFICATION.md`** — five checks that have **never been run**: §1
+  (caching + USD budget smoke), §5 (`github_server` live launch), §6 (trigger surface live
+  webhook), §7 (maintenance flow live clone→PR), §8 (bootstrap flow live create→push). They
+  need a real Anthropic key, a real authenticated `gh`, or a daemon-bearing host that can bind
+  a port. **A green `hatch run test` says nothing about any of them.** Sprint 27's Task 9
+  pruned this file rather than deleting it precisely so this record survives — **do not
+  "finish the job" by deleting it.** Its section numbers are intentionally non-contiguous
+  (BL-3 cites §1; archived sprint plans cite §3/§6/§9).
+- **FD3** — the `artifacts` strip (above).
 
 ## HITL gate
-None open. PR #34 is reviewed, approved, and merged. This docs-only PR needs no Architect
-review (the gate exempts PRs with no `src/` changes) — but the owner's merge is still the
-approval. Claude never merges or force-pushes.
+None open.
 
 ## Pointers
-- `docs/migration_roadmap.md` — Phase 6 row (🟩 Done, with V1–V3's results folded in) +
-  the NEXT ACTION line + the decisions log (FD1/FD2/**FD3**).
-- `sprints/27_phase6_flip_block/sprint_plan.md` — Tasks 0–4/6/7/8/9/10 DONE, Task 5 deferred
-  (FD3). Task 9's entry records *why its premise was false* — read it before anyone tries to
-  "finish the job" by deleting `DEFERRED_VERIFICATION.md`.
-- `docs/backlog.md` — **BL-8** (stop using process CWD as an isolation mechanism) and
-  **BL-9** (retire the implicit-CWD destination from the issue path's remaining surfaces;
-  item 1 — `resume --from-issue` still guesses from CWD — is the one worth doing).
+- `docs/migration_roadmap.md` — Phase 6 row (🟩 Done, V1–V3 results folded in), the
+  NEXT ACTION line, and the decisions log (**FD3**).
+- `sprints/27_phase6_flip_block/sprint_plan.md` — the closed sprint. Task 9's entry records
+  why its premise was false; worth reading before planning FD3, which failed the same way.
+- `docs/backlog.md` — **BL-8** (stop using process CWD as an isolation mechanism) and **BL-9**
+  (retire the implicit-CWD destination from the issue path's remaining surfaces — item 1,
+  `resume --from-issue` still guessing from CWD and only echoing the guess, is the one worth
+  doing).
 - `.ai/context/workflow.md` — PR-gated integration + the fresh-session review rule.
-- `.github/workflows/hitl-review.yml` — the gate: binds a review to an exact head SHA,
-  exempts PRs with no `^src/` file.
+- `.github/workflows/hitl-review.yml` — the gate: binds a review to an exact head SHA, exempts
+  PRs with no `^src/` file.
 
 ## Live external state — needs cleanup (HUMAN ACTION)
 - **`glunk-works/loop-engine-v3-scratch`** (private) is still live, holding issues **#1–#6**.
@@ -74,6 +64,7 @@ approval. Claude never merges or force-pushes.
   worth trimming while you're there).
 
 ## Working tree
-- Work is on **`sprint/27-task9-decommission`** (cut fresh from `feat/mcp-langgraph-migration`
-  at `796610a`, after #34 squash-merged). Sprint branches squash-merge, so only the tip ships.
-- `.ai/state.json` is git-ignored (local mirror); **`.ai/next-steps.md` is tracked**.
+- `main` ← `feat/mcp-langgraph-migration` is the integration branch; sprint work lands via
+  `sprint/NN-slug` PRs based on it. Sprint branches squash-merge, so only the tip ships.
+- `.ai/state.json` + `.ai/archive/` are git-ignored (local mirrors); **`.ai/next-steps.md` is
+  tracked**.
