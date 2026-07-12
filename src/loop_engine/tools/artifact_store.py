@@ -1,44 +1,38 @@
-"""Disk-backed artifact storage.
+"""Disk-backed artifact publication.
 
-During the LangGraph migration, artifact bodies move out of `State.artifacts`
-(inline text) and onto disk, with `State.artifact_refs` holding a path + digest
-pointer for each. This module is the mediator:
+`State.artifacts` (inline text) is the single source of truth for artifact
+bodies — it is also the prompt-cache prefix, so it is never routed through
+disk on the read side. This module handles the one thing that still needs a
+disk write: publishing those bodies into the working tree so they ship as
+documentation in the managed repo's PR (`flows/maintenance` commits the whole
+tree).
 
-- `mirror_to_disk(state)` writes any body not yet on disk (or whose content
-  changed) and refreshes its ref. The engine calls this at snapshot time, so
-  personas keep populating `state.artifacts` unchanged and externalization
-  happens centrally.
-- `has_artifact` checks the inline body directly; nothing reads a body back
-  off disk (the mirrored copy is for publication, not for engine reads).
+- `publish_artifacts(state)` writes every inline body to disk, skipping a
+  body whose on-disk content already matches so publishing an unchanged
+  state does no I/O.
+- `has_artifact` checks the inline body directly.
 
 All writes are delegated to `tools/state_io` so the single-writer boundary
 holds.
 """
 
-from loop_engine.core.state import ArtifactRef, State, artifact_digest, default_artifact_path
+from pathlib import Path
+
+from loop_engine.core.state import State, default_artifact_path
 from loop_engine.tools.state_io.writer import write_artifact
 
 
-def mirror_to_disk(state: State) -> State:
-    """Write every inline artifact body to disk and (re)point its ref.
+def publish_artifacts(state: State) -> None:
+    """Write every inline artifact body to disk under `docs/artifacts/<run_id>/`.
 
-    Idempotent: a body whose ref already matches its digest is skipped, so
-    re-mirroring an unchanged state does no I/O.
+    A pure side effect — mutates no state. Skips a body whose on-disk content
+    already matches, so publishing an unchanged state does no I/O.
     """
-    refs = dict(state.artifact_refs)
-    changed = False
     for key, body in state.artifacts.items():
-        digest = artifact_digest(body)
-        existing = refs.get(key)
-        if existing is not None and existing.digest == digest:
+        path = Path(default_artifact_path(state.run_id, key))
+        if path.exists() and path.read_text() == body:
             continue
-        path = default_artifact_path(state.run_id, key)
-        write_artifact(body, path)
-        refs[key] = ArtifactRef(path=path, digest=digest, size_bytes=len(body.encode("utf-8")))
-        changed = True
-    if not changed:
-        return state
-    return state.model_copy(update={"artifact_refs": refs})
+        write_artifact(body, str(path))
 
 
 def has_artifact(state: State, key: str) -> bool:

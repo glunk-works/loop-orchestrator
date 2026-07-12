@@ -22,7 +22,7 @@ from loop_engine.core.gates import (
 )
 from loop_engine.core.state import IssueRef, Question, RunStatus, StageRecord, State
 from loop_engine.personas.base import BasePersona
-from loop_engine.tools.artifact_store import has_artifact, mirror_to_disk
+from loop_engine.tools.artifact_store import has_artifact, publish_artifacts
 from loop_engine.tools.issue_io import default_issue_filer
 from loop_engine.tools.llm.client import (
     BudgetExceededError,
@@ -127,7 +127,7 @@ def _record_stage(
 def _finalize(state: State, stage_index: int, status: RunStatus) -> State:
     """Persist a terminal snapshot for ANY exit path and stamp the status."""
     final = state.model_copy(update={"status": status})
-    final = mirror_to_disk(final)
+    publish_artifacts(final)
     write_state_snapshot(
         final,
         run_id=final.run_id,
@@ -408,7 +408,7 @@ def execute_stage(
         llm_client.cache_creation_tokens_used - cache_creation_before,
         llm_client.cache_read_tokens_used - cache_read_before,
     )
-    state = mirror_to_disk(state)
+    publish_artifacts(state)
     write_state_snapshot(
         state,
         run_id=state.run_id,
