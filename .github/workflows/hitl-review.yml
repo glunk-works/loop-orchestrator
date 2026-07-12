@@ -1,0 +1,120 @@
+name: HITL review
+
+# The Architect (Opus) HITL review of a coding diff is a rule in
+# `.ai/context/workflow.md`, and a rule that only lives in prose is a rule that
+# gets skipped: sprint 27's Task 8 shipped a fully green PR (#32) whose R8 fix
+# covered `cli.py` and silently left every fresh-run path still filing
+# escalation issues against the wrong repo. The suite passed, CI passed, and the
+# review that would have caught it was simply not run. This makes it a check.
+#
+# The review must also run in a session that did NOT write the diff. A reviewer
+# holding the authoring context re-reads its own reasoning and agrees with it —
+# it does not re-derive anything. Switching model mid-session (`/model opus`)
+# does not clear that context: the review of #32 was done exactly that way, and
+# the self-review of the follow-up (#34) would have been done by its own author.
+# The process is `/handoff` → a genuinely new session → `/resume` → `/code-review`.
+#
+# What it can and cannot do: it verifies a review carrying the Architect header
+# and the fresh-session attestation was *posted against this exact diff*. It
+# cannot observe a session boundary and it cannot judge whether the review was
+# any good. It converts a silent omission into a deliberate act, and reviewing
+# your own diff into a knowing false statement — which is as far as a CI check
+# can go. (Real attribution needs a separate machine identity: backlog BL-6.)
+#
+# Deliberately a separate workflow, not a job in `ci.yml`: `ci.yml` sets
+# `cancel-in-progress` on its concurrency group, so adding a
+# `pull_request_review` trigger there would let *posting a review* cancel an
+# in-flight test run.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  # Load-bearing, exactly like `edited` is for `pr-title` in ci.yml: without it
+  # the check only re-runs on a new commit, so posting the review it demands
+  # could never turn it green without a dummy push.
+  pull_request_review:
+    types: [submitted, dismissed]
+
+concurrency:
+  group: hitl-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  architect-review:
+    # A draft is still being written; review it when it's offered for review.
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require an Architect HITL review of the code diff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEADER: "**Opus/Architect HITL review (automated)**"
+          # The reviewer attests the review ran in a session that did not write
+          # the diff. CI cannot observe a session boundary, so this is an
+          # attestation, not a proof — but it makes reviewing your own work a
+          # knowing false statement rather than a thing that just quietly happens.
+          ATTESTATION: "Fresh-session review: this session did not author the diff."
+        run: |
+          set -euo pipefail
+
+          # Docs, sprint plans and the `.ai/` cursor carry no runtime behavior to
+          # get wrong, so they do not need an architecture review. Code does.
+          if ! gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename' \
+               | grep -q '^src/'; then
+            echo "No src/ changes in this PR — Architect review not required."
+            exit 0
+          fi
+
+          # The review must be of THIS diff. A review of an earlier commit is not
+          # a review of the code being merged — that loophole (review, then push)
+          # is how a gate quietly stops being one.
+          matches=$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate --jq '
+            [ .[]
+              | select(.commit_id == env.HEAD_SHA)
+              | select(.body != null
+                       and (.body | contains(env.HEADER))
+                       and (.body | contains(env.ATTESTATION)))
+            ] | length')
+
+          if [ "$matches" -gt 0 ]; then
+            echo "OK: Architect HITL review found for $HEAD_SHA."
+            exit 0
+          fi
+
+          echo "::error::This PR changes src/ but has no Opus/Architect HITL review of commit $HEAD_SHA."
+          cat <<'GUIDANCE'
+
+          The Architect review is a merge prerequisite for code changes, not a
+          formality — see `.ai/context/workflow.md`.
+
+          It must run in a FRESH session that did not write this diff. A reviewer
+          holding the authoring context re-reads its own reasoning and agrees with
+          it; that is not a review. Switching model mid-session (/model opus) does
+          NOT clear the context and does NOT count.
+
+            1. /handoff                  (serialize state)
+            2. START A NEW SESSION       (Opus — context genuinely empty)
+            3. /resume                   (rehydrate from .ai/, not from memory)
+            4. /code-review              (review the diff)
+            5. gh pr review <N> --comment --body-file <review.md>
+
+          The review body must begin with:
+
+            **Opus/Architect HITL review (automated)**
+            *Fresh-session review: this session did not author the diff.*
+
+          (That header is required because Claude and the repo owner share one
+          GitHub identity — without it the review renders as the owner reviewing
+          their own PR.) Never `--approve`: the human's merge is the approval.
+
+          A review posted against an earlier commit does not count. Push first,
+          then review the final diff.
+          GUIDANCE
+          exit 1

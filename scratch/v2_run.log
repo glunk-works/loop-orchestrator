@@ -1,0 +1,181 @@
+V2 Ralph run; config langgraph+mcp+declarative+ralph+container; started 2026-07-10T20:44:58+00:00
+[07/10/26 20:47:32] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+[07/10/26 20:47:34] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/10/26 20:47:35] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/10/26 20:47:37] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/10/26 20:47:39] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/10/26 20:47:43] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/10/26 20:47:45] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/10/26 20:47:48] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/10/26 20:47:55] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+╭───────────────────── Traceback (most recent call last) ──────────────────────╮
+│ /workspace/src/loop_engine/cli.py:132 in run                                 │
+│                                                                              │
+│   129 │   │   │   )                                                          │
+│   130 │   else:                                                              │
+│   131 │   │   human_input = input.read_text() if input is not None else ""   │
+│ ❱ 132 │   │   final_state = runner.run_new(human_input, budget_usd=budget,   │
+│       loop_name=loop)                                                        │
+│   133 │   _report_outcome(final_state)                                       │
+│   134                                                                        │
+│   135                                                                        │
+│                                                                              │
+│ /workspace/src/loop_engine/runner.py:59 in run_new                           │
+│                                                                              │
+│   56 │   )                                                                   │
+│   57 │   llm_client = LLMClient(budget_usd=budget_usd)                       │
+│   58 │   with worktree_run(run_id):                                          │
+│ ❱ 59 │   │   final_state = _select_engine()(selected_loop, initial_state,    │
+│      llm_client, start_index=0)                                              │
+│   60 │   return final_state                                                  │
+│   61                                                                         │
+│   62                                                                         │
+│                                                                              │
+│ /workspace/src/loop_engine/core/graph_engine.py:141 in run_graph_loop        │
+│                                                                              │
+│   138 │   │   "done": False,                                                 │
+│   139 │   }                                                                  │
+│   140 │   recursion_limit = len(loop.stages) * (_RECURSION_HEADROOM //       │
+│       max(len(loop.stages), 1) + 4) + 50                                     │
+│ ❱ 141 │   result = compiled.invoke(init, config={"recursion_limit":          │
+│       recursion_limit})                                                      │
+│   142 │   return result["state"]                                             │
+│   143                                                                        │
+│                                                                              │
+│ /home/app/.local/share/hatch/env/virtual/loop-engine/xS3fZVNL/loop-engine/li │
+│ b/python3.12/site-packages/langgraph/pregel/main.py:3913 in invoke           │
+│                                                                              │
+│   3910 │   │   │   │   │   chunks.append(chunk)                              │
+│   3911 │   │   else:                                                         │
+│   3912 │   │   │   # v1: collect interrupts from updates stream              │
+│ ❱ 3913 │   │   │   for chunk in self.stream(                                 │
+│   3914 │   │   │   │   input,                                                │
+│   3915 │   │   │   │   config,                                               │
+│   3916 │   │   │   │   context=context,                                      │
+│                                                                              │
+│ /home/app/.local/share/hatch/env/virtual/loop-engine/xS3fZVNL/loop-engine/li │
+│ b/python3.12/site-packages/langgraph/pregel/main.py:2967 in stream           │
+│                                                                              │
+│   2964 │   │   │   │   while loop.tick():                                    │
+│   2965 │   │   │   │   │   for task in loop.match_cached_writes():           │
+│   2966 │   │   │   │   │   │   loop.output_writes(task.id, task.writes,      │
+│        cached=True)                                                          │
+│ ❱ 2967 │   │   │   │   │   for _ in runner.tick(                             │
+│   2968 │   │   │   │   │   │   [t for t in loop.tasks.values() if not        │
+│        t.writes],                                                            │
+│   2969 │   │   │   │   │   │   timeout=self.step_timeout,                    │
+│   2970 │   │   │   │   │   │   get_waiter=get_waiter,                        │
+│                                                                              │
+│ /home/app/.local/share/hatch/env/virtual/loop-engine/xS3fZVNL/loop-engine/li │
+│ b/python3.12/site-packages/langgraph/pregel/_runner.py:207 in tick           │
+│                                                                              │
+│   204 │   │   │   t = tasks[0]                                               │
+│   205 │   │   │   scheduled_error_handler = False                            │
+│   206 │   │   │   try:                                                       │
+│ ❱ 207 │   │   │   │   run_with_retry(                                        │
+│   208 │   │   │   │   │   t,                                                 │
+│   209 │   │   │   │   │   retry_policy,                                      │
+│   210 │   │   │   │   │   configurable={                                     │
+│                                                                              │
+│ /home/app/.local/share/hatch/env/virtual/loop-engine/xS3fZVNL/loop-engine/li │
+│ b/python3.12/site-packages/langgraph/pregel/_retry.py:617 in run_with_retry  │
+│                                                                              │
+│   614 │   │   │   # clear any writes from previous attempts                  │
+│   615 │   │   │   task.writes.clear()                                        │
+│   616 │   │   │   # run the task                                             │
+│ ❱ 617 │   │   │   return task.proc.invoke(task.input, config)                │
+│   618 │   │   except ParentCommand as exc:                                   │
+│   619 │   │   │   ns: str = config[CONF][CONFIG_KEY_CHECKPOINT_NS]           │
+│   620 │   │   │   cmd = exc.args[0]                                          │
+│                                                                              │
+│ /home/app/.local/share/hatch/env/virtual/loop-engine/xS3fZVNL/loop-engine/li │
+│ b/python3.12/site-packages/langgraph/_internal/_runnable.py:684 in invoke    │
+│                                                                              │
+│   681 │   │   │   │   │   │   run = None                                     │
+│   682 │   │   │   │   │   # run in context                                   │
+│   683 │   │   │   │   │   with set_config_context(config, run) as context:   │
+│ ❱ 684 │   │   │   │   │   │   input = context.run(step.invoke, input,        │
+│       config, **kwargs)                                                      │
+│   685 │   │   │   │   else:                                                  │
+│   686 │   │   │   │   │   input = step.invoke(input, config)                 │
+│   687 │   │   # finish the root run                                          │
+│                                                                              │
+│ /home/app/.local/share/hatch/env/virtual/loop-engine/xS3fZVNL/loop-engine/li │
+│ b/python3.12/site-packages/langgraph/_internal/_runnable.py:426 in invoke    │
+│                                                                              │
+│   423 │   │   │   else:                                                      │
+│   424 │   │   │   │   run_manager.on_chain_end(ret)                          │
+│   425 │   │   else:                                                          │
+│ ❱ 426 │   │   │   ret = self.func(*args, **kwargs)                           │
+│   427 │   │   if self.recurse and isinstance(ret, Runnable):                 │
+│   428 │   │   │   return ret.invoke(input, config)                           │
+│   429 │   │   return ret                                                     │
+│                                                                              │
+│ /workspace/src/loop_engine/core/graph_engine.py:64 in node                   │
+│                                                                              │
+│    61                                                                        │
+│    62 def _make_stage_node(loop: Loop, index: int, llm_client: LLMClient,    │
+│       issue_filer: IssueFiler | None):                                       │
+│    63 │   def node(gs: GraphState) -> dict:                                  │
+│ ❱  64 │   │   outcome: StageOutcome = execute_stage(                         │
+│    65 │   │   │   loop,                                                      │
+│    66 │   │   │   index,                                                     │
+│    67 │   │   │   gs["state"],                                               │
+│                                                                              │
+│ /workspace/src/loop_engine/core/engine.py:318 in execute_stage               │
+│                                                                              │
+│   315 │   │   │   ) from exc                                                 │
+│   316 │   │                                                                  │
+│   317 │   │   state = _revalidate(state, stage_name)                         │
+│ ❱ 318 │   │   gate_result = stage.gate(state, stage_name)                    │
+│   319 │   │                                                                  │
+│   320 │   │   if gate_result.decision is not GateDecision.REVISE:            │
+│   321 │   │   │   break                                                      │
+│                                                                              │
+│ /workspace/src/loop_engine/core/coder_gate.py:169 in __call__                │
+│                                                                              │
+│   166 │   │                                                                  │
+│   167 │   │   # The gate runs pytest in-process; refuse under                │
+│       container/sandbox exactly                                              │
+│   168 │   │   # like the classic gate (the second untrusted-exec surface).   │
+│ ❱ 169 │   │   _raise_if_sandboxed("the Ralph Coder gate")                    │
+│   170 │   │                                                                  │
+│   171 │   │   # Coverage: every manifest task must be checked off in         │
+│       .agent/STATE.md.                                                       │
+│   172 │   │   done = set(read_scratchpad().completed_tasks)                  │
+│                                                                              │
+│ /workspace/src/loop_engine/core/coder_gate.py:39 in _raise_if_sandboxed      │
+│                                                                              │
+│    36 │   See sprints/18_execution_isolation_container/sprint_plan.md.       │
+│    37 │   """                                                                │
+│    38 │   if sandbox_runtime_mode() is not None:                             │
+│ ❱  39 │   │   raise IsolationUnavailableError(                               │
+│    40 │   │   │   f"{context} runs pytest in-process, but                    │
+│       {sandbox_runtime_mode()} "                                             │
+│    41 │   │   │   "isolation is selected; sandboxed gate verification is     │
+│       deferred to the "                                                      │
+│    42 │   │   │   "host-side e2e build (see                                  │
+│       sprints/18_execution_isolation_container)"                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+IsolationUnavailableError: the Ralph Coder gate runs pytest in-process, but 
+container isolation is selected; sandboxed gate verification is deferred to the 
+host-side e2e build (see sprints/18_execution_isolation_container)
+[NOTE] During task with name 'stage_3' and id 
+'e4812f93-beeb-83e0-0fc7-660955a9caaa'
+=== LOOP EXIT CODE: 1 ===
+finished 2026-07-10T20:48:12+00:00

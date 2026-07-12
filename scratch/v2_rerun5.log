@@ -1,0 +1,64 @@
+V2 Ralph re-run #5 (injected non-crashing filer; abs-env python; minimal 2-fn spec; target COMPLETED under $5); config langgraph+mcp+declarative+ralph+container; started 2026-07-11T01:05:55+0000
+loop-engine env python: /home/app/.local/share/hatch/env/virtual/loop-engine/xS3fZVNL/loop-engine/bin/python
+V2 harness start 2026-07-11T01:05:58.857537+00:00 run_id=118af512816441f080e0c5d3f6f58d34 budget=$5.00
+  config: ENGINE=langgraph TOOLS=mcp PERSONAS=declarative CODER=ralph ISOLATION=container
+Traceback (most recent call last):
+  File "/workspace/scratch/v2_run_harness.py", line 102, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/workspace/scratch/v2_run_harness.py", line 91, in main
+    final = run_graph_loop(loop, state, llm, start_index=0, issue_filer=recording_filer)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/src/loop_engine/core/graph_engine.py", line 141, in run_graph_loop
+    result = compiled.invoke(init, config={"recursion_limit": recursion_limit})
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/app/.local/share/hatch/env/virtual/loop-engine/xS3fZVNL/loop-engine/lib/python3.12/site-packages/langgraph/pregel/main.py", line 3913, in invoke
+    for chunk in self.stream(
+                 ^^^^^^^^^^^^
+  File "/home/app/.local/share/hatch/env/virtual/loop-engine/xS3fZVNL/loop-engine/lib/python3.12/site-packages/langgraph/pregel/main.py", line 2967, in stream
+    for _ in runner.tick(
+             ^^^^^^^^^^^^
+  File "/home/app/.local/share/hatch/env/virtual/loop-engine/xS3fZVNL/loop-engine/lib/python3.12/site-packages/langgraph/pregel/_runner.py", line 207, in tick
+    run_with_retry(
+  File "/home/app/.local/share/hatch/env/virtual/loop-engine/xS3fZVNL/loop-engine/lib/python3.12/site-packages/langgraph/pregel/_retry.py", line 617, in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/app/.local/share/hatch/env/virtual/loop-engine/xS3fZVNL/loop-engine/lib/python3.12/site-packages/langgraph/_internal/_runnable.py", line 684, in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/app/.local/share/hatch/env/virtual/loop-engine/xS3fZVNL/loop-engine/lib/python3.12/site-packages/langgraph/_internal/_runnable.py", line 426, in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/src/loop_engine/core/graph_engine.py", line 64, in node
+    outcome: StageOutcome = execute_stage(
+                            ^^^^^^^^^^^^^^
+  File "/workspace/src/loop_engine/core/engine.py", line 305, in execute_stage
+    state = stage.persona.run(state, llm_client, findings=stage_findings or None)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/src/loop_engine/personas/coder_iac/ralph.py", line 249, in run
+    return self._task_increment(
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/src/loop_engine/personas/coder_iac/ralph.py", line 260, in _task_increment
+    report = _run_increment(llm_client, architecture, prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/src/loop_engine/personas/coder_iac/ralph.py", line 169, in _run_increment
+    tools, execute = tool_backend.resolve()
+                     ^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/src/loop_engine/personas/coder_iac/shared.py", line 180, in resolve
+    self._provider = build_coder_tool_provider(cwd=Path.cwd())
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/src/loop_engine/tools/mcp/provider.py", line 355, in build_coder_tool_provider
+    return build_provider_for([CODER_TOOLS_SERVER_NAME], cwd=cwd)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/src/loop_engine/tools/mcp/provider.py", line 343, in build_provider_for
+    params.append(_coder_tools_params(spec, cwd))
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/src/loop_engine/tools/mcp/provider.py", line 315, in _coder_tools_params
+    return container_server_params(cwd if cwd is not None else Path.cwd())
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/src/loop_engine/tools/mcp/provider.py", line 127, in container_server_params
+    raise IsolationUnavailableError(
+loop_engine.tools.isolation.IsolationUnavailableError: container isolation requires LOOP_ENGINE_DEV_IMAGE (the dev-stage image tag holding hatch + pytest); it is unset
+During task with name 'stage_3' and id 'e851129e-9fc0-b9df-b444-1cb31fe3a09c'
+=== HARNESS EXIT CODE: 1 ===
+finished 2026-07-11T01:08:26+0000

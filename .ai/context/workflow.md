@@ -35,7 +35,9 @@ OPUS (plan)    design/plan the sprint -> write sprint_plan.md + roadmap -> /hand
 SONNET (code)  /resume -> branch sprint/NN-slug -> implement + tests -> green
    |           gate -> commit -> push -> /handoff                             |
    |                                                                          |
-   v   (fresh session, /model opus)                                           |
+   v   *** NEW SESSION (context empty), then /model opus ***                  |
+   |   /model alone does NOT clear context — a reviewer holding the authoring |
+   |   context proofreads its own reasoning instead of re-deriving it.        |
 OPUS (review)  /resume -> /code-review the diff -> HITL gate -> update roadmap
    |           -> open PR (base: feat/mcp-langgraph-migration) -> STOP        |
    |                                                                          |
@@ -82,6 +84,53 @@ without it. Claude commits and pushes freely on a sprint branch, opens the PR, a
   `gh api repos/<owner>/<repo>/pulls/<N> -q '.mergeable_state'`.
 
 ### The Architect's HITL review is a posted GitHub review, not just prose
+
+**It is a CI gate** (`.github/workflows/hitl-review.yml`): any PR touching `src/` fails
+the `architect-review` check until a review carrying the header + attestation below is
+posted **against that PR's current head commit**. Docs / sprint-plan / `.ai/`-cursor PRs
+are exempt (no runtime behavior to get wrong). A review of an *earlier* commit does not
+count — push first, then review the final diff.
+
+This is a check rather than a convention because the convention failed. Sprint 27's Task 8
+shipped as a fully green PR (#32) whose R8 fix covered `cli.py` and silently left every
+fresh-run path — `runner.run_new`, the trigger surface, `flows/maintenance` — still filing
+escalation issues against the wrong repo. The suite passed, CI passed, and the review that
+would have caught it was simply never run. It was caught only by a review done *after* the
+merge (findings in PR #34). A rule that lives only in prose is a rule that gets skipped.
+
+#### The review runs in a FRESH session — this is the point, not a detail
+
+> **`/model opus` mid-session is NOT a review session.** Switching model does not clear
+> context. The reviewer still holds every assumption the author made, so it re-reads its own
+> reasoning and agrees with it. That is not a review; it is a proofread.
+
+The required sequence — the same `/handoff` boundary the model split already uses:
+
+```
+SONNET (code)   implement -> green gate -> push -> open PR -> /handoff
+                                   ↓
+                        *** NEW SESSION. Context empty. ***
+                                   ↓
+OPUS (review)   /resume -> /code-review the diff -> post review -> HITL gate
+```
+
+`/resume` rehydrates from `.ai/` — the externalized cursor — **not** from a memory of having
+written the code. That is exactly what makes the review adversarial: the reviewer must
+re-derive intent from the sprint plan and the diff, the way a stranger would, and a claim the
+author found obvious has to survive being read cold.
+
+Both prior reviews violated this and it shows: #32's review was done by `/model opus` inside
+the authoring session, and #34 was authored by Opus and would have been self-reviewed. The
+gate now requires the reviewer to attest:
+
+```
+*Fresh-session review: this session did not author the diff.*
+```
+
+CI cannot observe a session boundary. The attestation does not prove one — it makes
+reviewing your own work a *knowing false statement* rather than something that quietly
+happens. That is as far as a check can go; real attribution needs a separate machine
+identity (**BL-6**).
 
 Two distinct artifacts — do not conflate them:
 

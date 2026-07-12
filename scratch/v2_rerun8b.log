@@ -1,0 +1,192 @@
+V2 harness start 2026-07-11T15:31:29.997791+00:00 run_id=0c8fdb89949c49578f891fe78f3373b4 budget=$5.00
+  config: ENGINE=langgraph TOOLS=mcp PERSONAS=declarative CODER=ralph ISOLATION=container
+[07/11/26 15:34:09] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+[07/11/26 15:34:10] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:34:12] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:34:13] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:34:19] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:34:22] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:34:36] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:34:59] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+[07/11/26 15:35:02] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:35:03] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:35:05] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:35:06] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:35:26] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:35:37] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:35:40] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:35:46] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:36:27] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+[07/11/26 15:36:29] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:36:30] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:36:32] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:36:34] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:36:36] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:36:40] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:36:50] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:36:56] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:36:59] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:37:02] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:37:06] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:37:08] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:37:09] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:37:17] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:37:38] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+[07/11/26 15:37:44] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:37:46] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:37:48] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:37:50] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:37:52] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:37:56] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:38:06] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:38:09] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:38:16] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:38:17] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:38:29] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+[07/11/26 15:38:34] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:38:35] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:38:37] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:38:51] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:38:54] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:39:18] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:39:25] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:39:39] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:39:40] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:39:43] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:39:45] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:40:18] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+[07/11/26 15:40:20] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:40:21] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:40:26] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:40:29] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:40:33] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:40:34] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:40:40] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:41:06] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+[07/11/26 15:41:08] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:41:10] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:41:15] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:41:18] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:41:22] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:41:25] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:41:29] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:41:30] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:41:33] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:41:52] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+[07/11/26 15:41:53] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:41:54] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:41:57] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+[07/11/26 15:42:10] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+
+=== FINAL STATUS: completed ===
+=== run_id: 0c8fdb89949c49578f891fe78f3373b4 ===
+=== cost_used: $2.2433 of $5.00 ===

@@ -72,3 +72,44 @@ def test_claude_md_documents_the_human_abort_exit_code() -> None:
     text = (REPO_ROOT / "CLAUDE.md").read_text()
     assert f"{ABORTED_BY_HUMAN_EXIT_CODE} aborted by the human" in text
     assert ABORTED_BY_HUMAN_EXIT_CODE not in (0, 1, 2, 3)
+
+
+def test_hitl_review_gate_exists_and_requires_the_architect_header() -> None:
+    """The Architect review is enforced by CI, not just by prose in
+    workflow.md. Sprint 27 Task 8 shipped a green PR whose R8 fix silently
+    missed every fresh-run path precisely because the review that would have
+    caught it was skipped and nothing noticed."""
+    wf = REPO_ROOT / ".github" / "workflows" / "hitl-review.yml"
+    assert wf.is_file(), "the HITL review gate workflow must exist"
+    text = wf.read_text()
+
+    # The header the review body must carry (Claude and the owner share one
+    # GitHub identity; the header is what marks a review as the automated one).
+    assert "**Opus/Architect HITL review (automated)**" in text
+    # Scoped to code: docs/sprint-plan/.ai-cursor PRs need no architecture review.
+    assert "^src/" in text
+    # Must review THIS diff — a review of an earlier commit is not a review of
+    # the code being merged.
+    assert "commit_id" in text and "HEAD_SHA" in text
+    # The review must run in a session that did not write the diff: a reviewer
+    # holding the authoring context proofreads its own reasoning. CI cannot see a
+    # session boundary, so the reviewer attests to it — which at least makes
+    # self-review a knowing false statement rather than a silent default.
+    assert "Fresh-session review: this session did not author the diff." in text
+    # The failure guidance must not teach the anti-pattern it exists to prevent:
+    # if it mentions /model opus at all, it must say that alone is not enough.
+    flat = " ".join(text.split())
+    assert "does NOT clear the context" in flat
+    assert "/handoff" in flat
+    # Without the review event the check could never turn green without a dummy
+    # push — the same trap ci.yml's `edited` trigger exists to avoid.
+    assert "pull_request_review" in text
+
+
+def test_hitl_review_gate_is_not_inside_the_cancel_in_progress_ci_workflow() -> None:
+    """`ci.yml` cancels in-progress runs on new events for the same ref. If the
+    review gate lived there, posting a review would cancel an in-flight test
+    run — so it is deliberately a separate workflow."""
+    ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert "cancel-in-progress: true" in ci
+    assert "pull_request_review" not in ci
