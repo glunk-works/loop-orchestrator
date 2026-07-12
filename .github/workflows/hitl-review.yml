@@ -1,0 +1,97 @@
+name: HITL review
+
+# The Architect (Opus) HITL review of a coding diff is a rule in
+# `.ai/context/workflow.md`, and a rule that only lives in prose is a rule that
+# gets skipped: sprint 27's Task 8 shipped a fully green PR (#32) whose R8 fix
+# covered `cli.py` and silently left every fresh-run path still filing
+# escalation issues against the wrong repo. The suite passed, CI passed, and the
+# review that would have caught it was simply not run. This makes it a check.
+#
+# What it can and cannot do: it verifies a review carrying the Architect header
+# was *posted against this exact diff*. It cannot verify the review was any
+# good. It converts a silent omission into a deliberate act — which is precisely
+# the failure that occurred.
+#
+# Deliberately a separate workflow, not a job in `ci.yml`: `ci.yml` sets
+# `cancel-in-progress` on its concurrency group, so adding a
+# `pull_request_review` trigger there would let *posting a review* cancel an
+# in-flight test run.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  # Load-bearing, exactly like `edited` is for `pr-title` in ci.yml: without it
+  # the check only re-runs on a new commit, so posting the review it demands
+  # could never turn it green without a dummy push.
+  pull_request_review:
+    types: [submitted, dismissed]
+
+concurrency:
+  group: hitl-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  architect-review:
+    # A draft is still being written; review it when it's offered for review.
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require an Architect HITL review of the code diff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEADER: "**Opus/Architect HITL review (automated)**"
+        run: |
+          set -euo pipefail
+
+          # Docs, sprint plans and the `.ai/` cursor carry no runtime behavior to
+          # get wrong, so they do not need an architecture review. Code does.
+          if ! gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename' \
+               | grep -q '^src/'; then
+            echo "No src/ changes in this PR — Architect review not required."
+            exit 0
+          fi
+
+          # The review must be of THIS diff. A review of an earlier commit is not
+          # a review of the code being merged — that loophole (review, then push)
+          # is how a gate quietly stops being one.
+          matches=$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate --jq '
+            [ .[]
+              | select(.commit_id == env.HEAD_SHA)
+              | select(.body != null and (.body | contains(env.HEADER)))
+            ] | length')
+
+          if [ "$matches" -gt 0 ]; then
+            echo "OK: Architect HITL review found for $HEAD_SHA."
+            exit 0
+          fi
+
+          echo "::error::This PR changes src/ but has no Opus/Architect HITL review of commit $HEAD_SHA."
+          cat <<'GUIDANCE'
+
+          The Architect review is a merge prerequisite for code changes, not a
+          formality — see `.ai/context/workflow.md`.
+
+            1. Switch to Opus  (/model opus, then /resume)
+            2. Review the diff (/code-review)
+            3. Post it:
+                 gh pr review <N> --comment --body-file <review.md>
+
+          The review body must begin with:
+
+            **Opus/Architect HITL review (automated)**
+
+          (That header is required because Claude and the repo owner share one
+          GitHub identity — without it the review renders as the owner reviewing
+          their own PR.) Never `--approve`: the human's merge is the approval.
+
+          A review posted against an earlier commit does not count. Push first,
+          then review the final diff.
+          GUIDANCE
+          exit 1
