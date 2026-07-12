@@ -50,3 +50,15 @@ def test_ci_workflow_defines_required_jobs_in_order() -> None:
     positions = [text.index(job) for job in jobs]
     assert positions == sorted(positions)
     assert "hatch run audit" in text
+
+
+def test_lint_job_gates_on_pr_title_to_fail_fast() -> None:
+    """A failing `pr-title` must stop the heavy chain instead of racing it in
+    parallel — `lint` (and everything chained after it via `needs:`) has to
+    wait on `pr-title` and only proceed on success or (on `push`, where
+    `pr-title` doesn't run at all) skip."""
+    text = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    lint_section = text[text.index("\n  lint:") : text.index("\n  format-check:")]
+    assert "needs: pr-title" in lint_section
+    assert "needs.pr-title.result == 'success'" in lint_section
+    assert "needs.pr-title.result == 'skipped'" in lint_section
