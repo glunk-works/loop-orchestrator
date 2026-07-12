@@ -81,6 +81,16 @@ def test_hitl_review_gate_exists_and_requires_the_architect_header() -> None:
     # Must review THIS diff — a review of an earlier commit is not a review of
     # the code being merged.
     assert "commit_id" in text and "HEAD_SHA" in text
+    # The review must run in a session that did not write the diff: a reviewer
+    # holding the authoring context proofreads its own reasoning. CI cannot see a
+    # session boundary, so the reviewer attests to it — which at least makes
+    # self-review a knowing false statement rather than a silent default.
+    assert "Fresh-session review: this session did not author the diff." in text
+    # The failure guidance must not teach the anti-pattern it exists to prevent:
+    # if it mentions /model opus at all, it must say that alone is not enough.
+    flat = " ".join(text.split())
+    assert "does NOT clear the context" in flat
+    assert "/handoff" in flat
     # Without the review event the check could never turn green without a dummy
     # push — the same trap ci.yml's `edited` trigger exists to avoid.
     assert "pull_request_review" in text
