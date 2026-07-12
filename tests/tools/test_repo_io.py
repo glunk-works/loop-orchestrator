@@ -9,6 +9,7 @@ from loop_engine.tools.repo_io import (
     create_branch,
     create_repository,
     open_pr,
+    resolve_repo_slug,
 )
 
 
@@ -157,3 +158,25 @@ def test_open_pr_builds_argv_and_parses_number() -> None:
             "does x",
         ]
     )
+
+
+def test_resolve_repo_slug_shells_gh_repo_view() -> None:
+    """Repo introspection lives here, not in `issue_io` — but its caller is the
+    issue filer, which needs an explicit destination instead of `gh`'s implicit
+    CWD resolution (finding R8)."""
+    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+        run_gh.return_value = "acme/repo\n"
+        slug = resolve_repo_slug()
+
+    run_gh.assert_called_once_with(
+        ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"], cwd=None
+    )
+    assert slug == "acme/repo"
+
+
+def test_resolve_repo_slug_resolves_against_the_given_cwd() -> None:
+    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+        run_gh.return_value = "acme/other\n"
+        resolve_repo_slug("/orchestrator/checkout")
+
+    assert run_gh.call_args.kwargs["cwd"] == "/orchestrator/checkout"

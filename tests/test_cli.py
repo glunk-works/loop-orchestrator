@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import typer
 from typer.testing import CliRunner
 
-from loop_engine.cli import app
+from loop_engine.cli import ABORTED_BY_HUMAN_EXIT_CODE, app
 from loop_engine.core.state import (
     CURRENT_SCHEMA_VERSION,
     IssueRef,
@@ -177,7 +177,7 @@ def test_cli_resume_from_issue_folds_answers_and_reenters(tmp_path, monkeypatch)
 
     monkeypatch.setattr(
         "loop_engine.cli.default_issue_reader",
-        lambda n: {
+        lambda n, repo=None: {
             "state": "OPEN",
             "body": f"Snapshot: `{snapshot_path}`",
             "comments": [{"body": "```answers\n1: eu-west-1\n```"}],
@@ -204,10 +204,12 @@ def test_cli_resume_from_issue_folds_answers_and_reenters(tmp_path, monkeypatch)
     # Resumes at the paused stage (no impact classified → default in fold).
     assert mock_run_graph_loop.call_args.kwargs["start_index"] == 1
     assert any("eu-west-1" in f for f in mock_run_graph_loop.call_args.kwargs["initial_findings"])
-    # R2: the write seam is threaded through too, bound with the cwd captured
-    # before the worktree chdir (R8) — not left to fall through to `None`.
-    issue_filer = mock_run_graph_loop.call_args.kwargs["issue_filer"]
-    assert issue_filer.keywords["cwd"] == str(tmp_path)
+    # R2/R8: a re-escalation from the resumed run writes through the same route.
+    # The CLI deliberately injects NO `issue_filer` — `default_issue_filer`
+    # resolves its own destination from `worktree.origin_cwd()`, so every
+    # entrypoint is correct rather than only the ones that remembered to thread a
+    # cwd (which is exactly how the fresh-run paths kept leaking).
+    assert "issue_filer" not in mock_run_graph_loop.call_args.kwargs
 
 
 def test_cli_resume_from_issue_dispatches_the_real_default_through_mcp(
@@ -299,7 +301,7 @@ def test_cli_resume_from_issue_aborts_cleanly_when_closed_without_answers(
 
     monkeypatch.setattr(
         "loop_engine.cli.default_issue_reader",
-        lambda n: {
+        lambda n, repo=None: {
             "state": "CLOSED",
             "body": f"Snapshot: `{snapshot_path}`",
             "comments": [{"body": "won't fix"}],
@@ -309,7 +311,8 @@ def test_cli_resume_from_issue_aborts_cleanly_when_closed_without_answers(
 
     result = runner.invoke(app, ["resume", "--from-issue", "17"])
 
-    assert result.exit_code == 1
+    assert result.exit_code == ABORTED_BY_HUMAN_EXIT_CODE
+    assert result.exit_code != 1, "a deliberate human abort must be distinguishable from a crash"
     assert "#17" in _plain_output(result)
     assert result.exception is None or isinstance(result.exception, SystemExit)
 
@@ -341,7 +344,7 @@ def test_cli_resume_from_issue_folds_answers_via_the_pm_generator(tmp_path, monk
 
     monkeypatch.setattr(
         "loop_engine.cli.default_issue_reader",
-        lambda n: {
+        lambda n, repo=None: {
             "state": "OPEN",
             "body": f"Snapshot: `{snapshot_path}`",
             "comments": [{"body": "```answers\n1: eu-west-1\n```"}],
@@ -475,3 +478,81 @@ def test_cli_defines_no_api_key_option() -> None:
         for param in command.params:
             assert "api_key" not in (param.name or "")
             assert not any("api-key" in opt.lower() for opt in getattr(param, "opts", []))
+
+
+def _paused_on_issue(tmp_path, *, number=17, url="https://github.com/acme/managed/issues/17"):
+    paused = State(
+        schema_version=2,
+        run_id="run-1",
+        status=RunStatus.AWAITING_ISSUE,
+        pending_issue=IssueRef(number=number, url=url),
+        counters={"paused_stage_index": 1},
+        questions=[Question(id="q1", origin_stage="ArchitectureGenerator", text="Which region?")],
+        stage_history=[],
+        artifacts={"project_spec": "{}"},
+    )
+    snapshot_path = tmp_path / "01_awaiting_issue.json"
+    snapshot_path.write_text(paused.model_dump_json())
+    return snapshot_path
+
+
+def test_cli_resume_rejects_a_same_numbered_issue_from_the_wrong_repo(
+    tmp_path, monkeypatch
+) -> None:
+    """Issue numbers are per-repo. A flows/maintenance run's escalation lives on
+    the managed repo; resuming from the orchestrator checkout would read
+    loop-engine's OWN #17 — a real, unrelated escalation issue that carries a
+    Snapshot: line and its own pending_issue.number == 17, so it sails through
+    every other check and resumes the wrong run. The URL match is what stops it.
+    """
+    monkeypatch.chdir(tmp_path)
+    snapshot_path = _paused_on_issue(tmp_path, url="https://github.com/acme/managed/issues/17")
+
+    monkeypatch.setattr(
+        "loop_engine.cli.default_issue_reader",
+        lambda n, repo=None: {
+            "state": "OPEN",
+            "url": "https://github.com/glunk-works/loop-engine/issues/17",  # wrong repo!
+            "body": f"Snapshot: `{snapshot_path}`",
+            "comments": [{"body": "```answers\n1: eu-west-1\n```"}],
+        },
+    )
+    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    mock_graph = MagicMock(return_value=_completed_state())
+    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_graph)
+
+    result = runner.invoke(app, ["resume", "--from-issue", "17"])
+
+    assert result.exit_code != 0
+    output = _plain_output(result)
+    assert "different repos" in output or "--repo" in output
+    assert not mock_graph.called, "must not resume a run off the wrong repo's issue"
+
+
+def test_cli_resume_passes_repo_through_to_the_reader(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    snapshot_path = _paused_on_issue(tmp_path)
+    seen = {}
+
+    def fake_reader(n, repo=None):
+        seen["repo"] = repo
+        return {
+            "state": "OPEN",
+            "url": "https://github.com/acme/managed/issues/17",
+            "body": f"Snapshot: `{snapshot_path}`",
+            "comments": [{"body": "```answers\n1: eu-west-1\n```"}],
+        }
+
+    monkeypatch.setattr("loop_engine.cli.default_issue_reader", fake_reader)
+    monkeypatch.setattr(
+        "loop_engine.cli.run_graph_loop", MagicMock(return_value=_completed_state())
+    )
+    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr(
+        type(DEFAULT_LOOP.stages[0].persona), "fold_answers", lambda self, state, llm: state
+    )
+
+    result = runner.invoke(app, ["resume", "--from-issue", "17", "--repo", "acme/managed"])
+
+    assert result.exit_code == 0
+    assert seen["repo"] == "acme/managed"

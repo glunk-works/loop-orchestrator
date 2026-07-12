@@ -5,6 +5,7 @@ from loop_engine.tools.repo_io.github import (
     create_branch,
     create_repository,
     open_pr,
+    resolve_repo_slug,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "create_branch",
     "create_repository",
     "open_pr",
+    "resolve_repo_slug",
 ]

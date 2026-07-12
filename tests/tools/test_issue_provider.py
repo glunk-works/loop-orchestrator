@@ -115,6 +115,9 @@ def test_default_issue_filer_opens_a_fresh_provider_per_call(monkeypatch) -> Non
     monkeypatch.setattr(
         "loop_engine.tools.issue_io.mcp_client.build_issue_provider", lambda: provider
     )
+    monkeypatch.setattr(
+        "loop_engine.tools.issue_io.mcp_client.resolve_repo_slug", lambda cwd: "acme/repo"
+    )
 
     ref = default_issue_filer(_state(), _questions(), "state/run-1/01_awaiting_issue.json")
 
@@ -122,7 +125,33 @@ def test_default_issue_filer_opens_a_fresh_provider_per_call(monkeypatch) -> Non
     assert provider.calls[0][0] == "create_issue"
 
 
-def test_default_issue_filer_resolves_repo_from_cwd_when_given(monkeypatch) -> None:
+def test_default_issue_filer_names_the_origin_not_the_worktree_as_destination(
+    monkeypatch, tmp_path
+) -> None:
+    """The R8 regression: by the time a stage escalates, the process CWD is the
+    run's worktree, whose remote is loop-engine itself. The destination must be
+    resolved against `origin_cwd()` — where the orchestrator was launched — and
+    no caller should have to pass it."""
+    provider = _FakeProvider()
+    monkeypatch.setattr(
+        "loop_engine.tools.issue_io.mcp_client.build_issue_provider", lambda: provider
+    )
+    monkeypatch.setattr(
+        "loop_engine.tools.issue_io.mcp_client.resolve_repo_slug", lambda cwd: f"resolved{cwd}"
+    )
+    # Stand where a paused stage stands: inside the worktree, with the
+    # orchestrator's origin recorded elsewhere.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "loop_engine.tools.issue_io.mcp_client.origin_cwd", lambda: Path("/orchestrator/checkout")
+    )
+
+    default_issue_filer(_state(), _questions(), "state/run-1/01.json")
+
+    assert provider.calls[0][1]["repo"] == "resolved/orchestrator/checkout"
+
+
+def test_default_issue_filer_cwd_override_wins_over_origin(monkeypatch) -> None:
     provider = _FakeProvider()
     monkeypatch.setattr(
         "loop_engine.tools.issue_io.mcp_client.build_issue_provider", lambda: provider
@@ -134,6 +163,17 @@ def test_default_issue_filer_resolves_repo_from_cwd_when_given(monkeypatch) -> N
     default_issue_filer(_state(), _questions(), "state/run-1/01.json", cwd="/orig")
 
     assert provider.calls[0][1]["repo"] == "resolved//orig"
+
+
+def test_default_issue_reader_forwards_explicit_repo(monkeypatch) -> None:
+    provider = _FakeProvider()
+    monkeypatch.setattr(
+        "loop_engine.tools.issue_io.mcp_client.build_issue_provider", lambda: provider
+    )
+
+    default_issue_reader(17, repo="acme/managed")
+
+    assert provider.calls == [("read_issue", {"issue_number": 17, "repo": "acme/managed"})]
 
 
 def test_default_issue_reader_opens_a_fresh_provider_per_call(monkeypatch) -> None:

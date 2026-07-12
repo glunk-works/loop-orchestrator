@@ -35,15 +35,31 @@ class PullRef(BaseModel):
     url: str
 
 
-def _run_gh(args: list[str]) -> str:
+def _run_gh(args: list[str], *, cwd: str | Path | None = None) -> str:
     result = subprocess.run(  # noqa: S603 -- fixed executable, no shell, args are not attacker-controlled strings
         ["gh", *args],  # noqa: S607 -- resolved via PATH intentionally: gh's install location varies by platform
         capture_output=True,
         text=True,
         check=True,
         timeout=60,
+        cwd=cwd,
     )
     return result.stdout
+
+
+def resolve_repo_slug(cwd: str | Path | None = None) -> str:
+    """The `owner/repo` slug of the GitHub repo `cwd` belongs to.
+
+    Repo *introspection*, so it lives here rather than in `issue_io` (whose
+    charter is filing/reading escalation issues) — but its motivating caller is
+    the issue filer. `gh` otherwise derives an issue's destination from its own
+    ambient CWD; naming the destination explicitly is what finding R8 asked for,
+    and that name has to come from somewhere. Resolve it against a CWD you have
+    deliberately chosen (the orchestrator's origin — see `worktree.origin_cwd`),
+    not one you inherited.
+    """
+    args = ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]
+    return _run_gh(args, cwd=cwd).strip()
 
 
 def _validate_clone_dest(dest: str) -> Path:

@@ -6,7 +6,6 @@ from loop_engine.tools.issue_io.github import (
     parse_snapshot_path,
     read_issue,
     render_question_issue,
-    resolve_repo_slug,
 )
 from loop_engine.tools.issue_io.mcp_client import (
     default_issue_filer,
@@ -27,5 +26,4 @@ __all__ = [
     "parse_snapshot_path",
     "read_issue",
     "render_question_issue",
-    "resolve_repo_slug",
 ]

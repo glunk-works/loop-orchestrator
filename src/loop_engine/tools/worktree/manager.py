@@ -44,6 +44,35 @@ class WorktreeError(Exception):
     longer exists."""
 
 
+# The orchestrator's CWD as it was *before* `worktree_run` chdir'd into the
+# per-run worktree. Mirrors `state_io`'s `set_state_root`/`state_root` pair, and
+# for the same reason: a collaborator that runs deep inside the worktree may
+# still need to act against the tree the orchestrator was launched from.
+#
+# The issue filer is the motivating consumer (finding R8): `gh` resolves an
+# issue's destination repo from its CWD, and inside `.worktrees/<run_id>` that
+# is loop-engine's own remote — which is how real escalation issues for managed
+# repos ended up filed on the project repo. Making every call site remember to
+# capture the pre-chdir CWD is exactly the coupling that failed; recording it
+# here means no caller has to.
+_ORIGIN_CWD: Path | None = None
+
+
+def _set_origin_cwd(origin: Path | None) -> None:
+    global _ORIGIN_CWD
+    _ORIGIN_CWD = origin
+
+
+def origin_cwd() -> Path:
+    """The directory the orchestrator was launched from.
+
+    Inside `worktree_run`, the main checkout (NOT the worktree the process has
+    chdir'd into). Outside it — no isolation, or a `flows/*` run pinned to a
+    foreign clone — the current CWD, which is then genuinely the intended tree.
+    """
+    return _ORIGIN_CWD if _ORIGIN_CWD is not None else Path.cwd()
+
+
 def use_worktree_isolation() -> bool:
     """Whether the selected isolation mode needs a per-run git worktree
     (`worktree`/`container`/`sandbox`). Delegates to `tools.isolation` so the
@@ -176,17 +205,26 @@ def worktree_run(run_id: str, *, reuse: bool = False) -> Iterator[Path | None]:
     if reuse:
         path = worktree_path(run_id)
         if not _is_registered(path):
+            # R10, the direction V3 actually hit: a run paused under
+            # ISOLATION=none never created a worktree, so resuming it under a
+            # worktree-bearing mode lands here. Naming only "pruned" sent that
+            # session hunting for a tree that was never supposed to exist.
             raise WorktreeError(
-                f"cannot resume run {run_id!r}: its worktree {path} does not exist "
-                "(it may have been pruned; the artifact tree cannot be reconstructed)."
+                f"cannot resume run {run_id!r}: its worktree {path} does not exist. "
+                "Either it was pruned (the artifact tree cannot be reconstructed), or "
+                "the run was paused under LOOP_ENGINE_ISOLATION=none, which creates no "
+                "worktree — a run must be resumed under the same isolation mode it was "
+                "paused under."
             )
     else:
         path = create(run_id)
 
     set_state_root(origin)
+    _set_origin_cwd(origin)
     os.chdir(path)
     try:
         yield path
     finally:
         os.chdir(origin)
         set_state_root(None)
+        _set_origin_cwd(None)
