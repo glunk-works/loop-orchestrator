@@ -176,7 +176,7 @@ def test_cli_resume_from_issue_folds_answers_and_reenters(tmp_path, monkeypatch)
     snapshot_path.write_text(paused.model_dump_json())
 
     monkeypatch.setattr(
-        "loop_engine.cli.issue_io.read_issue",
+        "loop_engine.cli.default_issue_reader",
         lambda n: {
             "state": "OPEN",
             "body": f"Snapshot: `{snapshot_path}`",
@@ -204,15 +204,19 @@ def test_cli_resume_from_issue_folds_answers_and_reenters(tmp_path, monkeypatch)
     # Resumes at the paused stage (no impact classified → default in fold).
     assert mock_run_graph_loop.call_args.kwargs["start_index"] == 1
     assert any("eu-west-1" in f for f in mock_run_graph_loop.call_args.kwargs["initial_findings"])
+    # R2: the write seam is threaded through too, bound with the cwd captured
+    # before the worktree chdir (R8) — not left to fall through to `None`.
+    issue_filer = mock_run_graph_loop.call_args.kwargs["issue_filer"]
+    assert issue_filer.keywords["cwd"] == str(tmp_path)
 
 
-def test_cli_resume_from_issue_via_injected_mcp_reader(tmp_path, monkeypatch) -> None:
-    """Read-side seam: with an MCP-backed reader injected (a fake provider,
-    no real gh/subprocess), `resume --from-issue` resolves questions
-    identically to the classic path. Default stays classic; this only proves
-    the injection wiring works end to end."""
-    from loop_engine.tools.issue_io import mcp_read_issue
-
+def test_cli_resume_from_issue_dispatches_the_real_default_through_mcp(
+    tmp_path, monkeypatch
+) -> None:
+    """The runtime default reader is genuinely MCP-backed: with no cli-level
+    monkeypatching of `default_issue_reader` itself, only a fake provider
+    swapped in under `build_issue_provider` (no real gh/subprocess), `resume
+    --from-issue` still resolves questions correctly end to end."""
     monkeypatch.chdir(tmp_path)
     paused = State(
         schema_version=2,
@@ -235,9 +239,15 @@ def test_cli_resume_from_issue_via_injected_mcp_reader(tmp_path, monkeypatch) ->
     snapshot_path.write_text(paused.model_dump_json())
 
     class _FakeProvider:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return None
+
         def execute(self, name: str, arguments: dict) -> str:
             assert name == "read_issue"
-            assert arguments == {"issue_number": 17}
+            assert arguments == {"issue_number": 17, "repo": None}
             return json.dumps(
                 {
                     "state": "OPEN",
@@ -247,8 +257,7 @@ def test_cli_resume_from_issue_via_injected_mcp_reader(tmp_path, monkeypatch) ->
             )
 
     monkeypatch.setattr(
-        "loop_engine.cli._issue_reader",
-        lambda n: mcp_read_issue(_FakeProvider(), n),
+        "loop_engine.tools.issue_io.mcp_client.build_issue_provider", lambda: _FakeProvider()
     )
     mock_run_graph_loop = MagicMock(return_value=_completed_state())
     monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_run_graph_loop)
@@ -267,6 +276,42 @@ def test_cli_resume_from_issue_via_injected_mcp_reader(tmp_path, monkeypatch) ->
     assert result.exit_code == 0
     assert fold_result_holder["questions"][0].resolution == "eu-west-1"
     assert fold_result_holder["questions"][0].resolved_by == "human:17"
+
+
+def test_cli_resume_from_issue_aborts_cleanly_when_closed_without_answers(
+    tmp_path, monkeypatch
+) -> None:
+    """R5: closing the issue without an answers comment is a documented,
+    clean abort — not an uncaught traceback."""
+    monkeypatch.chdir(tmp_path)
+    paused = State(
+        schema_version=2,
+        run_id="run-1",
+        status=RunStatus.AWAITING_ISSUE,
+        pending_issue=IssueRef(number=17, url="https://github.com/acme/repo/issues/17"),
+        counters={"paused_stage_index": 1},
+        questions=[Question(id="q1", origin_stage="ArchitectureGenerator", text="Which region?")],
+        stage_history=[],
+        artifacts={"project_spec": "{}"},
+    )
+    snapshot_path = tmp_path / "01_awaiting_issue.json"
+    snapshot_path.write_text(paused.model_dump_json())
+
+    monkeypatch.setattr(
+        "loop_engine.cli.default_issue_reader",
+        lambda n: {
+            "state": "CLOSED",
+            "body": f"Snapshot: `{snapshot_path}`",
+            "comments": [{"body": "won't fix"}],
+        },
+    )
+    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+
+    result = runner.invoke(app, ["resume", "--from-issue", "17"])
+
+    assert result.exit_code == 1
+    assert "#17" in _plain_output(result)
+    assert result.exception is None or isinstance(result.exception, SystemExit)
 
 
 def test_cli_resume_from_issue_folds_answers_via_the_pm_generator(tmp_path, monkeypatch) -> None:
@@ -295,7 +340,7 @@ def test_cli_resume_from_issue_folds_answers_via_the_pm_generator(tmp_path, monk
     snapshot_path.write_text(paused.model_dump_json())
 
     monkeypatch.setattr(
-        "loop_engine.cli.issue_io.read_issue",
+        "loop_engine.cli.default_issue_reader",
         lambda n: {
             "state": "OPEN",
             "body": f"Snapshot: `{snapshot_path}`",

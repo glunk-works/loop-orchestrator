@@ -27,17 +27,20 @@ mcp = FastMCP("loop-engine-issue")
 
 
 @mcp.tool()
-def create_issue(title: str, body: str, label: str) -> str:
+def create_issue(title: str, body: str, label: str, repo: str | None = None) -> str:
     """File a human-escalation GitHub Issue via `gh issue create`.
-    Orchestrator-only. Returns the created issue's number and URL as JSON."""
-    return _create_issue(title, body, label).model_dump_json()
+    Orchestrator-only. `repo` (owner/repo), when given, targets that repo
+    explicitly instead of `gh`'s implicit cwd-derived resolution. Returns
+    the created issue's number and URL as JSON."""
+    return _create_issue(title, body, label, repo=repo).model_dump_json()
 
 
 @mcp.tool()
-def read_issue(issue_number: int) -> str:
+def read_issue(issue_number: int, repo: str | None = None) -> str:
     """Read a GitHub Issue's state/body/comments via `gh issue view`.
-    Orchestrator-only. Returns the raw `gh` JSON view."""
-    return json.dumps(_read_issue(issue_number))
+    Orchestrator-only. `repo`, when given, targets that repo explicitly.
+    Returns the raw `gh` JSON view."""
+    return json.dumps(_read_issue(issue_number, repo=repo))
 
 
 def main() -> None:

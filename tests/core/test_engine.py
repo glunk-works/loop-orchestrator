@@ -6,6 +6,7 @@ import pytest
 
 from loop_engine.core.engine import (
     MAX_ESCALATIONS_PER_STAGE,
+    MAX_REPLANS_PER_RUN,
     InvalidStateTransitionError,
     Loop,
     MissingArtifactError,
@@ -32,7 +33,7 @@ def _stub_issue_filer(monkeypatch):
         filed.append(list(questions))
         return IssueRef(number=42, url="https://github.com/example/repo/issues/42")
 
-    monkeypatch.setattr("loop_engine.core.engine.file_question_issue", fake_file_issue)
+    monkeypatch.setattr("loop_engine.core.engine.default_issue_filer", fake_file_issue)
     return filed
 
 
@@ -363,6 +364,70 @@ def test_engine_injected_mcp_issue_filer_routes_through_provider() -> None:
     final = run_graph_loop(
         loop, _initial_state("run-8b"), _stub_llm_client(), issue_filer=mcp_issue_filer(provider)
     )
+
+    assert final.status is RunStatus.AWAITING_ISSUE
+    assert final.pending_issue == IssueRef(
+        number=99, url="https://github.com/example/repo/issues/99"
+    )
+    assert provider.calls[0][0] == "create_issue"
+
+
+def test_engine_injected_mcp_issue_filer_routes_through_provider_at_escalation_cap() -> None:
+    """R4: the escalation-cap pause site (site 2 of 3) also honors an
+    injected filer, not just the default-path stub."""
+    from loop_engine.tools.issue_io import mcp_issue_filer
+
+    class AlwaysAskingPersona(BasePersona):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def run(self, state: State, llm_client, findings=None) -> State:
+            self.calls += 1
+            doc = f"# Doc\n\n## Open Questions\n\n1. Question number {self.calls}?"
+            return state.model_copy(update={"artifacts": {**state.artifacts, "doc": doc}})
+
+    persona = AlwaysAskingPersona()
+    resolver = AnsweringResolver(impact="task")
+    loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"), resolvers=[resolver])])
+    provider = _FakeIssueProvider()
+
+    final = run_graph_loop(
+        loop, _initial_state("run-10b"), _stub_llm_client(), issue_filer=mcp_issue_filer(provider)
+    )
+
+    assert final.status is RunStatus.AWAITING_ISSUE
+    assert persona.calls == MAX_ESCALATIONS_PER_STAGE + 1
+    assert final.pending_issue == IssueRef(
+        number=99, url="https://github.com/example/repo/issues/99"
+    )
+    assert provider.calls[0][0] == "create_issue"
+
+
+def test_engine_injected_mcp_issue_filer_routes_through_provider_at_replan_cap() -> None:
+    """R4: the replan-cap pause site (site 3 of 3) also honors an injected
+    filer. Pre-seeding `counters["replans"]` at the cap makes the very first
+    escalation on this stage hit the replan-cap branch directly, since a
+    single stage re-escalating trips its own per-stage escalation cap first
+    (both caps are 2) before a multi-round scenario could ever reach the
+    replan-cap branch."""
+    from loop_engine.tools.issue_io import mcp_issue_filer
+
+    persona = QuestionAskingPersona()
+    resolver = AnsweringResolver(impact="plan")
+    loop = Loop(
+        stages=[
+            _stage(AppendArtifactPersona("plan"), "plan"),
+            Stage(persona=persona, gate=ArtifactGate("doc"), resolvers=[resolver]),
+        ],
+        impact_reentry={"plan": 0},
+    )
+    initial = _initial_state("run-10c")
+    initial = initial.model_copy(
+        update={"counters": {**initial.counters, "replans": MAX_REPLANS_PER_RUN}}
+    )
+    provider = _FakeIssueProvider()
+
+    final = run_graph_loop(loop, initial, _stub_llm_client(), issue_filer=mcp_issue_filer(provider))
 
     assert final.status is RunStatus.AWAITING_ISSUE
     assert final.pending_issue == IssueRef(

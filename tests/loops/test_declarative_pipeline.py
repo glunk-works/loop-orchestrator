@@ -30,7 +30,7 @@ def _stub_issue_filer(monkeypatch):
     def fake_file_issue(state, questions, snapshot_path):
         return IssueRef(number=1, url="https://example/1")
 
-    monkeypatch.setattr("loop_engine.core.engine.file_question_issue", fake_file_issue)
+    monkeypatch.setattr("loop_engine.core.engine.default_issue_filer", fake_file_issue)
 
 
 _CLEAN = {field: f"value for {field}" for field in CHECKLIST_FIELDS}

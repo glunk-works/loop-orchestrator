@@ -157,6 +157,18 @@ def worktree_run(run_id: str, *, reuse: bool = False) -> Iterator[Path | None]:
     it was pruned; `reuse=False` (fresh run) creates it.
     """
     if not use_worktree_isolation():
+        if reuse and _is_registered(worktree_path(run_id)):
+            # R10: the converse of the missing-worktree error below. A run
+            # paused under a worktree-isolated mode left a real worktree on
+            # disk; resuming it under `none` would otherwise silently
+            # passthrough against the *current* cwd instead of that tree.
+            # Honest failure beats a silent wrong-tree resume.
+            raise WorktreeError(
+                f"cannot resume run {run_id!r} under isolation mode 'none': its "
+                f"worktree {worktree_path(run_id)} still exists, meaning it was "
+                "paused under a worktree-isolated LOOP_ENGINE_ISOLATION mode. "
+                "Resume under that same mode instead."
+            )
         yield None
         return
 

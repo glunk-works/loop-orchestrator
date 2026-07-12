@@ -100,5 +100,11 @@ def load_mcp_config(path: str | Path | None = None) -> dict[str, MCPServerSpec]:
         return servers
     raw = config_path.read_text(encoding="utf-8")
     parsed = MCPConfigFile.model_validate(json.loads(raw))
+    for name, spec in parsed.servers.items():
+        # R7: a committed stanza's bare "python" is a launch-side alias for
+        # "the active interpreter" (matching the coder_tools built-in below),
+        # not a literal PATH lookup — a python3-only host has no `python`.
+        if spec.command == "python":
+            parsed.servers[name] = spec.model_copy(update={"command": sys.executable})
     servers.update(parsed.servers)
     return servers

@@ -23,7 +23,7 @@ from loop_engine.core.gates import (
 from loop_engine.core.state import IssueRef, Question, RunStatus, StageRecord, State
 from loop_engine.personas.base import BasePersona
 from loop_engine.tools.artifact_store import has_artifact, mirror_to_disk
-from loop_engine.tools.issue_io import file_question_issue
+from loop_engine.tools.issue_io import default_issue_filer
 from loop_engine.tools.llm.client import (
     BudgetExceededError,
     LLMClient,
@@ -33,10 +33,11 @@ from loop_engine.tools.llm.client import (
 from loop_engine.tools.logging_config import log_stage_completion
 from loop_engine.tools.state_io.writer import write_state_snapshot
 
-# The write-side seam (mirrors the `llm_client` collaborator threading): the
-# classic direct `file_question_issue` (shells `gh`) stays the runtime
-# default. An MCP-backed filer (`tools.issue_io.mcp_issue_filer`) can be
-# injected — by tests now, by the orchestrator once the host-gated flip lands.
+# The write-side seam (mirrors the `llm_client` collaborator threading):
+# `tools.issue_io.default_issue_filer` (MCP-backed, proven end to end in
+# Sprint 27's V3) is the runtime default. A caller with more context — e.g.
+# `cli.py`, which can bind an explicit destination repo (R8) before it's
+# too late to resolve one — injects its own `issue_filer` instead.
 IssueFiler = Callable[[State, list[Question], str], IssueRef]
 
 # Hard caps on feedback edges so no cycle can run unboundedly: hitting a cap
@@ -214,7 +215,7 @@ def _pause_for_issue(
         update={"counters": {**state.counters, PAUSED_STAGE_COUNTER: stage_index}}
     )
     snapshot_hint = f"state/{state.run_id}/{stage_index:02d}_{RunStatus.AWAITING_ISSUE.value}.json"
-    issue = (issue_filer or file_question_issue)(state, questions, snapshot_hint)
+    issue = (issue_filer or default_issue_filer)(state, questions, snapshot_hint)
     state = state.model_copy(update={"pending_issue": issue})
     return _finalize(state, stage_index, RunStatus.AWAITING_ISSUE)
 
