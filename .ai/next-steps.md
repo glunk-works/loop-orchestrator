@@ -5,9 +5,16 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 copy them. Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Sprint `35_migration_merge`, PR #57 — reviewed and ACCEPTed at head `fb3d719`; the
-`architect-review` check is GREEN.** One required follow-up fix (F1) plus three cheap
-guard-hardening findings remain before the merge. **Next session is Sonnet/Coder.**
+**Sprint `35_migration_merge`, PR #57 — reviewed and ACCEPTed on the merits at head
+`fb3d719`.** One required follow-up fix (F1) plus three cheap guard-hardening findings
+remain before the merge. **Next session is Sonnet/Coder.**
+
+> **The red `architect-review` check on #57 is expected, not a regression.** The review
+> went green at `fb3d719`; the handoff commit below moved the head, and the check is
+> **head-pinned**. That commit touches `.ai/next-steps.md` only — the `src/` diff is
+> byte-identical to the ACCEPTed one. **Do not re-post a review to clear it:** the F1 fix
+> moves the head again immediately, and *that* head needs the real fresh-session Opus
+> review before the merge anyway.
 
 ## Just done (Opus/Architect session, 2026-07-13)
 Fresh-session `/code-review` of PR #57 at head `fb3d719`, **verdict ACCEPT**, posted to
@@ -78,8 +85,9 @@ Then: Task 3 (pre-merge preflight) → Task 4 (open the migration PR) →
 ## Pointers
 - [`sprints/35_migration_merge/sprint_plan.md`](../sprints/35_migration_merge/sprint_plan.md) —
   the approved plan. FD1–FD7 locked.
-- PR #57 — Tasks 1–2, head `fb3d719`, **reviewed ACCEPT**, `architect-review` green. The posted
-  review carries F1–F6 and their disposition.
+- PR #57 — Tasks 1–2, **reviewed ACCEPT at `fb3d719`**; the posted review carries F1–F6 and
+  their disposition. Head has since moved (handoff commit, docs-only) so the head-pinned
+  `architect-review` check reads red — see the note under **Now**.
 - [`docs/backlog.md`](../docs/backlog.md) — BL-11 resolved; **BL-13 open by design**.
 - [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — every phase closed since sprint 32.
 - [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — five checks never run.
