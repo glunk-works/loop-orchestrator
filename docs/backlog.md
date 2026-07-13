@@ -515,19 +515,27 @@ rule), `delete_branch_on_merge: true`, Actions `default_workflow_permissions: re
 `COMMIT_OR_PR_TITLE`, a single-commit PR takes its subject from the *commit*, so the enforced PR
 title would never reach the branch and `pr-title` would gate nothing that survives.
 
-**Left open, deliberately — candidates for a follow-up sprint:**
+**Left open, deliberately — candidates for a follow-up sprint. Resolved by sprint 34
+(`34_ci_supply_chain_hardening`):**
 
-- **Actions supply chain.** `allowed_actions: "all"`, `sha_pinning_required: false`, and the
-  workflows use floating tags (`actions/checkout@v4`). Turning SHA pinning on would fail every
-  workflow until the tags are replaced with commit SHAs — that is a **code** change, not a
-  settings toggle, and it was out of scope for a temporary grant.
-- **Three merge strategies, one convention.** `allow_merge_commit` and `allow_rebase_merge` are
-  both still `true` while the entire convention is squash-only. `squash_merge_commit_title:
-  PR_TITLE` applies *only* to squash, so merge-committing a PR silently drops the enforced title
-  and breaks the commit taxonomy. Restricting to squash-only would close that.
-- **Drift detection.** Nothing in the repo asserts the ruleset still exists or still requires
-  these eight checks — which is precisely how its total absence went unnoticed for the whole life
-  of the CI config. A read-only `Administration: read` scope would let a test or a `/resume`
-  preflight fail loudly if the enforcement is ever weakened, *without* granting the ability to
-  weaken it. **A gate the governed party can remove is not a gate**; write access should stay
-  human-only.
+- **Actions supply chain — resolved.** `ci.yml`'s four actions (`actions/checkout`,
+  `actions/setup-python`, `actions/upload-artifact`, `gitleaks/gitleaks-action`) are now pinned
+  to commit SHAs with a version comment, `tests/test_ci_config.py` structurally asserts every
+  `uses:` in every workflow is a 40-hex SHA (not just today's four), and Dependabot's
+  `github-actions` ecosystem (weekly) keeps the pins from going stale. `sha_pinning_required` is
+  a human settings toggle applied **after** this merges (ordering is load-bearing — flipping it
+  first rejects the very PR carrying the fix).
+- **Three merge strategies, one convention — resolved.** `allow_merge_commit: false` +
+  `allow_rebase_merge: false` is a human settings action carried by sprint 34's human-actions
+  list; no ordering constraint.
+- **Drift detection — resolved, without the scope this entry proposed.** `FD1` (sprint 34
+  planning, verified live): the **effective-rules** endpoint
+  (`GET /repos/.../rules/branches/main` — the same one whose empty `[]` was this entry's original
+  evidence of absence) returns all four rule types **and** all eight required check names with
+  **no** `Administration` scope at all. The `Administration: read` grant this entry recommended
+  is **not needed** and must not be requested — leaving the recommendation standing would invite
+  a future session to widen scope for nothing. `FD2`: the drift check is a **scheduled workflow**
+  (`.github/workflows/ruleset-drift.yml`) plus a `/resume` preflight, deliberately **not** a 9th
+  required check — a required check is only required *because* the ruleset says so, so deleting
+  the ruleset would silently un-require the very check watching it, precisely on the failure it
+  exists to catch.

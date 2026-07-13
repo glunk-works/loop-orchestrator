@@ -1,8 +1,11 @@
+import re
 import subprocess
 import tomllib
 from pathlib import Path
 
 import yaml
+
+_COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -51,11 +54,35 @@ def test_state_directory_is_gitignored() -> None:
     assert result.returncode == 0
 
 
-def test_dependabot_config_defines_daily_pip_updates() -> None:
-    text = (REPO_ROOT / ".github" / "dependabot.yml").read_text()
-    assert 'package-ecosystem: "pip"' in text
-    assert 'directory: "/"' in text
-    assert 'interval: "daily"' in text
+def test_dependabot_config_defines_pip_and_github_actions_updates() -> None:
+    """Structural, not substring: a config that dropped either ecosystem must
+    fail this test. Without the github-actions entry, Task 1's SHA pins freeze
+    at their current commits and can never receive a security patch — trading
+    a loud staleness risk (a Dependabot PR) for a silent one (a frozen CVE)."""
+    data = yaml.safe_load((REPO_ROOT / ".github" / "dependabot.yml").read_text())
+    updates = {entry["package-ecosystem"]: entry for entry in data["updates"]}
+    assert set(updates) == {"pip", "github-actions"}
+    assert updates["pip"]["directory"] == "/"
+    assert updates["pip"]["schedule"]["interval"] == "daily"
+    assert updates["github-actions"]["directory"] == "/"
+    assert updates["github-actions"]["schedule"]["interval"] == "weekly"
+
+
+def test_all_workflow_actions_are_pinned_to_commit_shas() -> None:
+    """A tag is a mutable pointer: whoever controls the upstream repo can
+    repoint it at arbitrary code that then runs in this repo's CI. Walks every
+    workflow file (not just ci.yml) and every `uses:` (job- and step-level) so
+    a newly added workflow with a floating tag fails too, not just today's
+    four pinned actions."""
+    workflows_dir = REPO_ROOT / ".github" / "workflows"
+    for path in sorted(workflows_dir.glob("*.yml")):
+        cfg = _load_workflow(path.name)
+        for job_id, job in cfg["jobs"].items():
+            uses_values = [job["uses"]] if "uses" in job else []
+            uses_values += [step["uses"] for step in job.get("steps", []) if "uses" in step]
+            for uses in uses_values:
+                ref = uses.split("@", 1)[1]
+                assert _COMMIT_SHA.match(ref), f"{path.name}:{job_id} uses floating ref {uses!r}"
 
 
 def test_ci_workflow_defines_required_jobs_in_order() -> None:

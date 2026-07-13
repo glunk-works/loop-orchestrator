@@ -18,9 +18,20 @@ without re-reading the whole repo. This is the counterpart to `/handoff`.
 
 2. **Check reality vs. the cursor.** Run `git log --oneline -5` and `git status --short`. Confirm `last_commit` matches HEAD (or note the drift). If the tree is dirty, surface that — a previous session may not have finished a `/handoff`.
 
-3. **Adopt the assigned persona/model.** If `assigned_model` does not match the model you are running as, say so explicitly and recommend the user `/model` switch before continuing (Architect=Opus for planning/review, Coder=Sonnet for implementation — see `.ai/context/workflow.md`).
+3. **Check the branch-protection ruleset for drift** (BL-11 / sprint 34, FD1+FD2 — the cron in `ruleset-drift.yml` catches drift between sessions; this catches it at the moment work resumes, which in a solo repo is when nearly every change begins). One read-only call, no new PAT scope (FD1):
+   ```
+   gh api repos/OWNER/REPO/rules/branches/main
+   ```
+   (resolve `OWNER/REPO` via `gh repo view --json nameWithOwner -q .nameWithOwner` if unknown). Confirm the response includes all four rule types (`deletion`, `non_fast_forward`, `pull_request`, `required_status_checks`) and that the `required_status_checks` rule's contexts cover all eight: `lint`, `format-check`, `test`, `secrets-scan`, `dependency-audit`, `sbom`, `pr-title`, `architect-review`. Report in the pick-up summary, **at most one line**:
+   - Healthy → one line, e.g. `Ruleset check: healthy (4 rule types, 8 required checks).`
+   - Weakened or missing → impossible to miss; name what's absent.
+   - The call itself failed (network/auth) → report **inconclusive**, never healthy — a preflight that can't tell "healthy" from "couldn't look" is the BL-11 defect in miniature.
 
-4. **State the pick-up point** in 3–6 lines: current phase/sprint, sprint_status, the single next action, and any open HITL gate. Then wait for the user (do not silently start large work — especially if a HITL gate is open).
+   This is a report, not a gate — never block or fail the session on its result.
+
+4. **Adopt the assigned persona/model.** If `assigned_model` does not match the model you are running as, say so explicitly and recommend the user `/model` switch before continuing (Architect=Opus for planning/review, Coder=Sonnet for implementation — see `.ai/context/workflow.md`).
+
+5. **State the pick-up point** in 3–6 lines: current phase/sprint, sprint_status, the single next action, any open HITL gate, and the ruleset check result. Then wait for the user (do not silently start large work — especially if a HITL gate is open).
 
 ## Load-on-demand
 Only read `.ai/context/modules.md` / `conventions.md` if the next action actually needs
