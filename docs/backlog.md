@@ -614,3 +614,39 @@ now, remember to re-enable-then-disable around the migration merge) because it h
 **Status:** open — human settings action, not resolved by this sprint.
 `sprints/34_ci_supply_chain_hardening/sprint_plan.md`'s human-actions list item 2 is corrected in
 place to reflect this.
+
+---
+
+### BL-14 — Task 1/2's SHA pins and Dependabot entry were inert: Dependabot reads config only
+from `main`
+*(added 2026-07-13, found live while answering a question about how action-version updates
+would work going forward)*
+
+**Why:** GitHub Dependabot version updates read `.github/dependabot.yml` **only from the
+repository's default branch** (`main`) — never from a feature branch, and `target-branch:`
+controls where the resulting PR lands, not where the config is read from. Sprint 34's Task 1
+(SHA-pinning `ci.yml`'s actions) and Task 2 (the `github-actions` Dependabot ecosystem entry)
+both landed only on `feat/mcp-langgraph-migration` (#45). Checked live rather than assumed: as
+of that merge, `main`'s `dependabot.yml` still had only the `pip` entry, and `main`'s `ci.yml`
+still had all 13 actions on floating tags. The mechanism Task 2 exists for — keeping the pins
+from freezing on a stale, possibly-vulnerable commit — was sitting inert, read by nothing, on
+the one branch where active development (`feat/mcp-langgraph-migration` and every `sprint/**`
+cut from it) actually happens. Same failure shape as BL-12 (`pr-title.yml`/`hitl-review.yml`
+inert on `main`), this time for the control meant to maintain a different control.
+
+**Resolved 2026-07-13, same shape as BL-12 (backport, not a design change).** PR #49 pinned
+`main`'s own `ci.yml` `uses:` lines to the identical commit SHAs already verified on
+`feat/mcp-langgraph-migration`, editing only `uses:` lines and leaving `main`'s own `on:`/
+concurrency block (which already differs from the migration branch's — no `feat/**` push
+trigger, no explicit `pull_request.types`, no `concurrency:` block) untouched, matching the
+narrow-scope discipline the original Task 1 used. Also added the `github-actions` entry to
+`main`'s `dependabot.yml` verbatim. CI on that PR is the live proof the SHAs resolve under
+`main`'s own trigger config, not just the migration branch's.
+
+**Not resolved by this:** the underlying branch-topology gap (config living on
+`feat/mcp-langgraph-migration` doesn't take effect until it reaches `main`) is structural, not a
+one-time bug — BL-12 and BL-14 are two instances of the same pattern, and a third could surface
+the same way for any future file that needs to live on the default branch to function
+(Dependabot config, scheduled workflows per FD3, branch-protection-adjacent settings). No
+general fix is proposed here; each instance has been backported narrowly as found. Worth
+revisiting if a fourth instance turns up.
