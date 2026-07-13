@@ -5,62 +5,61 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 copy them. Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Sprint `35_migration_merge`, PR #57 — the Opus review at head `18042c6` came back
-REVISE.** Next session is **Sonnet/Coder**: close F18–F23, then hand back for re-review.
+**Sprint `35_migration_merge`, PR #57 — F18–F22 are closed at head `96cc88e`, pushed.**
+Next session is **Opus/Architect**: fresh `/code-review` at the new head, then post.
 
-> ⚠️ **A green `architect-review` on `18042c6` is NOT an ACCEPT.** Posting the review
-> turned the check green even though the verdict is REVISE — it matches on
-> header + attestation + head SHA and never reads the verdict (by design; the human's
-> merge is the approval). The F18/F19 fix commit moves the head, so the check goes red
-> again on its own and a genuinely fresh review is required. Do not merge on that green.
+> ⚠️ **The stale green `architect-review` from `18042c6` does not carry over.** This
+> commit moves the head, so the check is red again and a genuinely fresh review is
+> required before anyone merges.
 
-## Just done (Opus/Architect review session, 2026-07-13)
-Fresh-session `/code-review` of PR #57 at head `18042c6` (code diff unchanged since
-`8f2afb5`), posted to GitHub with `gh pr review --comment`. **Verdict: REVISE.**
+## Just done (Sonnet/Coder session, 2026-07-13)
+Closed five findings from the Opus review of PR #57 at head `18042c6` (verdict REVISE),
+committed as `96cc88e`, pushed to `sprint/35-tasks-1-2`:
 
-The F1/F3/F5/F6 round landed correctly — but **the F1 sweep missed a fifth call site,
-and this PR's own new test is what proves it.**
+1. **F18** — [`tools/scaffold/writer.py:77`](../src/loop_engine/tools/scaffold/writer.py)
+   `_write_rendered` now pins `newline="\n"` on its `write_text` call — the fifth call
+   site the original F1 sweep missed.
+2. **F19** — [`test_encoding_boundary.py`](../tests/tools/test_encoding_boundary.py) gained
+   `test_write_owning_modules_pin_newline_on_write_text`, a structural AST guard scoped to
+   the two write-owning modules (`state_io`, `scaffold`) requiring `newline="\n"` on every
+   `write_text` call — the root-cause fix, so a sixth call site can't slip through by hand.
+3. **F20/F21** — the same guard's `open()` check (renamed `_is_unencoded_text_open`) now
+   flags any non-binary `open()` call missing `encoding=`, including plain reads, `"r+"`,
+   and unresolvable/non-literal modes. The old read-vs-write split and the silent
+   treat-as-read gap for `r+`/dynamic modes are gone.
+4. **F22** — [`state_io/writer.py`](../src/loop_engine/tools/state_io/writer.py)'s
+   `append_agent_memory` now reads the existing ledger via
+   `target_path.open(encoding="utf-8", newline="")` — **not** `read_text(newline=...)`,
+   which doesn't exist as a kwarg on `Path.read_text()` (only `write_text` gained `newline=`
+   in 3.10). A first-draft fix used the nonexistent kwarg; the full suite caught it (4
+   `test_ralph_coder.py` + 2 `test_agent_state.py` failures, all a `TypeError`) before commit.
 
-## Next — Sonnet/Coder
+**F23 (optional) deliberately skipped** — the shared `ctype_locale` fixture doesn't
+naturally fall out of this round (no new copy-pasted `setlocale` block was added). Still
+open, notes-only.
 
-1. **F18 (required).** [`tools/scaffold/writer.py:77`](../src/loop_engine/tools/scaffold/writer.py)
-   — `_write_rendered` still calls `write_text(content, encoding="utf-8")` with no
-   `newline="\n"`. `scaffold` is the **second** file-write-owning module, so F1's rationale
-   applies verbatim. The new [`scaffold/test_writer.py:105`](../tests/tools/scaffold/test_writer.py)
-   asserts `read_bytes() == bundled_bytes`, which **fails on any host where
-   `os.linesep != "\n"`** — Linux-only CI hides it. **One line.**
-2. **F19 (strongly recommended).** Extend
-   [`test_encoding_boundary.py`](../tests/tools/test_encoding_boundary.py) to also require
-   `newline="\n"` on `write_text` inside the write-owning modules. This is the *root cause*:
-   F12 was closed structurally, F1 by hand at four sites, so the fifth sailed through. Run it
-   against the branch as-is and it fails on `scaffold/writer.py:77` — that is F18's test.
-3. **F20.** Same guard exempts unencoded text-mode `open()` **reads** while flagging
-   unencoded `read_text()`. Same locale hazard, opposite outcome — scope reads consistently.
-4. **F21.** `_open_mode` misses `"r+"` (write-capable, no `w`/`a`/`x` char) and any
-   non-literal mode, silently treating them as reads.
-5. **F22.** [`state_io/writer.py:150`](../src/loop_engine/tools/state_io/writer.py) —
-   `append_agent_memory` reads with newline translation while its write is byte-exact, so the
-   append-only prefix check cannot see the whole-file CRLF→LF rewrite it authorizes. Pin
-   `newline=""` on the read.
-6. **F23 (optional).** The `skipif`+`parametrize`+`setlocale` block is copy-pasted across
-   `test_artifact_store.py` and `scaffold/test_writer.py` → a shared `ctype_locale` fixture
-   in a `tests/conftest.py` (none exists yet). Do it last, if it falls out of F19 naturally.
+Green gate: lint clean, format clean, full suite **553 passed**.
 
-Then: green gate (`lint`, `format`, `test`), push to `sprint/35-tasks-1-2`, `/handoff` →
-**fresh Opus session** → re-review at the new head. After that ACCEPT: **Task 3** (pre-merge
-preflight) → **Task 4** (open the migration PR) → **Task 5** (merge + settings, **HUMAN-ONLY**)
-→ **Task 6**. **PR #55 approved the plan, not Tasks 3–5's execution — that gate is still open.**
+## Next — Opus/Architect
+1. Fresh session `/code-review` of PR #57 at head `96cc88e`. Verify F18–F22 actually close
+   what the prior review named — the diff is small (3 files) and self-contained.
+2. Post with `gh pr review --comment` (never `--approve`).
+3. **If ACCEPT:** proceed to **Task 3** (pre-merge preflight) → **Task 4** (open the
+   migration PR). **Task 5** (merge + settings) is **HUMAN-ONLY**. **PR #55 approved the
+   plan, not Tasks 3–5's execution — that gate is still open.**
+4. If another REVISE: hand back to Sonnet/Coder per the usual ladder.
 
-## Notes only — do NOT fix in this round (→ backlog)
-- **F2.** `artifact_store`'s byte compare hard-codes `state_io`'s serialization contract across
-  the enforced single-writer boundary — **now load-bearing for F18**. Deeper fix: a compare
-  helper in `state_io`.
+## Notes only — do NOT fix without a fresh planning pass (→ backlog)
+- **F2.** `artifact_store`'s byte compare hard-codes `state_io`'s serialization contract —
+  now load-bearing for both F18 and F19.
 - **F4.** ~20 unencoded `read_text()` calls under `tests/` (incl. `test_ci_config.py:154`
-  reading `CLAUDE.md`, and the AST boundary tests parsing `src/*.py` — both contain em-dashes).
-  The `src/`-scoped guard will never flag them.
+  reading `CLAUDE.md`, and the AST boundary tests parsing `src/*.py`). The `src/`-scoped
+  guard will never flag them.
 - **F14 / F17** — carried, unchanged.
-- **New:** `architect-review` cannot distinguish "was reviewed" from "was approved". Harmless
-  while a human merges; load-bearing the moment anything automated keys off that check.
+- **F23** — shared `ctype_locale` fixture; still open, still optional.
+- **Carried:** `architect-review` cannot distinguish "was reviewed" from "was approved" (a
+  REVISE turns it green) — harmless while a human merges, load-bearing the moment anything
+  automated keys off that check.
 
 ## Human actions
 - **DO NOT disable `allow_merge_commit`** before the migration merge (BL-13). Ordinary sprint
@@ -74,7 +73,7 @@ preflight) → **Task 4** (open the migration PR) → **Task 5** (merge + settin
 ## Pointers
 - [`sprints/35_migration_merge/sprint_plan.md`](../sprints/35_migration_merge/sprint_plan.md) —
   the approved plan. FD1–FD7 locked.
-- PR #57 — Tasks 1–2, third fix round (F18–F23). Full review text is on the PR at `18042c6`.
+- PR #57 — Tasks 1–2, fourth fix round (F18–F22 closed, F23 skipped). Full diff at `96cc88e`.
 - [`docs/backlog.md`](../docs/backlog.md) — BL-11 resolved; **BL-13 open by design**.
 - [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — every phase closed since sprint 32.
 - [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — five checks never
@@ -82,7 +81,7 @@ preflight) → **Task 4** (open the migration PR) → **Task 5** (merge + settin
 - Ruleset checked healthy 2026-07-13: 4 rule types, all 8 required checks on `main`.
 
 ## Working tree
-- `sprint/35-tasks-1-2` carries Tasks 1–2 through `18042c6`, pushed, PR #57 open against
+- `sprint/35-tasks-1-2` carries Tasks 1–2 through `96cc88e`, pushed, PR #57 open against
   `feat/mcp-langgraph-migration`. **Live — still the branch to fix/review/merge.**
 - `sprint/35-migration-merge` and `sprint/35-archive-34` remain **dead** (squash-merged as
   #55/#56) — never push to either again.
