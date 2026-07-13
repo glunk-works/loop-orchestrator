@@ -5,51 +5,46 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 copy them. Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Sprint `35_migration_merge`, PR #57 — F24–F27 closed at head `9de08e6`, pushed.**
-Next session is **Opus/Architect**: fresh `/code-review` at the new head, then post.
+**Sprint `35_migration_merge`, PR #57 — Opus review at head `fb93715`: verdict REVISE.**
+Next session is **Sonnet/Coder**: close **F29–F34**, green gate, push.
 
-> ⚠️ **The stale green `architect-review` from `4f05ed3` does not carry over.** This
-> commit moves the head, so the check is red again and a genuinely fresh review is
-> required before anyone merges.
+## Just done (Opus/Architect session, 2026-07-13)
+Fresh-session `/code-review` of PR #57 at head `fb93715`, posted with
+`gh pr review --comment`. F24–F27 each **do** close what the prior review named, and
+F28 is correctly moot — but this round's fixes all live in **structural guards**, and
+two of those guards are themselves broken:
 
-## Just done (Sonnet/Coder session, 2026-07-13)
-Closed four findings from the Opus follow-up review of PR #57 at head `4f05ed3`
-(verdict REVISE), committed as `9de08e6`, pushed to `sprint/35-tasks-1-2`:
+- **F29 (HIGH, blocking)** — [`test_state_io_boundary.py:22`](../tests/tools/test_state_io_boundary.py)'s
+  `_direct_write_calls` is **blind to method-form `.open()`** (matches `ast.Name` for
+  `open`, `ast.Attribute` only for `write_text`/`write_bytes`). Verified: `path.open("w")`
+  in **any** module bypasses the single-writer boundary and the test stays green. This is
+  the *same* bug F25 just fixed in `test_encoding_boundary.py`, left standing in its twin —
+  and this PR adds the repo's first method-form `.open()` calls, one of them in
+  `agent_state/store.py`, outside `ALLOWED_DIRS`.
+- **F30 (HIGH, blocking)** — [`test_encoding_boundary.py:65`](../tests/tools/test_encoding_boundary.py)'s
+  `_open_mode(is_method=True)` **parses the filename as the file mode** for module-level
+  openers. `gzip.open('blob.gz','wt')` → mode `'blob.gz'` → contains a `b` → judged binary →
+  a real unencoded text write is exempted. Whether the guard fires depends on whether the
+  filename happens to contain the letter "b".
+- **F31 (med)** — the newline guard's `WRITE_OWNING_DIRS` excludes `agent_state/`, the one
+  module this PR gave an `.open()` handle to. With F29, a write there is unguarded twice over.
+- **F32 (med)** — the `sys.flags.utf8_mode` skipif drops the **whole** parametrized test,
+  including the locale-*independent* `None` case; on Python 3.15 all non-ASCII publish
+  coverage silently vanishes.
+- **F33 (med-low)** — the append-only prefix check is now tautological for its only caller
+  (both sides read the same file byte-identically). May be answered with a docstring.
+- **F34 (low)** — `_is_write_capable_mode` inverts the conservatism F21 states 20 lines above.
 
-1. **F24** — [`agent_state/store.py`](../src/loop_engine/tools/agent_state/store.py)'s
-   `append_memory` now reads the ledger byte-exact (`.open(encoding="utf-8",
-   newline="")`), matching `state_io/writer.py`'s own F22 prefix check instead of
-   silently CRLF→LF-translating a different view of the same file.
-2. **F25** — [`test_encoding_boundary.py`](../tests/tools/test_encoding_boundary.py)'s
-   `_unencoded_calls` now matches method-form `.open(...)` (`ast.Attribute`), not just
-   the bare-name builtin form — it was blind to its own PR's new call site. `_open_mode`
-   is now told which form it's looking at, since method `.open()`'s mode sits at
-   positional index 0, not builtin `open()`'s index 1.
-3. **F26** — the newline-pin guard now also covers write-mode `open()` calls, not just
-   `.write_text()`.
-4. **F27** — documented (in `test_state_io.py`) that the two byte-exact regression tests
-   can't actually exercise the newline= hazard they name on ubuntu-latest CI (verified:
-   monkeypatching `os.linesep` doesn't change `TextIOWrapper`'s translation); the AST
-   guard is the real, platform-independent backstop.
-
-**F28 (optional) deliberately skipped** — verified it isn't a new failure mode:
-`write_artifact`'s own `write_text()` already raises identically on an unpaired
-surrogate, so `publish_artifacts`'s comparison doesn't introduce a new crash surface.
-
-Green gate: lint clean, format clean, full suite **553 passed**.
-
-## Next — Opus/Architect
-1. Fresh session `/code-review` of PR #57 at head `9de08e6`. Verify F24–F27 actually
-   close what the prior review named.
-2. Post with `gh pr review --comment` (never `--approve`).
-3. **If ACCEPT:** proceed to **Task 3** (pre-merge preflight) → **Task 4** (open the
-   migration PR). **Task 5** (merge + settings) is **HUMAN-ONLY**. **PR #55 approved the
-   plan, not Tasks 3–5's execution — that gate is still open.**
-4. If another REVISE: hand back to Sonnet/Coder per the usual ladder.
+## Next — Sonnet/Coder
+1. Close **F29 + F30** (blocking), then **F31 + F32** (cheap, same round). **F33/F34** are
+   judgment calls — F33 may be answered with a docstring rather than a refactor.
+2. Green gate: `hatch run lint`, `hatch run format`, `hatch run test`. Commit, push.
+3. Hand back to **Opus** for a fresh-session review **at the new head** — moving the head
+   turns `architect-review` red again regardless.
 
 ## Notes only — do NOT fix without a fresh planning pass (→ backlog)
-- **F2, F4, F14, F17, F23** — unchanged, still correctly deferred per the prior review.
-- **F28** — optional, verified moot (see above); no backlog entry needed.
+- **F2, F4, F14, F17, F23** — unchanged, still correctly deferred.
+- **F28** — optional, verified moot; no backlog entry needed.
 - **Carried:** `architect-review` cannot distinguish "was reviewed" from "was approved"
   (a REVISE turns it green) — filed, still open, harmless while a human merges.
 
@@ -65,8 +60,8 @@ Green gate: lint clean, format clean, full suite **553 passed**.
 
 ## Pointers
 - [`sprints/35_migration_merge/sprint_plan.md`](../sprints/35_migration_merge/sprint_plan.md) —
-  the approved plan. FD1–FD7 locked.
-- PR #57 — Tasks 1–2, sixth fix round closed (F24–F27). Full diff at `9de08e6`.
+  the approved plan. FD1–FD7 locked. **PR #55 approved the plan, not Tasks 3–5's execution.**
+- PR #57 — Tasks 1–2, seventh fix round (F29–F34). Full review comment on the PR at `fb93715`.
 - [`docs/backlog.md`](../docs/backlog.md) — BL-11 resolved; **BL-13 open by design**.
 - [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — every phase closed since
   sprint 32.
@@ -75,7 +70,7 @@ Green gate: lint clean, format clean, full suite **553 passed**.
 - Ruleset checked healthy 2026-07-13: 4 rule types, all 8 required checks on `main`.
 
 ## Working tree
-- `sprint/35-tasks-1-2` carries Tasks 1–2 through `9de08e6`, pushed, PR #57 open against
+- `sprint/35-tasks-1-2` carries Tasks 1–2 through `fb93715`, pushed, PR #57 open against
   `feat/mcp-langgraph-migration`. **Live — still the branch to fix/review/merge.**
 - `sprint/35-migration-merge` and `sprint/35-archive-34` remain **dead** (squash-merged as
   #55/#56) — never push to either again.
