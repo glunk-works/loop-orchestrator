@@ -102,7 +102,7 @@ def read_scratchpad() -> ScratchpadState:
     path = Path(*AGENT_SCRATCHPAD_PATH.split("/"))
     if not path.exists():
         return ScratchpadState()
-    return _parse_scratchpad(path.read_text())
+    return _parse_scratchpad(path.read_text(encoding="utf-8"))
 
 
 def write_scratchpad(state: ScratchpadState) -> Path:
@@ -121,7 +121,7 @@ def read_memory() -> list[MemoryEntry]:
     path = Path(*AGENT_MEMORY_PATH.split("/"))
     if not path.exists():
         return []
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     entries: list[MemoryEntry] = []
     # Each entry is `## <title>` then `_recorded <ts>_` then the body.
     pattern = re.compile(
@@ -149,5 +149,5 @@ def append_memory(entry: MemoryEntry) -> Path:
     extend the ledger, never rewrite it.
     """
     path = Path(*AGENT_MEMORY_PATH.split("/"))
-    existing = path.read_text() if path.exists() else _MEMORY_HEADER
+    existing = path.read_text(encoding="utf-8") if path.exists() else _MEMORY_HEADER
     return append_agent_memory(existing + _render_entry(entry))

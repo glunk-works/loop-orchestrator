@@ -10,7 +10,7 @@ tree).
 - `publish_artifacts(state)` writes every inline body to disk, reading back
   the on-disk content for comparison and skipping the write when it already
   matches — a read-compare, not a no-op: it still does a `read_text()` per
-  artifact per stage, it only avoids the redundant write.
+  artifact that already exists on disk, it only avoids the redundant write.
 - `has_artifact` checks the inline body directly.
 
 All writes are delegated to `tools/state_io` so the single-writer boundary
@@ -28,8 +28,9 @@ def publish_artifacts(state: State) -> None:
 
     A pure side effect — mutates no state. Reads back the on-disk content to
     compare against the inline body and skips the write when they already
-    match; the read still happens for every artifact on every stage, so this
-    avoids a redundant write, not I/O altogether.
+    match; the read still happens for every artifact that already exists on
+    disk (`path.exists()` short-circuits it on first publish), so this avoids
+    a redundant write, not I/O altogether.
     """
     for key, body in state.artifacts.items():
         path = Path(default_artifact_path(state.run_id, key))

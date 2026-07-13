@@ -1,3 +1,4 @@
+import locale
 from pathlib import Path
 
 import pytest
@@ -56,19 +57,34 @@ def test_publish_lands_bodies_under_docs_artifacts_run_id() -> None:
     assert (run_dir / "sprint_plan").read_text() == "plan body"
 
 
-def test_publish_is_idempotent_for_unchanged_non_ascii_body(monkeypatch) -> None:
-    body = "spec: café — 日本語 😀"
-    state = _state(spec=body)
-    publish_artifacts(state)
+@pytest.mark.parametrize("ctype_locale", [None, "C"])
+def test_publish_is_idempotent_for_unchanged_non_ascii_body(monkeypatch, ctype_locale) -> None:
+    # The "C" case forces the process's *default* text encoding (what any
+    # bare read_text()/write_text() falls back to) to ASCII. It reproduces
+    # F1 on a host whose locale default isn't UTF-8: without an explicit
+    # encoding="utf-8" pinned at the write side, this body fails to write
+    # at all under that default, so this parametrization fails without the
+    # fix instead of passing regardless (the tautology this replaces).
+    previous_locale = locale.setlocale(locale.LC_CTYPE)
+    if ctype_locale is not None:
+        locale.setlocale(locale.LC_CTYPE, ctype_locale)
+    try:
+        body = "spec: café — 日本語 😀"
+        state = _state(spec=body)
+        publish_artifacts(state)
 
-    path = Path(default_artifact_path("run-001", "spec"))
-    assert path.read_bytes() == body.encode("utf-8")
+        path = Path(default_artifact_path("run-001", "spec"))
+        assert path.read_bytes() == body.encode("utf-8")
 
-    calls = []
-    monkeypatch.setattr(artifact_store, "write_artifact", lambda content, path: calls.append(path))
-    publish_artifacts(state)
-    assert calls == []
-    assert path.read_bytes() == body.encode("utf-8")
+        calls = []
+        monkeypatch.setattr(
+            artifact_store, "write_artifact", lambda content, path: calls.append(path)
+        )
+        publish_artifacts(state)
+        assert calls == []
+        assert path.read_bytes() == body.encode("utf-8")
+    finally:
+        locale.setlocale(locale.LC_CTYPE, previous_locale)
 
 
 def test_has_artifact_reflects_nonempty_body() -> None:
