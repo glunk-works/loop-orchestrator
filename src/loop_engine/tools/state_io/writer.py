@@ -89,7 +89,7 @@ def write_state_snapshot(state: State, run_id: str, stage_index: int, stage_name
     target_dir = state_root() / "state" / run_id
     target_dir.mkdir(parents=True, exist_ok=True)
     target_path = target_dir / f"{stage_index:02d}_{stage_name}.json"
-    target_path.write_text(state.model_dump_json(), encoding="utf-8")
+    target_path.write_text(state.model_dump_json(), encoding="utf-8", newline="\n")
     return target_path
 
 
@@ -98,7 +98,7 @@ def write_artifact(content: str, relative_path: str) -> Path:
 
     target_path = Path(*posix_path.parts)
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    target_path.write_text(content, encoding="utf-8")
+    target_path.write_text(content, encoding="utf-8", newline="\n")
     return target_path
 
 
@@ -133,7 +133,7 @@ def write_agent_scratchpad(content: str) -> Path:
     """Overwrite the mutable `.agent/STATE.md` scratchpad."""
     target_path = _agent_target(AGENT_SCRATCHPAD_PATH)
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    target_path.write_text(content, encoding="utf-8")
+    target_path.write_text(content, encoding="utf-8", newline="\n")
     return target_path
 
 
@@ -153,5 +153,5 @@ def append_agent_memory(full_content: str) -> Path:
                 f"Refusing to write {AGENT_MEMORY_PATH}: the ledger is append-only "
                 "and the new content does not preserve existing entries as a prefix."
             )
-    target_path.write_text(full_content, encoding="utf-8")
+    target_path.write_text(full_content, encoding="utf-8", newline="\n")
     return target_path

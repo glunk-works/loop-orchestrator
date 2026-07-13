@@ -47,6 +47,23 @@ def test_write_artifact_succeeds_under_docs() -> None:
     assert path.read_text() == "hello"
 
 
+def test_write_artifact_writes_exact_utf8_bytes_with_no_newline_translation() -> None:
+    # F1: Path.write_text defaults to newline=None, which translates "\n" to
+    # os.linesep on write. On Windows that means the on-disk bytes no longer
+    # equal body.encode("utf-8"), which artifact_store.py's idempotence check
+    # assumes. Pinning newline="\n" makes the write byte-exact on every platform.
+    body = "line one\nline two\n"
+    path = write_artifact(body, "docs/example.md")
+
+    assert path.read_bytes() == body.encode("utf-8")
+
+
+def test_write_state_snapshot_writes_exact_utf8_bytes_with_no_newline_translation() -> None:
+    path = write_state_snapshot(VALID_STATE, run_id="run-001", stage_index=2, stage_name="pm")
+
+    assert path.read_bytes() == VALID_STATE.model_dump_json().encode("utf-8")
+
+
 def test_write_artifact_rejects_absolute_path() -> None:
     with pytest.raises(ValueError):
         write_artifact("hello", "/etc/passwd")
