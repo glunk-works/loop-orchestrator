@@ -1,0 +1,70 @@
+name: Ruleset drift
+
+# BL-11: every "required" check in this repo blocks a merge only because the
+# protected-integration-branches ruleset says so. If that ruleset is ever
+# weakened or deleted, nothing else here would notice -- that is exactly how
+# its total absence went unseen for the whole life of the CI config. This
+# workflow re-reads the effective rules on `main` on a schedule (plus a manual
+# workflow_dispatch, since a cron-only trigger cannot be tested without
+# waiting for the cron) and fails loudly the moment they no longer match what
+# sprint 33 put in place.
+#
+# Deliberately NOT a required check and NOT a job in ci.yml (FD2, sprint 34):
+# a required check is required only because the ruleset says so, so making
+# this check itself required would un-require it the instant the ruleset it
+# watches is deleted -- silently, on the exact failure it exists to catch.
+# It gates nothing here and is gated by nothing.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ruleset-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify the protected-integration-branches ruleset still holds
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          rules=$(gh api "repos/${REPO}/rules/branches/main")
+
+          missing_types=()
+          for t in deletion non_fast_forward pull_request required_status_checks; do
+            if ! jq -e --arg t "$t" 'any(.[]; .type == $t)' <<<"$rules" >/dev/null; then
+              missing_types+=("$t")
+            fi
+          done
+
+          contexts=$(jq -c '
+            [.[] | select(.type == "required_status_checks")
+                 | .parameters.required_status_checks[].context]
+          ' <<<"$rules")
+
+          missing_checks=()
+          for c in lint format-check test secrets-scan dependency-audit sbom pr-title architect-review; do
+            if ! jq -e --arg c "$c" 'index($c) != null' <<<"$contexts" >/dev/null; then
+              missing_checks+=("$c")
+            fi
+          done
+
+          if [ ${#missing_types[@]} -gt 0 ] || [ ${#missing_checks[@]} -gt 0 ]; then
+            echo "::error::Branch protection on 'main' has been weakened or removed."
+            if [ ${#missing_types[@]} -gt 0 ]; then
+              echo "::error::Missing rule types: ${missing_types[*]}"
+            fi
+            if [ ${#missing_checks[@]} -gt 0 ]; then
+              echo "::error::Missing required checks: ${missing_checks[*]}"
+            fi
+            echo "::error::See docs/backlog.md BL-11 -- this ruleset is what makes every other CI check in this repo actually block a merge; restore it in Settings > Rules."
+            exit 1
+          fi
+
+          echo "OK: ruleset intact -- 4 rule types, 8 required checks."
