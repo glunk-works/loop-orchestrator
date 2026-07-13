@@ -93,6 +93,17 @@
 **Human actions (Claude cannot do these — settings, not code):**
 
 1. **After Task 1 merges** (ordering is load-bearing — FD5): set **`sha_pinning_required: true`** in Settings → Actions. Doing it *before* the pins land rejects every floating tag and makes the fixing PR itself unmergeable.
-2. **Squash-only merges:** set `allow_merge_commit: false` and `allow_rebase_merge: false`. `squash_merge_commit_title: PR_TITLE` applies **only** to squash, so merge-committing a PR silently drops the enforced title and breaks the commit taxonomy — which would quietly undo what sprint 33 just built. No ordering constraint; can be done any time.
+2. **CORRECTED 2026-07-13 (BL-13) — do not flip `allow_merge_commit` yet.** Originally this item
+   said to set both `allow_merge_commit: false` and `allow_rebase_merge: false`. That's wrong:
+   `.ai/context/workflow.md` documents a one-time exception where `feat/mcp-langgraph-migration`
+   merges to `main` as a **merge commit**, deliberately never a squash, when the whole migration
+   finally lands. `allow_merge_commit` is repo-wide and doesn't distinguish that PR from any
+   other — flipping it off now would silently disable the button for the one PR that's supposed
+   to use it. **Set `allow_rebase_merge: false` now** (nothing here uses rebase merges).
+   **Hold off on `allow_merge_commit: false`** until after the migration PR merges, then disable
+   it. `squash_merge_commit_title: PR_TITLE` applies **only** to squash, so a stray
+   merge-committed *sprint* PR would still silently drop the enforced title — that risk is
+   accepted until the toggle is safe to flip, since only the reviewer, not CI, currently guards
+   against choosing "Create a merge commit" on an ordinary sprint PR.
 3. **Merge Task 4's PR into `main`** (the FD3 exception). Confirm afterwards that the drift workflow appears in the Actions tab **on `main`**.
 4. **Carried from prior sprints, still open:** delete `glunk-works/loop-engine-v3-scratch` (private, issues #1–#6) in the UI, then trim the PAT's repo list.
