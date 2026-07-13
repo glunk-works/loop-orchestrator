@@ -5,81 +5,85 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 copy them. Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**The migration is fully closed** (Phases 1–6). Work is **backlog-driven** from
-[`docs/backlog.md`](../docs/backlog.md).
+**Sprint `34_ci_supply_chain_hardening` is done.** BL-11 is fully closed. The next unit is a
+**new Opus planning task**, added by the human: scope the `feat/mcp-langgraph-migration` → `main`
+merge. **Next session is Opus/Architect.**
 
-**Current unit: sprint `34_ci_supply_chain_hardening` — status `implementing`.**
-The plan is **written and human-approved**. Branch `sprint/34-ci-supply-chain-hardening` is cut
-from `feat/mcp-langgraph-migration` and pushed (`24d65bf`, holding the plan).
-**Next session is Sonnet/Coder.**
+## Just done (Sonnet/Coder session, 2026-07-13)
+- **Sprint 34 (BL-11) shipped in full.** Tasks 1, 2, 3, 5, 6 via PR #45 (squash `bea926e`+`77c7fec`
+  into `feat/mcp-langgraph-migration`). Task 4 (`ruleset-drift.yml`) via PR #47 into `main`, and
+  **both post-merge acceptance criteria were live-verified, not assumed**: a manual
+  `workflow_dispatch` run confirmed `GITHUB_TOKEN` (only `contents: read` — no scope escalation
+  needed) actually read the effective-rules endpoint and saw all 8 checks; a second dispatch on a
+  throwaway branch with a fake 9th check name confirmed the workflow goes red for the right reason
+  (that branch was deleted, never merged).
+- **Three follow-on findings surfaced live and resolved**, all in `docs/backlog.md`:
+  - **BL-12** — before opening Task 4's PR, checked `main` live rather than assuming it mirrored
+    `feat/mcp-langgraph-migration`. It was **106 commits behind** and missing `pr-title.yml` +
+    `hitl-review.yml` entirely, so any PR against `main` would have hung forever on 2 of its 8
+    required checks. Backported both files verbatim (PR #46) — self-referentially proved correct
+    when both new checks resolved on the PR that introduced them.
+  - **BL-13** — the repo owner caught this before it was acted on: sprint 34's human-actions list
+    said to disable `allow_merge_commit` repo-wide, but `.ai/context/workflow.md` documents a
+    one-time exception — the migration's eventual landing on `main` is a **merge commit**,
+    deliberately never squashed. Corrected in `docs/backlog.md` and the sprint plan in place (PR
+    #48). `allow_rebase_merge: false` is set; `allow_merge_commit` stays enabled until the
+    migration merge itself.
+  - **BL-14** — found while answering a question about how action-version updates would work
+    going forward: Dependabot reads `dependabot.yml` **only from the default branch**, so Task 1's
+    SHA pins and Task 2's `github-actions` entry were inert on `main` until backported (PR #49).
+    Confirmed live: the moment #49 merged, Dependabot immediately opened **PRs #50–53**, bumping
+    all four pinned actions — all **major-version** jumps, flagged for real human review rather
+    than auto-merge.
+  - BL-12 and BL-14 are named in the backlog as **one repeating pattern**: anything that must live
+    on the default branch to function (Dependabot config, scheduled workflows, branch-protection
+    settings) is silently inert on `feat/mcp-langgraph-migration` until it reaches `main`.
+- PR #54 (docs-only, logs the BL-14 finding) is **green, awaiting merge** — no architect-review
+  needed (no `src/` touched).
 
-## Just done (Opus/Architect session, 2026-07-13)
-- **Sprint 33 archived and merged.** PR #44 landed as `baf80dc` — the merge was the approval.
-- **Sprint 34 planned** ([`sprint_plan.md`](../sprints/34_ci_supply_chain_hardening/sprint_plan.md),
-  committed as `24d65bf`). Six tasks, six locked findings, a Risks section, a human-actions list.
-  It closes the three items **BL-11** left open: SHA-pin the four actions, squash-only merges, and
-  ruleset drift detection. The theme is one thing — sprint 33 switched enforcement *on*; this sprint
-  makes it **hold**, pairing every control with an assertion that it still exists.
+## Next — Opus/Architect
+**New planning task, not yet a numbered sprint.** Scope what must happen before
+`feat/mcp-langgraph-migration` merges into `main` as its one-time merge-commit landing, versus
+what can be safely deferred to post-merge. This is a **planning pass** — produce a plan/checklist
+and HITL-gate it with the human; do not start executing the merge unilaterally.
 
-## The three findings that changed the plan's shape
-- **FD1 — no new PAT scope is needed, and BL-11's note is wrong to ask for one.** Verified live, with
-  the temporary `Administration: write` grant already revoked: the **effective-rules** endpoint
-  (`GET /repos/../rules/branches/main`) returns all four rule types **and all eight required check
-  names** with no admin scope. BL-11's resolution note recommends granting `Administration: read`;
-  **Task 6 deletes that recommendation**, because leaving it standing invites a future session to
-  widen scopes for nothing. **Do not widen any scope.**
-- **FD2 — a drift check that is a *required* check is circular.** The ruleset is what *makes* a check
-  required — so deleting the ruleset also un-requires the check watching it. It goes red and blocks
-  nothing, precisely when it matters. Hence a **scheduled workflow + a `/resume` preflight**, never a
-  9th required check.
-- **FD3 — a cron only fires from the *default* branch (`main`), but our PRs land on `feat/**`.** A
-  drift workflow merged to `feat/**` would sit in the tree, correct and reviewed, and **never
-  execute** — BL-11's failure mode reproduced by the fix meant to detect it. **Task 4 therefore ships
-  in its own PR based on `main`** — the single deliberate exception to the one-base rule.
+Known inputs to weigh:
+1. **BL-13's ordering** — `allow_merge_commit` must be enabled for that one PR, then disabled
+   again immediately after.
+2. **`sprints/DEFERRED_VERIFICATION.md`** — five checks (§1, §5, §6, §7, §8) have never been run.
+   Decide which, if any, are must-run-before-merge vs. safe to leave for after.
+3. **Two still-open, non-blocking findings from PR #39's review** — `publish_artifacts`' "does no
+   I/O" docstring is false (it reads every artifact off disk per stage), and its
+   `Path.read_text()` read-back has no explicit encoding. Both touch `src/`, so fixing them would
+   need a fresh-session `architect-review`; decide if they block the merge or ride along after.
+4. **The BL-12/BL-14 pattern** — worth an explicit check in the merge plan for any other file that
+   needs to live on the default branch to actually function.
 
-## Next — Sonnet/Coder
-Implement **Tasks 1, 2, 3, 5, 6** on `sprint/34-ci-supply-chain-hardening`, then PR into
-`feat/mcp-langgraph-migration`. **Read the plan first** — its Risks section will save a debug cycle.
-**Task 4 does NOT go on this branch** (FD3): its PR is based on `main` and carries only the drift
-workflow.
-
-Three traps, repeated because each is expensive:
-1. **`uses:` needs a COMMIT sha, not a tag-object sha.** Resolve with
-   `gh api repos/OWNER/REPO/commits/<tag> --jq .sha` — **not** the `git/ref/tags` endpoint, which
-   returns the tag object and breaks every workflow at once.
-2. **Never flip `sha_pinning_required` yourself** — human settings action, and it must come *after*
-   the pins merge, or every workflow rejects floating tags including the PR carrying the fix.
-3. **Task 4's criterion is LIVE OBSERVATION, not assertion (FD6).** `GITHUB_TOKEN` is a different
-   principal from the local PAT; its read access to the rules endpoint is **unverified**. A green run
-   that silently read nothing is the exact BL-11 defect and **does not pass**.
-
-No `src/` is touched, so `hitl-review.yml`'s `^src/` filter exempts this sprint — `architect-review`
-goes green on its own and **no fresh-session Opus review is required to merge.** The human's merge is
-the only remaining gate.
+Small housekeeping alongside: once PR #54 merges, sprint 34 can be archived via `/archive-sprint`.
 
 ## Human actions
-- **After Task 1 merges** (ordering is load-bearing — FD5): set **`sha_pinning_required: true`**.
-- **Any time:** `allow_merge_commit: false` + `allow_rebase_merge: false`. `squash_merge_commit_title:
-  PR_TITLE` applies *only* to squash, so a merge-commit silently drops the enforced title — quietly
-  undoing what sprint 33 built.
-- **Merge Task 4's PR into `main`**, then confirm the drift workflow appears in the Actions tab.
-- **Carried:** delete `glunk-works/loop-engine-v3-scratch` (private, issues #1–#6); trim the PAT's repo list.
-
-## Standing obligations (not sprint-34 tasks; all still real)
-- **`sprints/DEFERRED_VERIFICATION.md`** — five checks (§1, §5, §6, §7, §8) **never run**. Don't delete it.
-- **Two unfixed findings from PR #39** — `publish_artifacts` reads every artifact off disk on every
-  stage while both docstrings claim it *"does no I/O"*; that read-back uses `Path.read_text()` with no
-  explicit encoding. Still open, out of sprint-34 scope. They touch `src/`, so fixing them **would**
-  require a fresh-session `architect-review`.
+- `allow_rebase_merge: false` — **already set** (confirmed this session).
+- `allow_merge_commit` — **stays enabled** until the migration-merge plan executes it (BL-13);
+  do not disable it before then.
+- `sha_pinning_required: true` — should already be set (Task 1 merged well before this handoff).
+- **Review PRs #50–53** (Dependabot, major-version action bumps) — real review, not a rubber-stamp.
+- **Carried:** delete `glunk-works/loop-engine-v3-scratch` (private, issues #1–#6); trim the PAT's
+  repo list.
 
 ## Pointers
-- [`sprints/34_ci_supply_chain_hardening/sprint_plan.md`](../sprints/34_ci_supply_chain_hardening/sprint_plan.md) — **approved.** FD1–FD6, Tasks 1–6, Risks, human actions.
-- [`docs/backlog.md`](../docs/backlog.md) — the source of work. **BL-11's "Left open, deliberately" section *is* this sprint.**
-- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — every phase closed. Sprint 34 adds no row.
-- `.ai/context/workflow.md` — PR-gated integration + the fresh-session review rule.
+- [`docs/backlog.md`](../docs/backlog.md) — BL-11 fully resolved. BL-12/BL-14 resolved (backport
+  shape). BL-13 open by design (held human settings action).
+- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — every phase closed since sprint 32
+  (2026-07-12). Its own NEXT ACTION line still reads "none pre-selected" — the new planning task
+  above is what fills that in.
+- [`sprints/34_ci_supply_chain_hardening/sprint_plan.md`](../sprints/34_ci_supply_chain_hardening/sprint_plan.md)
+  — closed. Its Task 4 "PAUSED" note and BL-13 "CORRECTED" note are historical record, not open items.
+- `.ai/context/workflow.md` — the merge-commit exception for the migration landing is documented
+  here; read it before scoping the new planning task.
 
 ## Working tree
-- `sprint/34-ci-supply-chain-hardening` at `24d65bf` (pushed, clean). PR base is
-  **`feat/mcp-langgraph-migration`** — **except Task 4, whose base is `main`** (FD3).
-- Branches squash-merge — **a squash-merged branch is dead; never reuse one.**
-- `.ai/state.json` + `.ai/archive/` are git-ignored (local mirrors); **`.ai/next-steps.md` is tracked.**
+- No active sprint branch. `sprint/34-ci-supply-chain-hardening` and `sprint/34-ruleset-drift` are
+  dead (squash-merged) — **never push to a squash-merged branch again.**
+  `sprint/34-bl14-dependabot-gap` has PR #54 open (green, docs-only), awaiting merge.
+- `.ai/state.json` + `.ai/archive/` are git-ignored (local mirrors); **`.ai/next-steps.md` is
+  tracked.**
