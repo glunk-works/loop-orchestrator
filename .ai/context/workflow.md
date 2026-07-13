@@ -39,7 +39,7 @@ SONNET (code)  /resume -> branch sprint/NN-slug -> implement + tests -> green
    |   /model alone does NOT clear context — a reviewer holding the authoring |
    |   context proofreads its own reasoning instead of re-deriving it.        |
 OPUS (review)  /resume -> /code-review the diff -> HITL gate -> update roadmap
-   |           -> open PR (base: feat/mcp-langgraph-migration) -> STOP        |
+   |           -> open PR (base: main) -> STOP                                |
    |                                                                          |
    v                                                                          |
 HUMAN          review the PR -> merge = approval -> /archive-sprint, plan next
@@ -61,10 +61,23 @@ without it. Claude commits and pushes freely on a sprint branch, opens the PR, a
 **never merges** — the same posture the engine enforces on managed repos, where
 `tools/repo_io` deliberately exposes no merge verb.
 
-- **Branch per sprint:** `sprint/NN-slug`, cut from `feat/mcp-langgraph-migration`.
-- **PR base is `feat/mcp-langgraph-migration`, not `main`.** `main` stays untouched
-  until the whole migration lands as one final PR. A PR base may be any branch that
-  exists on the remote — it does not have to be the repo default.
+- **Branch per sprint:** `sprint/NN-slug`, cut from `main`.
+- **PR base is `main`.** Every sprint PR merges into the repo default branch. A PR base
+  may be any branch that exists on the remote — it does not have to be the default —
+  but `main` is the one this repo uses.
+
+  > **Historical note — the `feat/mcp-langgraph-migration` era (through sprint 35).**
+  > While the MCP/LangGraph migration was in flight, `main` was deliberately left
+  > untouched: every sprint branch was cut from, and every sprint PR based on,
+  > `feat/mcp-langgraph-migration` instead, keeping ~109 commits of in-progress
+  > migration work off the default branch until it was whole. Sprint 35 landed that
+  > branch on `main` as **one deliberate merge commit** — never squashed, since
+  > squashing would have collapsed the entire migration's history into a single
+  > commit — the **one-time exception** to this repo's normal squash-merge
+  > convention (`allow_merge_commit` was enabled only for that PR, then turned back
+  > off immediately after). `feat/mcp-langgraph-migration` was retired the same day.
+  > If you find a merge commit in `main`'s history, that is why.
+
 - **CI runs on the PR.** `.github/workflows/ci.yml` triggers on `pull_request:` with
   no branch filter (and on pushes to `main` only) — so a sprint branch pushed
   *without* a PR gets **no CI at all**. The PR is what turns the lint → format →

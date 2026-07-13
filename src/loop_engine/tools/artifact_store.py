@@ -7,9 +7,10 @@ disk write: publishing those bodies into the working tree so they ship as
 documentation in the managed repo's PR (`flows/maintenance` commits the whole
 tree).
 
-- `publish_artifacts(state)` writes every inline body to disk, skipping a
-  body whose on-disk content already matches so publishing an unchanged
-  state does no I/O.
+- `publish_artifacts(state)` writes every inline body to disk, reading back
+  the on-disk content for comparison and skipping the write when it already
+  matches — a read-compare, not a no-op: it still does a `read_text()` per
+  artifact per stage, it only avoids the redundant write.
 - `has_artifact` checks the inline body directly.
 
 All writes are delegated to `tools/state_io` so the single-writer boundary
@@ -25,12 +26,14 @@ from loop_engine.tools.state_io.writer import write_artifact
 def publish_artifacts(state: State) -> None:
     """Write every inline artifact body to disk under `docs/artifacts/<run_id>/`.
 
-    A pure side effect — mutates no state. Skips a body whose on-disk content
-    already matches, so publishing an unchanged state does no I/O.
+    A pure side effect — mutates no state. Reads back the on-disk content to
+    compare against the inline body and skips the write when they already
+    match; the read still happens for every artifact on every stage, so this
+    avoids a redundant write, not I/O altogether.
     """
     for key, body in state.artifacts.items():
         path = Path(default_artifact_path(state.run_id, key))
-        if path.exists() and path.read_text() == body:
+        if path.exists() and path.read_text(encoding="utf-8") == body:
             continue
         write_artifact(body, str(path))
 

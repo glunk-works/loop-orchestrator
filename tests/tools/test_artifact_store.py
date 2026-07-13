@@ -56,6 +56,21 @@ def test_publish_lands_bodies_under_docs_artifacts_run_id() -> None:
     assert (run_dir / "sprint_plan").read_text() == "plan body"
 
 
+def test_publish_is_idempotent_for_unchanged_non_ascii_body(monkeypatch) -> None:
+    body = "spec: café — 日本語 😀"
+    state = _state(spec=body)
+    publish_artifacts(state)
+
+    path = Path(default_artifact_path("run-001", "spec"))
+    assert path.read_bytes() == body.encode("utf-8")
+
+    calls = []
+    monkeypatch.setattr(artifact_store, "write_artifact", lambda content, path: calls.append(path))
+    publish_artifacts(state)
+    assert calls == []
+    assert path.read_bytes() == body.encode("utf-8")
+
+
 def test_has_artifact_reflects_nonempty_body() -> None:
     assert has_artifact(_state(spec="x"), "spec") is True
     assert has_artifact(_state(spec="  "), "spec") is False

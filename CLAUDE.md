@@ -41,11 +41,12 @@ correct → **Opus**; if the task is executing a spec that already exists → **
 Switch at sprint boundaries via `/handoff` → fresh session → `/resume`.
 
 **Every sprint lands via a pull request — a merged PR is the human approval.** Work on a
-`sprint/NN-slug` branch cut from `feat/mcp-langgraph-migration`; commit and push freely
-there, then open a PR whose **base is `feat/mcp-langgraph-migration`** (not `main`). Post the
-Opus HITL review on it with `gh pr review --comment` (**never `--approve`** — the human's merge
-is the approval, and `gh` authenticates as the PR author anyway). **Never merge, and never
-force-push a pushed branch.** Full protocol in `.ai/context/workflow.md`.
+`sprint/NN-slug` branch cut from `main`; commit and push freely there, then open a PR whose
+**base is `main`**. Post the Opus HITL review on it with `gh pr review --comment` (**never
+`--approve`** — the human's merge is the approval, and `gh` authenticates as the PR author
+anyway). **Never merge, and never force-push a pushed branch.** Full protocol in
+`.ai/context/workflow.md` (including a historical note on the one-time `feat/mcp-langgraph-migration`
+merge commit that landed the migration on `main` in sprint 35).
 
 > **The Opus review is a CI gate, not a courtesy — and it runs in a FRESH session.**
 > Any PR touching `src/` fails the `architect-review` check until a review headed
