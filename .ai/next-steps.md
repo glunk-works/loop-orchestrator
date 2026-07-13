@@ -5,84 +5,81 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 copy them. Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**The migration is fully closed** (Phases 1–6). Work is now **backlog-driven** from
-[`docs/backlog.md`](../docs/backlog.md) — that file, not the roadmap, is the source of the
-next unit.
+**The migration is fully closed** (Phases 1–6). Work is **backlog-driven** from
+[`docs/backlog.md`](../docs/backlog.md).
 
-**Next unit: sprint `34_ci_supply_chain_hardening` — status `planning`.** The id and the scope
-are **provisional**; no `sprint_plan.md` exists yet. The next move is an **Opus planning pass**
-(one question at a time, HITL gates), starting on a **fresh branch cut from the updated
-`feat/mcp-langgraph-migration`**.
+**Current unit: sprint `34_ci_supply_chain_hardening` — status `implementing`.**
+The plan is **written and human-approved**. Branch `sprint/34-ci-supply-chain-hardening` is cut
+from `feat/mcp-langgraph-migration` and pushed (`24d65bf`, holding the plan).
+**Next session is Sonnet/Coder.**
 
-## Just done — sprint 33 archived
-Sprint `33_ci_title_starvation` (BL-10) is **complete, merged, and archived**. PR #43 merged as
-squash **`88c0dc4`** onto `feat/mcp-langgraph-migration` — **the merge was the approval.** Final
-cursor snapshotted to `.ai/archive/33_ci_title_starvation-next-steps.md`.
+## Just done (Opus/Architect session, 2026-07-13)
+- **Sprint 33 archived and merged.** PR #44 landed as `baf80dc` — the merge was the approval.
+- **Sprint 34 planned** ([`sprint_plan.md`](../sprints/34_ci_supply_chain_hardening/sprint_plan.md),
+  committed as `24d65bf`). Six tasks, six locked findings, a Risks section, a human-actions list.
+  It closes the three items **BL-11** left open: SHA-pin the four actions, squash-only merges, and
+  ruleset drift detection. The theme is one thing — sprint 33 switched enforcement *on*; this sprint
+  makes it **hold**, pairing every control with an assertion that it still exists.
 
-It shipped two things, one of which was not in the plan:
+## The three findings that changed the plan's shape
+- **FD1 — no new PAT scope is needed, and BL-11's note is wrong to ask for one.** Verified live, with
+  the temporary `Administration: write` grant already revoked: the **effective-rules** endpoint
+  (`GET /repos/../rules/branches/main`) returns all four rule types **and all eight required check
+  names** with no admin scope. BL-11's resolution note recommends granting `Administration: read`;
+  **Task 6 deletes that recommendation**, because leaving it standing invites a future session to
+  widen scopes for nothing. **Do not widen any scope.**
+- **FD2 — a drift check that is a *required* check is circular.** The ruleset is what *makes* a check
+  required — so deleting the ruleset also un-requires the check watching it. It goes red and blocks
+  nothing, precisely when it matters. Hence a **scheduled workflow + a `/resume` preflight**, never a
+  9th required check.
+- **FD3 — a cron only fires from the *default* branch (`main`), but our PRs land on `feat/**`.** A
+  drift workflow merged to `feat/**` would sit in the tree, correct and reviewed, and **never
+  execute** — BL-11's failure mode reproduced by the fix meant to detect it. **Task 4 therefore ships
+  in its own PR based on `main`** — the single deliberate exception to the one-base rule.
 
-- **BL-10 closed by a split, not a rewiring.** `pr-title` moved to its own workflow with its own
-  trigger list and concurrency group; `ci.yml` lost the `edited` trigger and `lint` lost both
-  `needs: pr-title` and its `if:`. **No job in `ci.yml` carries an `if:`**, so none can ever
-  report `skipped` — the invariant is pinned structurally by test rather than by re-asserting the
-  new wiring. Verified live: with a deliberately bad 111-char title, `pr-title` went red and the
-  heavy chain **ran anyway, all six jobs green on the same commit**.
-- **BL-11 found and closed** — see below. This was the bigger find.
+## Next — Sonnet/Coder
+Implement **Tasks 1, 2, 3, 5, 6** on `sprint/34-ci-supply-chain-hardening`, then PR into
+`feat/mcp-langgraph-migration`. **Read the plan first** — its Risks section will save a debug cycle.
+**Task 4 does NOT go on this branch** (FD3): its PR is based on `main` and carries only the drift
+workflow.
 
-## BL-11 — the checks were never actually required
-Confirming FD5 revealed the repo had **no branch protection and no rulesets at all**. All eight
-checks were computed, reported, and **enforcing nothing**: a red PR was mergeable and base
-branches were directly pushable. `mergeStateStatus: CLEAN` corroborated nothing — with no rules
-configured, nothing can be violated. **Never read `CLEAN` as evidence of enforcement again.**
+Three traps, repeated because each is expensive:
+1. **`uses:` needs a COMMIT sha, not a tag-object sha.** Resolve with
+   `gh api repos/OWNER/REPO/commits/<tag> --jq .sha` — **not** the `git/ref/tags` endpoint, which
+   returns the tag object and breaks every workflow at once.
+2. **Never flip `sha_pinning_required` yourself** — human settings action, and it must come *after*
+   the pins merge, or every workflow rejects floating tags including the PR carrying the fix.
+3. **Task 4's criterion is LIVE OBSERVATION, not assertion (FD6).** `GITHUB_TOKEN` is a different
+   principal from the local PAT; its read access to the rules endpoint is **unverified**. A green run
+   that silently read nothing is the exact BL-11 defect and **does not pass**.
 
-Closed **by configuration, not code** (temporary `Administration: write` PAT scope, since revoked).
-Ruleset **`protected-integration-branches`** (id `18847725`, `active`, `bypass_actors: []`) on
-`main` + `feat/**`: **all eight checks required**, PR required to merge, no force-push, no
-deletion. Secret scanning + push protection enabled. `sprint/**` stays unruled (must remain
-freely pushable). **FD5 is now load-bearing for real** — required checks match by **check-run
-name** = job id, so a `name:` override on any of those jobs strands the requirement; `4b61fd1`
-pins this by test.
+No `src/` is touched, so `hitl-review.yml`'s `^src/` filter exempts this sprint — `architect-review`
+goes green on its own and **no fresh-session Opus review is required to merge.** The human's merge is
+the only remaining gate.
 
-## Next — Opus planning pass
-The proposed sprint-34 scope is the three items **BL-11 left open deliberately**, all of which are
-about making the enforcement sprint 33 finally switched on *actually hold*:
-
-1. **Actions supply chain.** `allowed_actions: "all"`, `sha_pinning_required: false`, floating tags
-   (`actions/checkout@v4`). Enabling SHA pinning fails every workflow until the tags become commit
-   SHAs — a **code** change, and the only one of the three with real implementation weight.
-2. **Squash-only merges.** `allow_merge_commit` / `allow_rebase_merge` are still `true` while the
-   convention is squash-only. `squash_merge_commit_title: PR_TITLE` applies *only* to squash, so
-   merge-committing a PR **silently drops the enforced title** and breaks the commit taxonomy. A
-   settings toggle — human-only.
-3. **Drift detection.** Nothing in the repo asserts the ruleset still exists or still requires the
-   eight checks — precisely how its *total absence* went unnoticed for the life of the CI config.
-   An `Administration: **read**` scope would let a test or a `/resume` preflight fail loudly if
-   enforcement is weakened, **without** granting the power to weaken it. *A gate the governed party
-   can remove is not a gate* — write access stays human-only.
-
-Scope is the human's call: (1) is a sprint on its own; (2) and (3) are small but need a human in
-the loop for the settings side.
+## Human actions
+- **After Task 1 merges** (ordering is load-bearing — FD5): set **`sha_pinning_required: true`**.
+- **Any time:** `allow_merge_commit: false` + `allow_rebase_merge: false`. `squash_merge_commit_title:
+  PR_TITLE` applies *only* to squash, so a merge-commit silently drops the enforced title — quietly
+  undoing what sprint 33 built.
+- **Merge Task 4's PR into `main`**, then confirm the drift workflow appears in the Actions tab.
+- **Carried:** delete `glunk-works/loop-engine-v3-scratch` (private, issues #1–#6); trim the PAT's repo list.
 
 ## Standing obligations (not sprint-34 tasks; all still real)
 - **`sprints/DEFERRED_VERIFICATION.md`** — five checks (§1, §5, §6, §7, §8) **never run**. Don't delete it.
 - **Two unfixed findings from PR #39** — `publish_artifacts` reads every artifact off disk on every
-  stage while both docstrings claim it *"does no I/O"*; that read-back uses `Path.read_text()` with
-  no explicit encoding. Still open, still unscheduled. They touch `src/`, so any PR fixing them needs
-  a **fresh-session** `architect-review` — now an actually-enforced required check, not a courtesy.
-- **Human:** `glunk-works/loop-engine-v3-scratch` (private, issues #1–#6) is still live — delete it in
-  the UI, then trim the PAT's repo list. Pending across several sprints.
+  stage while both docstrings claim it *"does no I/O"*; that read-back uses `Path.read_text()` with no
+  explicit encoding. Still open, out of sprint-34 scope. They touch `src/`, so fixing them **would**
+  require a fresh-session `architect-review`.
 
 ## Pointers
-- [`docs/backlog.md`](../docs/backlog.md) — **the source of work.** BL-10 and BL-11 both resolved by
-  sprint 33; **BL-11's "Left open, deliberately" section is the sprint-34 candidate list.**
-- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — every phase closed. No longer the
-  source of work.
-- `sprints/34_ci_supply_chain_hardening/sprint_plan.md` — **to be written** by the planning pass.
+- [`sprints/34_ci_supply_chain_hardening/sprint_plan.md`](../sprints/34_ci_supply_chain_hardening/sprint_plan.md) — **approved.** FD1–FD6, Tasks 1–6, Risks, human actions.
+- [`docs/backlog.md`](../docs/backlog.md) — the source of work. **BL-11's "Left open, deliberately" section *is* this sprint.**
+- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — every phase closed. Sprint 34 adds no row.
 - `.ai/context/workflow.md` — PR-gated integration + the fresh-session review rule.
 
 ## Working tree
-- **No active sprint branch.** `sprint/33-ci-title-starvation` was squash-merged and is **dead**
-  (already deleted on the remote) — **never reuse a squash-merged branch.** Cut a fresh
-  `sprint/34-*` from the updated `feat/mcp-langgraph-migration`.
-- PR base is always **`feat/mcp-langgraph-migration`**, never `main`.
+- `sprint/34-ci-supply-chain-hardening` at `24d65bf` (pushed, clean). PR base is
+  **`feat/mcp-langgraph-migration`** — **except Task 4, whose base is `main`** (FD3).
+- Branches squash-merge — **a squash-merged branch is dead; never reuse one.**
 - `.ai/state.json` + `.ai/archive/` are git-ignored (local mirrors); **`.ai/next-steps.md` is tracked.**
