@@ -32,32 +32,43 @@ archive** — the next move is the human's.
   stranded the required check, and kept the old test green. Now asserted away. Suite: **541
   passed**, lint/format clean.
 
-## 🔴 FD5 came back with a much bigger answer — new **BL-11**
-Checking FD5 in the GitHub UI revealed the repo has **no branch protection and no rulesets at
-all**. Rulesets `[]`; the *effective* rules endpoint for the base branch `[]`; no required
-reviews. **So no check is required.** `lint`/`test`/`pr-title`/`architect-review` are all
-computed and reported — and **enforce nothing**. A red PR can be merged; the base branch can be
-pushed to directly.
+## 🔴 FD5 came back with a much bigger answer — **BL-11**, found *and* fixed
+Checking FD5 revealed the repo had **no branch protection and no rulesets at all** — so **none of
+the eight checks was ever required.** `lint`/`test`/`pr-title`/`architect-review` were all computed,
+reported, and **enforcing nothing**: a red PR could be merged; base branches could be force-pushed.
+`mergeStateStatus: CLEAN` had corroborated nothing — with no rules configured, nothing can be
+violated. The gate CLAUDE.md called "a CI gate, not a courtesy" was, itself, only a courtesy.
 
-- **FD5 is moot today, load-bearing tomorrow.** There is no required check to strand. The `4b61fd1`
-  fix is still right — it protects the moment protection is added.
-- **`mergeStateStatus: CLEAN` proved nothing.** With no rules configured, nothing can be violated.
-  Don't read `CLEAN` as evidence of enforcement again.
-- **The real casualty is `architect-review`.** `CLAUDE.md` called it "a CI gate, not a courtesy."
-  It fails correctly — and blocks nothing. The gate built *because* a convention got skipped
-  (sprint 27 Task 8) is itself, today, only a convention. **Logged as BL-11; `CLAUDE.md` corrected.**
+**Now closed** (see [BL-11](../docs/backlog.md)). The owner granted a temporary
+`Administration: write` PAT scope; the ruleset was created and **the scope has been revoked**:
+
+- Ruleset **`protected-integration-branches`** (id `18847725`, `active`, `bypass_actors: []`) on
+  `main` + `feat/**`: all **eight checks required**, PR required to merge, no force-push, no
+  deletion. `sprint/**` stays unruled (must remain freely pushable).
+- **Secret scanning + push protection enabled.** The gitleaks job is post-hoc — on a *public* repo
+  it reports a leaked key only once it is already public. Push protection rejects the push.
+- **FD5 is now load-bearing for real.** Required checks match by **check-run name** = job id, so
+  a `name:` override on any of those jobs strands the requirement. `4b61fd1` pins this.
 
 ## Next — the human, then Opus
-1. **Human (BL-11, the real one):** add a repository ruleset on `main` + `feat/**` requiring the
-   eight checks (`lint`, `format-check`, `test`, `secrets-scan`, `dependency-audit`, `sbom`,
-   `pr-title`, `architect-review`) and a PR before merging. Claude is **403** here and cannot do
-   or verify it. Until then every "must pass" in `CLAUDE.md` / `GLOBAL_DEFINITION_OF_DONE.md` /
-   `workflow.md` is **aspirational**.
-2. **Human:** merge PR #43. **The merge is the approval; Claude never merges.**
-3. **Opus, after the merge:** run **`/archive-sprint`** to retire sprint 33, then plan the next
-   unit — **BL-11 is the obvious candidate**, and it is mostly a settings change plus a doc
-   reconciliation, not code. **Do not start new work on this branch** — a squash-merged branch is
-   dead; cut a fresh one from the updated `feat/mcp-langgraph-migration`.
+1. **Human:** merge PR #43. **The merge is the approval; Claude never merges.** All eight checks
+   are green — and they now actually gate.
+2. **Opus, after the merge:** run **`/archive-sprint`** to retire sprint 33, then plan the next
+   unit. **Do not start new work on this branch** — a squash-merged branch is dead; cut a fresh one
+   from the updated `feat/mcp-langgraph-migration`.
+
+**Candidates for that next unit** (all logged under BL-11's resolution note):
+- **Actions supply chain** — `allowed_actions: all`, no SHA pinning, floating tags
+  (`actions/checkout@v4`). Enabling SHA pinning fails every workflow until the tags become
+  commit SHAs: a **code** change, not a toggle.
+- **Squash-only merges** — `allow_merge_commit`/`allow_rebase_merge` are still `true` while the
+  convention is squash-only. `squash_merge_commit_title: PR_TITLE` applies *only* to squash, so
+  merge-committing a PR silently drops the enforced title and breaks the commit taxonomy.
+- **Drift detection** — nothing in the repo asserts the ruleset still exists. That is exactly how
+  its total absence went unnoticed for the life of the CI config. An `Administration: read` scope
+  would let a test or `/resume` preflight fail loudly if enforcement is weakened, **without**
+  granting the power to weaken it. *A gate the governed party can remove is not a gate* — write
+  access stays human-only.
 
 > ⚠ Pushing `4b61fd1` moved the head SHA. That would normally invalidate a commit-pinned
 > `architect-review`; only `hitl-review.yml`'s `^src/` exemption (this PR touches no `src/`)

@@ -477,3 +477,57 @@ this repo can assert it, which is exactly why it went unnoticed for the whole li
 config. Claude is 403 on branch protection and cannot verify or set it; a human must confirm it
 in the UI. Until then, treat every "must pass" in `CLAUDE.md`,
 `sprints/GLOBAL_DEFINITION_OF_DONE.md`, and `.ai/context/workflow.md` as **aspirational**.
+
+**Resolved 2026-07-12 (sprint 33), by configuration rather than code.** The repo owner granted a
+temporary `Administration: write` scope on the fine-grained PAT; the settings below were applied
+and the scope was then revoked. Confirmation that the diagnosis was right, not merely inferred
+from a screenshot: with the scope live, `GET /repos/.../branches/main/protection` returned **404
+"Branch not protected"** — not the earlier 403. There genuinely was nothing there.
+
+**Ruleset `protected-integration-branches`** (id `18847725`), `active`, targeting
+`refs/heads/main` + `refs/heads/feat/**`, `bypass_actors: []` (it binds admins too):
+
+- `required_status_checks` — all eight: `lint`, `format-check`, `test`, `secrets-scan`,
+  `dependency-audit`, `sbom`, `pr-title`, `architect-review`.
+  `strict_required_status_checks_policy: false` — deliberately **not** requiring branches to be
+  up to date with base, which would force a merge-of-base plus a full CI re-run on every PR
+  whenever base moves (exactly the churn that produced this sprint's silent zero-CI conflict).
+- `pull_request` — a PR is required to merge, with `required_approving_review_count: 0`.
+  **The zero is deliberate:** GitHub forbids approving your own PR, and this is a solo repo, so
+  requiring even one approval would deadlock every PR. The Architect review is enforced by the
+  `architect-review` **check**, not by GitHub's review counter.
+- `non_fast_forward` + `deletion` — no force-pushes, no branch deletion.
+
+`sprint/**` branches are deliberately **unruled** — they must stay freely pushable.
+
+**Also enabled:** `secret_scanning` and `secret_scanning_push_protection`. The `secrets-scan`
+gitleaks job is *post-hoc* — on a **public** repo it reports a leaked key only once it is already
+public, when rotation is the sole remedy. Push protection rejects the push. Given this codebase's
+central rule is that the Anthropic key lives only in the OS keyring, that is the modeled threat,
+and CI was catching it one step too late. (`secret_scanning_validity_checks` and
+`secret_scanning_non_provider_patterns` accept the PATCH but do not take — they are gated behind
+GitHub Advanced Security, not the free public tier.)
+
+**Already correct, verified, no change:** `allow_auto_merge: false` (matches the no-merge-verb
+rule), `delete_branch_on_merge: true`, Actions `default_workflow_permissions: read`,
+`can_approve_pull_request_reviews: false`, Dependabot alerts + security updates on. And
+`squash_merge_commit_title: PR_TITLE` — **load-bearing for BL-10**: on the default
+`COMMIT_OR_PR_TITLE`, a single-commit PR takes its subject from the *commit*, so the enforced PR
+title would never reach the branch and `pr-title` would gate nothing that survives.
+
+**Left open, deliberately — candidates for a follow-up sprint:**
+
+- **Actions supply chain.** `allowed_actions: "all"`, `sha_pinning_required: false`, and the
+  workflows use floating tags (`actions/checkout@v4`). Turning SHA pinning on would fail every
+  workflow until the tags are replaced with commit SHAs — that is a **code** change, not a
+  settings toggle, and it was out of scope for a temporary grant.
+- **Three merge strategies, one convention.** `allow_merge_commit` and `allow_rebase_merge` are
+  both still `true` while the entire convention is squash-only. `squash_merge_commit_title:
+  PR_TITLE` applies *only* to squash, so merge-committing a PR silently drops the enforced title
+  and breaks the commit taxonomy. Restricting to squash-only would close that.
+- **Drift detection.** Nothing in the repo asserts the ruleset still exists or still requires
+  these eight checks — which is precisely how its total absence went unnoticed for the whole life
+  of the CI config. A read-only `Administration: read` scope would let a test or a `/resume`
+  preflight fail loudly if the enforcement is ever weakened, *without* granting the ability to
+  weaken it. **A gate the governed party can remove is not a gate**; write access should stay
+  human-only.
