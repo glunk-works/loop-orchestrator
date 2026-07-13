@@ -52,6 +52,17 @@ def test_write_artifact_writes_exact_utf8_bytes_with_no_newline_translation() ->
     # os.linesep on write. On Windows that means the on-disk bytes no longer
     # equal body.encode("utf-8"), which artifact_store.py's idempotence check
     # assumes. Pinning newline="\n" makes the write byte-exact on every platform.
+    #
+    # F27: unlike the LC_CTYPE-forcing tests in test_artifact_store.py /
+    # scaffold/test_writer.py, this assertion can't be made to actually fail
+    # on the newline= regression it names: os.linesep-driven translation is
+    # resolved at the platform/interpreter level, not re-read from Python's
+    # `os` module, so monkeypatching os.linesep here doesn't reproduce it, and
+    # CI runs ubuntu-latest only (os.linesep == "\n" already, a no-op
+    # translation). This is a round-trip sanity check, not a regression guard;
+    # the real, platform-independent backstop for the newline= pin is the AST
+    # structural guard in test_encoding_boundary.py
+    # (test_write_owning_modules_pin_newline_on_write_text).
     body = "line one\nline two\n"
     path = write_artifact(body, "docs/example.md")
 
@@ -59,6 +70,8 @@ def test_write_artifact_writes_exact_utf8_bytes_with_no_newline_translation() ->
 
 
 def test_write_state_snapshot_writes_exact_utf8_bytes_with_no_newline_translation() -> None:
+    # F27: same caveat as the sibling test above -- sanity check, not a
+    # regression guard; test_encoding_boundary.py's AST guard is the backstop.
     path = write_state_snapshot(VALID_STATE, run_id="run-001", stage_index=2, stage_name="pm")
 
     assert path.read_bytes() == VALID_STATE.model_dump_json().encode("utf-8")

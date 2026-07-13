@@ -149,5 +149,13 @@ def append_memory(entry: MemoryEntry) -> Path:
     extend the ledger, never rewrite it.
     """
     path = Path(*AGENT_MEMORY_PATH.split("/"))
-    existing = path.read_text(encoding="utf-8") if path.exists() else _MEMORY_HEADER
+    if path.exists():
+        # newline="" (no universal-newline translation): byte-exact, matching
+        # append_agent_memory's own prefix check (F24) -- read_text()'s default
+        # newline=None translates CRLF->LF, which would make a legitimate
+        # append on a CRLF-on-disk file fail that check as a false rewrite.
+        with path.open(encoding="utf-8", newline="") as fh:
+            existing = fh.read()
+    else:
+        existing = _MEMORY_HEADER
     return append_agent_memory(existing + _render_entry(entry))
