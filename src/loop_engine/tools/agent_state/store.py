@@ -102,7 +102,7 @@ def read_scratchpad() -> ScratchpadState:
     path = Path(*AGENT_SCRATCHPAD_PATH.split("/"))
     if not path.exists():
         return ScratchpadState()
-    return _parse_scratchpad(path.read_text())
+    return _parse_scratchpad(path.read_text(encoding="utf-8"))
 
 
 def write_scratchpad(state: ScratchpadState) -> Path:
@@ -121,7 +121,7 @@ def read_memory() -> list[MemoryEntry]:
     path = Path(*AGENT_MEMORY_PATH.split("/"))
     if not path.exists():
         return []
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     entries: list[MemoryEntry] = []
     # Each entry is `## <title>` then `_recorded <ts>_` then the body.
     pattern = re.compile(
@@ -146,8 +146,20 @@ def append_memory(entry: MemoryEntry) -> Path:
     """Append one entry to `.agent/MEMORY.md` (creating the header on first write).
 
     The state_io writer enforces the append-only invariant: this can only ever
-    extend the ledger, never rewrite it.
+    extend the ledger, never rewrite it. That check reads the same path with
+    the same `newline=""` this function just used, so for this caller the two
+    reads are byte-identical by construction and the prefix assertion can only
+    fail on a TOCTOU race between them (F33) -- its real coverage is against a
+    future caller that renders `full_content` some other way, not this one.
     """
     path = Path(*AGENT_MEMORY_PATH.split("/"))
-    existing = path.read_text() if path.exists() else _MEMORY_HEADER
+    if path.exists():
+        # newline="" (no universal-newline translation): byte-exact, matching
+        # append_agent_memory's own prefix check (F24) -- read_text()'s default
+        # newline=None translates CRLF->LF, which would make a legitimate
+        # append on a CRLF-on-disk file fail that check as a false rewrite.
+        with path.open(encoding="utf-8", newline="") as fh:
+            existing = fh.read()
+    else:
+        existing = _MEMORY_HEADER
     return append_agent_memory(existing + _render_entry(entry))

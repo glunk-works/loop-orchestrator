@@ -57,7 +57,7 @@ def main() -> None:
 
 
 def _load_state(path: Path) -> State:
-    payload = migrate_state_payload(json.loads(path.read_text()))
+    payload = migrate_state_payload(json.loads(path.read_text(encoding="utf-8")))
     return State.model_validate(payload)
 
 
@@ -116,7 +116,7 @@ def run(
                 selected_loop, initial_state, llm_client, start_index=start_index
             )
     else:
-        human_input = input.read_text() if input is not None else ""
+        human_input = input.read_text(encoding="utf-8") if input is not None else ""
         final_state = runner.run_new(human_input, budget_usd=budget, loop_name=loop)
     _report_outcome(final_state)
 
@@ -276,7 +276,9 @@ def cost_summary(run_id: Annotated[str, typer.Option("--run-id")]) -> None:
     # exactly once.
     best: State | None = None
     for snapshot_path in sorted(run_dir.glob("*.json")):
-        state = State.model_validate(migrate_state_payload(json.loads(snapshot_path.read_text())))
+        state = State.model_validate(
+            migrate_state_payload(json.loads(snapshot_path.read_text(encoding="utf-8")))
+        )
         if best is None or len(state.stage_history) > len(best.stage_history):
             best = state
 

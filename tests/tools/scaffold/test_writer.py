@@ -2,6 +2,9 @@
 `tmp_path` tree — no real clone, no network. See
 `test_conventions_sync.py` for the bundled/`.ai` `CLAUDE.md` parity guard."""
 
+import locale
+import sys
+from importlib import resources
 from pathlib import Path
 
 import pytest
@@ -88,6 +91,46 @@ def test_pkg_name_is_sanitized_to_a_safe_identifier_no_escape(tree, bad_pkg_name
 def test_unsalvageable_pkg_name_raises_value_error(tree):
     with pytest.raises(ValueError):
         write_skeleton("demo", kind="python", pkg_name="///", repo_name="demo")
+
+
+@pytest.mark.parametrize(
+    "ctype_locale",
+    [
+        None,
+        pytest.param(
+            "C",
+            marks=pytest.mark.skipif(
+                sys.flags.utf8_mode,
+                reason="PEP 686 UTF-8 mode (default in 3.15) makes "
+                "locale.setlocale(LC_CTYPE, 'C') not change the process's default text "
+                "encoding, so this parametrization would silently stop exercising the "
+                "non-UTF-8-locale path this test exists to cover. The None case has no "
+                "such dependency and must keep running (F32).",
+            ),
+        ),
+    ],
+)
+def test_write_skeleton_claude_md_survives_non_utf8_locale_default(tree, ctype_locale):
+    # The bundled CLAUDE.md template carries real non-ASCII content (em-dashes).
+    # The "C" case forces the process's *default* text encoding to ASCII,
+    # reproducing F8 on a host whose locale default isn't UTF-8: without
+    # encoding="utf-8" pinned at both the read (bundled template) and write
+    # (rendered output) sides, this fails outright instead of passing
+    # regardless. Mirrors test_artifact_store.py's F2 regression shape.
+    bundled_bytes = (
+        resources.files("loop_engine.tools.scaffold") / "templates" / "CLAUDE.md"
+    ).read_bytes()
+    assert bundled_bytes.count("—".encode()) > 0
+
+    previous_locale = locale.setlocale(locale.LC_CTYPE)
+    if ctype_locale is not None:
+        locale.setlocale(locale.LC_CTYPE, ctype_locale)
+    try:
+        write_skeleton("demo", kind="python", pkg_name="demo", repo_name="demo")
+    finally:
+        locale.setlocale(locale.LC_CTYPE, previous_locale)
+
+    assert (tree / "CLAUDE.md").read_bytes() == bundled_bytes
 
 
 def test_scaffold_writer_imports_no_subprocess_and_no_keyring():

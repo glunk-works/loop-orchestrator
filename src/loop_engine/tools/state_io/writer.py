@@ -89,7 +89,7 @@ def write_state_snapshot(state: State, run_id: str, stage_index: int, stage_name
     target_dir = state_root() / "state" / run_id
     target_dir.mkdir(parents=True, exist_ok=True)
     target_path = target_dir / f"{stage_index:02d}_{stage_name}.json"
-    target_path.write_text(state.model_dump_json())
+    target_path.write_text(state.model_dump_json(), encoding="utf-8", newline="\n")
     return target_path
 
 
@@ -98,7 +98,7 @@ def write_artifact(content: str, relative_path: str) -> Path:
 
     target_path = Path(*posix_path.parts)
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    target_path.write_text(content)
+    target_path.write_text(content, encoding="utf-8", newline="\n")
     return target_path
 
 
@@ -133,7 +133,7 @@ def write_agent_scratchpad(content: str) -> Path:
     """Overwrite the mutable `.agent/STATE.md` scratchpad."""
     target_path = _agent_target(AGENT_SCRATCHPAD_PATH)
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    target_path.write_text(content)
+    target_path.write_text(content, encoding="utf-8", newline="\n")
     return target_path
 
 
@@ -147,11 +147,18 @@ def append_agent_memory(full_content: str) -> Path:
     target_path = _agent_target(AGENT_MEMORY_PATH)
     target_path.parent.mkdir(parents=True, exist_ok=True)
     if target_path.exists():
-        existing = target_path.read_text()
+        # newline="" (no universal-newline translation): the write below is
+        # byte-exact (newline="\n"), so the prefix check must see the file's
+        # actual on-disk content, not a CRLF->LF-translated view of it (F22)
+        # -- otherwise a whole-file CRLF rewrite could pass as a no-op prefix.
+        # Path.read_text() has no newline= param (only write_text gained one,
+        # in 3.10), so this goes through Path.open() instead.
+        with target_path.open(encoding="utf-8", newline="") as fh:
+            existing = fh.read()
         if not full_content.startswith(existing):
             raise AppendOnlyViolationError(
                 f"Refusing to write {AGENT_MEMORY_PATH}: the ledger is append-only "
                 "and the new content does not preserve existing entries as a prefix."
             )
-    target_path.write_text(full_content)
+    target_path.write_text(full_content, encoding="utf-8", newline="\n")
     return target_path
