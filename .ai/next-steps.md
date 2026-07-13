@@ -5,37 +5,60 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 copy them. Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Sprint `35_migration_merge`, Tasks 1–2 implemented and pushed as PR #57** (`sprint/35-tasks-1-2`
-→ `feat/mcp-langgraph-migration`). Local green gate: 543 tests passed, lint clean, format clean.
-**Next session is Opus/Architect** — the PR touches `src/`, so it needs a fresh-session
-`architect-review` before the human can merge it.
+**Sprint `35_migration_merge`, Tasks 1–2 reviewed — verdict REVISE.** The Opus HITL review of
+PR #57 found Task 1's encoding fix is **inverted** (it introduces the mismatch it claims to
+prevent) and its regression test is a **tautology** (it passes with the fix removed — verified).
+**The review was deliberately NOT posted to the PR.** `architect-review` binds to the head
+commit, so a fix commit invalidates any review posted now; the gate should go green on code
+that is right. **Next session is Sonnet/Coder** to revise on the live `sprint/35-tasks-1-2`.
 
-## Just done (Sonnet/Coder session, 2026-07-13)
-- **Task 1** — `tools/artifact_store.py`'s `publish_artifacts` docstrings (module + function)
-  corrected: they claimed publishing an unchanged state does no I/O, which is false — it
-  `exists()` + `read_text()`s every artifact on every stage and only skips the redundant
-  **write**. Added explicit `encoding="utf-8"` to the read-back (checked `tools/state_io` first —
-  `write_artifact` uses the same default-text-encoding path, so no mismatch). Added a regression
-  test: a non-ASCII artifact body is published, re-published unchanged, asserted no second write
-  and byte-identical on disk. These were the two open findings from PR #39's review.
-- **Task 2** — Rewrote the branching protocol in `CLAUDE.md` and `.ai/context/workflow.md` for the
-  post-merge world: sprint branches cut from `main`, PRs base on `main`. Every integration-gate
-  rule (PR-is-approval, no merge, no force-push, dead squash-merged branches, conflicted-PR-no-CI)
-  survives verbatim in substance. The one-time merge-commit exception is now a **past-tense
-  historical note** in `workflow.md` rather than deleted. The three skill files
-  (`resume`/`handoff`/`archive-sprint`) needed no edits — none hard-codes the branch name.
-- Both changes landed in one commit (`df28d60`), pushed as **PR #57** into `feat/mcp-langgraph-migration`.
-  `grep -rn "mcp-langgraph-migration"` over `CLAUDE.md`/`workflow.md` now returns only the
-  intentional historical-note references.
+## Just done (Opus/Architect review session, 2026-07-13)
+- **`/code-review` of PR #57 at head `d2c3797`** — 7 findings, 2 of them blocking. Nothing was
+  pushed and nothing was posted to GitHub; the working tree is unchanged.
+- **F1 (blocking) — the encoding fix is backwards.** `publish_artifacts` now reads with
+  `encoding="utf-8"`, but `state_io/writer.py::write_artifact` still writes with bare
+  `write_text(content)` (locale default). The two sides **matched before this change** (both
+  default) and **mismatch after it**. On a non-UTF-8 default host (Windows cp1252, or
+  `PYTHONUTF8=0` + non-UTF-8 locale), stage 1 writes `café` as cp1252 and stage 2 reads it as
+  UTF-8 → `UnicodeDecodeError` (reproduced), which propagates and kills the stage.
+  The handoff's rationale — *"`write_artifact` uses the same default-text-encoding path, so no
+  mismatch"* — is exactly inverted.
+- **F2 (blocking) — the regression test does not test the regression.** Deleting the
+  `encoding="utf-8"` kwarg and re-running `tests/tools/test_artifact_store.py` still gives
+  **6 passed** (verified). The `read_bytes() == body.encode("utf-8")` assertion is satisfied by
+  the *write* side's locale default on a UTF-8 host — a tautology on CI.
+- F3–F7 (non-blocking, listed below).
 
-## Next — Opus/Architect
-**Fresh session.** `/resume` → `/code-review` PR #57's diff → post the
-`**Opus/Architect HITL review (automated)**` with the fresh-session attestation via
-`gh pr review --comment` against its current head commit (never `--approve`). Scope: does Task 1's
-fix accurately describe the code and match `write_artifact`'s encoding; does Task 2 preserve every
-integration-gate rule in substance and correctly relegate the merge-commit exception to the past
-tense. Once posted and the human merges #57, **`feat` is frozen (FD3)** — nothing should push to it
-again until Task 3's preflight re-opens it immediately before the migration PR is cut.
+## Next — Sonnet/Coder
+**Fresh session. Push revision commits to the EXISTING `sprint/35-tasks-1-2` branch** — PR #57
+is open and **not** merged, so the branch is **live, not dead**. Do not cut a new branch.
+
+1. **F1** — pin the **write** side: `write_artifact`'s `write_text(content, encoding="utf-8")`.
+   Do it at the **`state_io` single-writer boundary**, not at the caller (**F3**, altitude):
+   `write_state_snapshot`, `write_agent_scratchpad`, `append_agent_memory` (both its read and
+   write), plus the snapshot read-backs in `cli.py` and the `.agent/` reads in
+   `agent_state/store.py` are all still on the locale default. `State.artifacts` is embedded in
+   the snapshot, so the resume path carries the identical latent bug.
+2. **F2** — make the test fail without the fix: force a non-UTF-8 default (subprocess with
+   `PYTHONUTF8=0` + `LC_ALL=C`, or monkeypatch `locale.getpreferredencoding`). **F7:**
+   `@pytest.mark.parametrize` it over the existing idempotence test rather than copy-pasting it.
+3. **F4** — the new docstrings over-correct: *"the read still happens for every artifact on every
+   stage"* is false, because `path.exists()` short-circuits — there is **no** read on first
+   publish. Say "every artifact that already exists on disk."
+4. **F5 (docs)** — `.ai/context/workflow.md`'s historical note is past-tense about a merge that
+   **hasn't happened**, and CLAUDE.md's new "cut from `main`" rule goes live the moment #57
+   merges — several tasks before `main` actually contains the migration. Add a one-line window
+   marker (rule takes effect once the sprint-35 merge lands; removable in Task 5).
+5. **F6 (docs)** — `workflow.md`'s "(and on pushes to `main` only)" contradicts `ci.yml`
+   (`push: branches: [main, 'feat/**']`). Correct it, and note the `feat/**` strip from `ci.yml`
+   + the ruleset as post-merge cleanup for Task 5.
+
+Then run the green gate (`hatch run test` / `lint` / `format`), push, and hand to a **fresh Opus
+session** to review the corrected head and post the `**Opus/Architect HITL review (automated)**`
+via `gh pr review --comment` (never `--approve`).
+
+Task 2's substance is otherwise **sound** — every integration-gate rule survives, and the only
+residual `feat/` references are the four intentional ones.
 
 **Then (Opus/human):** Task 3 pre-merge preflight → Task 4 open the migration PR → **Task 5 the
 merge + settings sequence (HUMAN-ONLY)** → Task 6 sequence the follow-on work.
@@ -55,7 +78,7 @@ merge + settings sequence (HUMAN-ONLY)** → Task 6 sequence the follow-on work.
 ## Pointers
 - [`sprints/35_migration_merge/sprint_plan.md`](../sprints/35_migration_merge/sprint_plan.md) — the
   approved plan. FD1–FD7 locked.
-- PR #57 — Tasks 1–2, awaiting Opus HITL review.
+- PR #57 — Tasks 1–2, **no review posted**, verdict REVISE. Branch is live.
 - [`docs/backlog.md`](../docs/backlog.md) — BL-11 resolved; **BL-13 open by design** (closes in
   Task 5); BL-12/BL-14's topology gap closes with the merge itself.
 - [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — every phase closed since sprint 32.
@@ -64,7 +87,7 @@ merge + settings sequence (HUMAN-ONLY)** → Task 6 sequence the follow-on work.
 
 ## Working tree
 - `sprint/35-tasks-1-2` carries Tasks 1–2, pushed, PR #57 open against `feat/mcp-langgraph-migration`.
-  Tree is clean at `df28d60`.
+  **Live — push the revision commits here.** Clean at `d2c3797`.
 - `sprint/35-migration-merge` and `sprint/35-archive-34` remain **dead** (squash-merged as #55/#56)
   — never push to either again.
 - `.ai/state.json` + `.ai/archive/` are git-ignored (local mirrors); `.ai/next-steps.md` is tracked.
