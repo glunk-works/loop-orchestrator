@@ -93,13 +93,23 @@ def test_unsalvageable_pkg_name_raises_value_error(tree):
         write_skeleton("demo", kind="python", pkg_name="///", repo_name="demo")
 
 
-@pytest.mark.skipif(
-    sys.flags.utf8_mode,
-    reason="PEP 686 UTF-8 mode (default in 3.15) makes locale.setlocale(LC_CTYPE, 'C') "
-    "not change the process's default text encoding, so the 'C' parametrization would "
-    "silently stop exercising the non-UTF-8-locale path this test exists to cover.",
+@pytest.mark.parametrize(
+    "ctype_locale",
+    [
+        None,
+        pytest.param(
+            "C",
+            marks=pytest.mark.skipif(
+                sys.flags.utf8_mode,
+                reason="PEP 686 UTF-8 mode (default in 3.15) makes "
+                "locale.setlocale(LC_CTYPE, 'C') not change the process's default text "
+                "encoding, so this parametrization would silently stop exercising the "
+                "non-UTF-8-locale path this test exists to cover. The None case has no "
+                "such dependency and must keep running (F32).",
+            ),
+        ),
+    ],
 )
-@pytest.mark.parametrize("ctype_locale", [None, "C"])
 def test_write_skeleton_claude_md_survives_non_utf8_locale_default(tree, ctype_locale):
     # The bundled CLAUDE.md template carries real non-ASCII content (em-dashes).
     # The "C" case forces the process's *default* text encoding to ASCII,

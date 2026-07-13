@@ -146,7 +146,11 @@ def append_memory(entry: MemoryEntry) -> Path:
     """Append one entry to `.agent/MEMORY.md` (creating the header on first write).
 
     The state_io writer enforces the append-only invariant: this can only ever
-    extend the ledger, never rewrite it.
+    extend the ledger, never rewrite it. That check reads the same path with
+    the same `newline=""` this function just used, so for this caller the two
+    reads are byte-identical by construction and the prefix assertion can only
+    fail on a TOCTOU race between them (F33) -- its real coverage is against a
+    future caller that renders `full_content` some other way, not this one.
     """
     path = Path(*AGENT_MEMORY_PATH.split("/"))
     if path.exists():

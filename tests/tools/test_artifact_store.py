@@ -58,13 +58,23 @@ def test_publish_lands_bodies_under_docs_artifacts_run_id() -> None:
     assert (run_dir / "sprint_plan").read_text() == "plan body"
 
 
-@pytest.mark.skipif(
-    sys.flags.utf8_mode,
-    reason="PEP 686 UTF-8 mode (default in 3.15) makes locale.setlocale(LC_CTYPE, 'C') "
-    "not change the process's default text encoding, so the 'C' parametrization would "
-    "silently stop exercising the non-UTF-8-locale path this test exists to cover.",
+@pytest.mark.parametrize(
+    "ctype_locale",
+    [
+        None,
+        pytest.param(
+            "C",
+            marks=pytest.mark.skipif(
+                sys.flags.utf8_mode,
+                reason="PEP 686 UTF-8 mode (default in 3.15) makes "
+                "locale.setlocale(LC_CTYPE, 'C') not change the process's default text "
+                "encoding, so this parametrization would silently stop exercising the "
+                "non-UTF-8-locale path this test exists to cover. The None case has no "
+                "such dependency and must keep running (F32).",
+            ),
+        ),
+    ],
 )
-@pytest.mark.parametrize("ctype_locale", [None, "C"])
 def test_publish_is_idempotent_for_unchanged_non_ascii_body(monkeypatch, ctype_locale) -> None:
     # The "C" case forces the process's *default* text encoding (what any
     # bare read_text()/write_text() falls back to) to ASCII. It reproduces

@@ -50,7 +50,33 @@ would reproduce F18 undetected. Not reachable today -- the one `.open()` call
 in `src/loop_engine` is a read (F22/F24) and correctly does NOT pin
 `newline="\n"` (it pins `newline=""` instead, for a byte-exact read) -- but
 the same shape as F19's rationale, so a future write-mode `open()` call is
-covered structurally now instead of needing its own bespoke test."""
+covered structurally now instead of needing its own bespoke test.
+
+F30 (second PR #57 follow-up review): `_open_mode(is_method=True)` assumed
+every `ast.Attribute` named `open` was `Path.open` and read positional index
+0 as the mode. `gzip.open('blob.gz', 'wt')` resolved mode to `'blob.gz'`,
+which contains a `b`, so it was judged binary and a genuinely unencoded text
+write was exempted; `codecs.open(...)` was conversely flagged for a
+`newline=` kwarg it doesn't accept, and `webbrowser.open(url)`, which
+touches no file, was flagged as an unencoded text open. `_is_path_open` now
+gates on the receiver: a known non-filesystem-opener module name (`gzip`,
+`codecs`, `webbrowser`, etc.) is excluded rather than misresolved as
+method-form `Path.open`.
+
+F31 (second PR #57 follow-up review): `WRITE_OWNING_DIRS` excluded
+`tools/agent_state/`, the one module this PR gave an `.open()` handle to;
+combined with F29 (`test_state_io_boundary.py`), a future write-mode
+`path.open('w')` there was invisible to both structural guards. Added here
+too for defense in depth, even though F29 alone would now catch a write
+there first.
+
+F34 (second PR #57 follow-up review): `_is_write_capable_mode` took the
+already-collapsed `str | None` from `_open_mode`, which maps both "no mode
+argument at all" (a read) and "a mode argument that couldn't be resolved to
+a literal" (F21: must stay in scope) to the same `None` -- inverting F21's
+conservatism and letting a dynamic `open(p, mode_var, encoding="utf-8")`
+escape the newline pin. It now takes the call node directly and checks for
+a mode node's *presence* before checking its resolved value."""
 
 import ast
 from pathlib import Path
@@ -58,8 +84,45 @@ from pathlib import Path
 SRC_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "loop_engine"
 _TARGET_METHODS = {"read_text", "write_text"}
 # Mirrors test_state_io_boundary.py::ALLOWED_DIRS -- the two sanctioned
-# file-write-owning modules.
-WRITE_OWNING_DIRS = {SRC_DIR / "tools" / "state_io", SRC_DIR / "tools" / "scaffold"}
+# file-write-owning modules -- plus agent_state (F31), whose store.py holds
+# this PR's one method-form `.open()` call outside those two dirs. Scanning
+# it here costs nothing today (its call is a read, so `_unpinned_newline_
+# write_text_calls` finds nothing) and closes the gap the review named: a
+# future write-mode `.open()` there would otherwise be invisible to this
+# guard even after F29 makes it visible to the write-boundary one.
+WRITE_OWNING_DIRS = {
+    SRC_DIR / "tools" / "state_io",
+    SRC_DIR / "tools" / "scaffold",
+    SRC_DIR / "tools" / "agent_state",
+}
+# Module-level callables that happen to be attribute-accessed as `.open` but
+# are NOT Path.open -- their signatures differ (mode position, accepted
+# kwargs), so conflating them with method-form Path.open misresolves the
+# mode (F30): gzip.open('blob.gz', 'wt') would read index 0 ('blob.gz', the
+# filename) as the mode, judge it binary (contains 'b'), and wrongly exempt
+# a real unencoded text write. These aren't Path.open and aren't in scope
+# for this guard; excluded rather than mishandled.
+_NON_PATH_OPEN_RECEIVERS = {
+    "gzip",
+    "bz2",
+    "lzma",
+    "io",
+    "codecs",
+    "shelve",
+    "tarfile",
+    "zipfile",
+    "dbm",
+    "webbrowser",
+    "os",
+}
+
+
+def _is_path_open(node: ast.Call) -> bool:
+    func = node.func
+    if not (isinstance(func, ast.Attribute) and func.attr == "open"):
+        return False
+    receiver = func.value
+    return not (isinstance(receiver, ast.Name) and receiver.id in _NON_PATH_OPEN_RECEIVERS)
 
 
 def _open_mode(node: ast.Call, *, is_method: bool) -> str | None:
@@ -96,7 +159,7 @@ def _unencoded_calls(tree: ast.Module) -> list[str]:
         if isinstance(func, ast.Attribute) and func.attr in _TARGET_METHODS:
             if not any(kw.arg == "encoding" for kw in node.keywords):
                 found.append(func.attr)
-        elif isinstance(func, ast.Attribute) and func.attr == "open":
+        elif _is_path_open(node):
             if _is_unencoded_text_open(node, is_method=True):
                 found.append("open")
         elif isinstance(func, ast.Name) and func.id == "open":
@@ -105,13 +168,31 @@ def _unencoded_calls(tree: ast.Module) -> list[str]:
     return found
 
 
-def _is_write_capable_mode(mode: str | None) -> bool:
-    # Only a *resolved* mode naming a write-capable char counts (F26): an
-    # unresolvable mode can't be proven write-capable, and requiring the
-    # newline pin on it would misflag the module's own legitimate read call
-    # (state_io/writer.py's `target_path.open(encoding="utf-8", newline="")`,
-    # whose default "r" mode resolves to no positional/keyword mode arg at all).
-    return mode is not None and any(c in mode for c in "wax+")
+def _mode_node(node: ast.Call, *, is_method: bool) -> ast.expr | None:
+    mode_index = 0 if is_method else 1
+    if len(node.args) > mode_index:
+        return node.args[mode_index]
+    for kw in node.keywords:
+        if kw.arg == "mode":
+            return kw.value
+    return None
+
+
+def _is_write_capable_mode(node: ast.Call, *, is_method: bool) -> bool:
+    # F34: distinguishes "no mode argument at all" (a legitimate default
+    # read -- e.g. state_io/writer.py's own `target_path.open(encoding=
+    # "utf-8", newline="")` call, which has no positional or keyword mode)
+    # from "a mode argument present but not resolvable to a string literal"
+    # (F21's conservatism: since it can't be proven read-only or binary, it
+    # stays in scope). The prior version collapsed both cases to the same
+    # `mode is None` answer via `_open_mode`, which let a dynamic
+    # `open(p, mode_var, encoding="utf-8")` escape the newline pin entirely.
+    mode_node = _mode_node(node, is_method=is_method)
+    if mode_node is None:
+        return False
+    if isinstance(mode_node, ast.Constant) and isinstance(mode_node.value, str):
+        return any(c in mode_node.value for c in "wax+")
+    return True
 
 
 def _unpinned_newline_write_text_calls(tree: ast.Module) -> list[str]:
@@ -121,16 +202,18 @@ def _unpinned_newline_write_text_calls(tree: ast.Module) -> list[str]:
             continue
         func = node.func
         is_write_text = isinstance(func, ast.Attribute) and func.attr == "write_text"
-        is_method_open = isinstance(func, ast.Attribute) and func.attr == "open"
+        is_method_open = _is_path_open(node)
         is_builtin_open = isinstance(func, ast.Name) and func.id == "open"
         if is_write_text:
             label = "write_text"
         elif is_method_open or is_builtin_open:
             # open()-based writes go through the same newline= translation on
             # write as write_text (F26); only a confirmed write-capable mode
-            # is in scope -- a read (or an unresolvable mode) doesn't need
-            # newline="\n" pinned, and forcing it there would misflag reads.
-            if not _is_write_capable_mode(_open_mode(node, is_method=is_method_open)):
+            # -- or one that can't be resolved and so can't be proven safe
+            # (F34) -- is in scope. A genuine read (no mode arg at all)
+            # doesn't need newline="\n" pinned, and forcing it there would
+            # misflag reads.
+            if not _is_write_capable_mode(node, is_method=is_method_open):
                 continue
             label = "open"
         else:
@@ -191,6 +274,14 @@ def test_detector_actually_flags_an_unencoded_call() -> None:
     assert _unencoded_calls(ast.parse("Path('x').open(encoding='utf-8')")) == []
     # The exact shape of state_io/writer.py's own F22/F24 read call.
     assert _unencoded_calls(ast.parse("target_path.open(encoding='utf-8', newline='')")) == []
+    # F30: module-level `.open()` on a known non-Path receiver isn't
+    # Path.open and is out of scope, not misresolved. Before the fix,
+    # gzip.open('blob.gz', 'wt') read index 0 ('blob.gz') as the mode, saw a
+    # 'b', and wrongly exempted this real unencoded text write.
+    assert _unencoded_calls(ast.parse("gzip.open('blob.gz', 'wt')")) == []
+    assert _unencoded_calls(ast.parse("codecs.open('backup.txt', 'w', encoding='utf-8')")) == []
+    assert _unencoded_calls(ast.parse("webbrowser.open(url)")) == []
+    assert _unencoded_calls(ast.parse("io.open('x', 'w')")) == []
 
 
 def test_write_owning_modules_pin_newline_on_write_text() -> None:
@@ -252,3 +343,15 @@ def test_newline_detector_actually_flags_a_missing_pin() -> None:
     )
     assert _unpinned_newline_write_text_calls(ast.parse("Path('x').open('r')")) == []
     assert _unpinned_newline_write_text_calls(ast.parse("Path('x').open()")) == []
+    # F34: a dynamic/unresolvable mode can't be proven read-only, so it stays
+    # in scope -- before the fix, this collapsed to the same "None" answer as
+    # a genuine no-mode-arg read and silently escaped the newline pin.
+    assert _unpinned_newline_write_text_calls(
+        ast.parse("open('x', mode_var, encoding='utf-8')")
+    ) == ["open"]
+    assert _unpinned_newline_write_text_calls(
+        ast.parse("Path('x').open(mode_var, encoding='utf-8')")
+    ) == ["open"]
+    # F30: a non-Path `.open()` on a known non-filesystem-opener receiver is
+    # out of scope for this guard entirely.
+    assert _unpinned_newline_write_text_calls(ast.parse("webbrowser.open(url)")) == []
