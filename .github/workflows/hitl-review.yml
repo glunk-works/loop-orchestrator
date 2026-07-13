@@ -66,8 +66,14 @@ jobs:
 
           # Docs, sprint plans and the `.ai/` cursor carry no runtime behavior to
           # get wrong, so they do not need an architecture review. Code does.
-          if ! gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename' \
-               | grep -q '^src/'; then
+          # NOT a pipeline into `grep -q`: grep exits at its first match, closing
+          # the pipe, and a still-paginating `gh` then dies of SIGPIPE (141). Under
+          # `pipefail` that 141 becomes the pipeline's status, so `if !` reads it as
+          # "no src/ changes" and the gate exempts itself -- and it does so ONLY on
+          # diffs long enough for gh to still be writing, i.e. the big ones. Capture
+          # first, match second: no pipe, no SIGPIPE, no size-dependent gate.
+          changed=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')
+          if ! grep -q '^src/' <<<"$changed"; then
             echo "No src/ changes in this PR — Architect review not required."
             exit 0
           fi
