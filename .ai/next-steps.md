@@ -30,27 +30,15 @@ posted via `gh pr review --comment`. The owner squash-merged it.
    Task 5 executes.
 
 ## Notes only — do NOT fix without a fresh planning pass (→ backlog)
-- **F41 (new, non-blocking)** — an import alias defeats the `_ast_open` classifier and
-  revives the exact F35 failure mode. `open_call_is_method()` recognizes receivers by *bare
-  module name* and defaults every unknown `Name` receiver to method-form (mode at index 0),
-  so with `import gzip as gz`: `gz.open('out.gz','wt')` is a **missed write**, and
-  `gz.open('data.gz','rt')` is a read **false-positived** as a write (the `a` in "data").
-  `from gzip import open as gzopen` is skipped by both guards entirely. **Not live** — no
-  aliased/`from`-imports of the five index-1 receivers exist in `src/`. This is the same
-  defect *shape* as F30 and F35, recurring because each round enumerated another name into a
-  set instead of removing the assumption. Structural close: both guards already parse the
-  whole `ast.Module`, so bind `ast.Import`/`ast.ImportFrom` aliases to real module names and
-  pass that map into the classifier — kills the alias and `from`-import cases together,
-  name-set-independently.
-- **F42 (new, non-blocking)** — `gzip`/`bz2`/`lzma` default to **binary** (`'rb'`), not text.
-  `_ast_open.py` calls them "the same call shape as the builtin `open()`" — true of the mode
-  *position*, false of the mode *default*. So a bare `gzip.open('blob.gz')` (a legitimate
-  binary read that **rejects** `encoding=` with a `TypeError`) is flagged as an unencoded
-  text open, and the fix the guard demands would crash at runtime. Only `codecs`/`io` share
-  the builtin's text default. Fails **loud** (red test), not silent — hence non-blocking.
-  One-line fix: for `_INDEX1_MODE_RECEIVERS` minus `{codecs, io}`, treat a *missing* mode as
-  binary.
-- **F41/F42 are NOT yet filed in `docs/backlog.md`** — awaiting the owner's go-ahead.
+- **F41/F42 → filed as [BL-15]** in `docs/backlog.md`. The `_ast_open` classifier matches
+  `open()` receivers by *bare module name*, so `import gzip as gz` defeats it and revives the
+  exact F35 failure mode (`gz.open('out.gz','wt')` is a **missed write**;
+  `gz.open('data.gz','rt')` is a read **false-positived** as a write). Not live in `src/`.
+  The real finding is the *pattern*: F30 → F35 → F41 is one defect recurring because each
+  round enumerated another name into a set instead of removing the assumption. Fix is to bind
+  `ast.Import`/`ast.ImportFrom` aliases instead of guessing. F42 (gzip/bz2/lzma default to
+  **binary**, not text, so a bare `gzip.open(p)` is misflagged) is a one-liner in the same
+  file — fix both together.
 - **F2, F4, F14, F17, F23, F28** — unchanged, still correctly deferred.
 - **F33 residue** — `append_agent_memory` still does three full-file I/Os per append. The
   docstring answer was accepted. Not a blocker.

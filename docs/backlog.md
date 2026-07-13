@@ -650,3 +650,65 @@ the same way for any future file that needs to live on the default branch to fun
 (Dependabot config, scheduled workflows per FD3, branch-protection-adjacent settings). No
 general fix is proposed here; each instance has been backported narrowly as found. Worth
 revisiting if a fourth instance turns up.
+
+---
+
+### BL-15 — The AST write/encoding guards classify `open()` receivers by name, so an import alias defeats them
+*(added 2026-07-13, found during the fourth Opus HITL review of PR #57, sprint 35 — filed as
+findings F41/F42, both non-blocking, and merged unfixed by design)*
+
+**Why:** `tests/tools/_ast_open.py` is the shared classifier behind two of the repo's
+**enforced module boundaries** — the write-boundary guard (`test_state_io_boundary.py`, which
+asserts only `state_io`/`scaffold` write files) and the encoding/newline guard
+(`test_encoding_boundary.py`). It decides where an `open()`-shaped call's mode argument lives by
+matching the **receiver's bare module name** against two hardcoded sets. Everything it doesn't
+recognize falls through to "method-form `Path.open`, mode at index 0."
+
+That default is right for the common case (`p.open('w')`) and wrong in a way that silently
+reintroduces the bug the last three review rounds were spent closing.
+
+**F41 — an import alias reverts the guard to the F35 failure mode.** With `import gzip as gz`,
+the receiver `gz` is in neither set, so it's treated as a `Path` and the mode resolves to
+`args[0]` — the *filename*. Write-capability is then decided by which letters happen to appear in
+the path string. Verified by driving the guards directly:
+
+- `gz.open('out.gz', 'wt')` → **write MISSED** by the write-boundary guard (`"out.gz"` contains no
+  `w`/`a`/`x`/`+`).
+- `gz.open('data.gz', 'rt')` → a read **FALSE-POSITIVED** as a write (the `a` in `"data"`).
+- `from gzip import open as gzopen` → classified `None`, skipped by **both** guards entirely.
+
+**Not live today** — `src/` contains no aliased or `from`-imports of the five index-1 receivers
+(checked). This is a latent weakness in a defense-in-depth control, not a shipped bug.
+
+**The pattern is the actual finding.** F30 → F35 → F41 are the same defect wearing different
+hats, and it keeps returning because each round's fix *enumerated another name into a set*
+rather than removing the assumption underneath. A name-matching classifier cannot be made
+correct by adding names.
+
+**Shape:** bind imports instead of guessing. Both guards already parse the whole `ast.Module`, so
+walk `ast.Import`/`ast.ImportFrom` first to build an alias → real-module map and pass it into the
+classifier. That closes the alias case *and* the `from`-import case together, and is
+name-set-independent — the fix stops being a list that needs maintaining.
+
+**F42 — `gzip`/`bz2`/`lzma` default to binary, not text.** `_ast_open.py` describes its index-1
+receivers as "the same call shape as the builtin `open()`". True of the mode *position*; false of
+the mode *default*. Builtin `open(p)` defaults to text `'r'`, but `gzip.open(p)` / `bz2.open(p)` /
+`lzma.open(p)` default to `'rb'`. So a bare `gzip.open('blob.gz')` — a legitimate binary read that
+**rejects** `encoding=` with a `TypeError` — is flagged by the encoding guard as an unencoded text
+open, and the fix the guard demands would crash at runtime. Only `codecs` and `io` genuinely share
+the builtin's text default.
+
+Fails **loud** (a red test), not silent, which is the safe direction for a boundary guard — hence
+non-blocking. One-line fix: for `_INDEX1_MODE_RECEIVERS` minus `{codecs, io}`, treat a *missing*
+mode argument as binary rather than as the implicit text `"r"`.
+
+**Priority:** low-ish but not cosmetic. Neither defect can bite until someone adds a compression- or
+`codecs`-based call to `src/`, but the write-boundary guard is one of the controls `CLAUDE.md`
+advertises as "checked by static tests, not just convention" — and a guard defeatable by
+`import gzip as gz` is weaker than advertised. Fix F41 and F42 together; they're the same file and
+one of them is a one-liner.
+
+**Notes / where to look:** `tests/tools/_ast_open.py` (`open_call_is_method`, `_INDEX1_MODE_RECEIVERS`,
+`_NO_MODE_CONCEPT_RECEIVERS`), its two consumers `tests/tools/test_state_io_boundary.py` and
+`tests/tools/test_encoding_boundary.py`. Full review reasoning is on PR #57
+(`gh pr view 57 --comments`).
