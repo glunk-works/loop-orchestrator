@@ -47,10 +47,14 @@ Opus HITL review on it with `gh pr review --comment` (**never `--approve`** — 
 is the approval, and `gh` authenticates as the PR author anyway). **Never merge, and never
 force-push a pushed branch.** Full protocol in `.ai/context/workflow.md`.
 
-> **The Opus review is a CI gate, not a courtesy — and it runs in a FRESH session.**
-> Any PR touching `src/` fails the `architect-review` check until a review headed
+> **The Opus review runs in a FRESH session — and right now it is a convention, not a gate.**
+> Any PR touching `src/` **fails** the `architect-review` check until a review headed
 > `**Opus/Architect HITL review (automated)**`, carrying the fresh-session attestation, is
-> posted against its **current head commit** (`.github/workflows/hitl-review.yml`).
+> posted against its **current head commit** (`.github/workflows/hitl-review.yml`). But that
+> failing check **blocks nothing**: the repo has no branch protection and no rulesets, so no
+> check is actually required and a red PR can be merged (**BL-11**, found in sprint 33 — read
+> it before trusting any "must pass" in this file). Honour the review anyway; until a ruleset
+> exists, the only thing enforcing it is you.
 > **`/model opus` mid-session is not a review session** — switching model does not clear
 > context, so the reviewer proofreads its own reasoning instead of re-deriving it. The
 > sequence is `/handoff` → **new session** → `/resume` → `/code-review` → post.
@@ -83,7 +87,7 @@ hatch run loop-engine cost-summary --run-id <run_id>
 Exit codes from `run`/`resume`: 0 completed, 2 awaiting a GitHub issue answer, 3 budget exceeded, 4 aborted by the human (the pending issue was closed without an answers comment — distinct from 1, an unexpected failure).
 (The `loop-engine resume` CLI subcommand is unrelated to the `/resume` dev-workflow skill.)
 
-CI (`.github/workflows/ci.yml`) runs the unconditional chain `lint` → `format-check` → `test` → `secrets-scan` (gitleaks) / `dependency-audit` → `sbom`; no job carries an `if:`, so none can ever report `skipped` (BL-10, sprint 33). A separate `pr-title.yml` workflow validates the PR title as its own required check — it gates nothing in `ci.yml` and is gated by nothing, so a bad title costs runner minutes instead of stopping the chain. A third workflow, `hitl-review.yml`, enforces the Architect review on any PR touching `src/`. All must pass; see `sprints/GLOBAL_DEFINITION_OF_DONE.md` for the full merge bar. The API key is **never** a CLI flag or env var — it comes only from the OS keyring (setup + fallback detail in `.ai/context/modules.md`).
+CI (`.github/workflows/ci.yml`) runs the unconditional chain `lint` → `format-check` → `test` → `secrets-scan` (gitleaks) / `dependency-audit` → `sbom`; no job carries an `if:`, so none can ever report `skipped` (BL-10, sprint 33). A separate `pr-title.yml` workflow validates the PR title as a standalone check — it gates nothing in `ci.yml` and is gated by nothing, so a bad title costs runner minutes instead of stopping the chain. A third workflow, `hitl-review.yml`, reports the Architect review on any PR touching `src/`. All are expected to pass (`sprints/GLOBAL_DEFINITION_OF_DONE.md` has the full merge bar) — but **none is enforced**: the repo has no branch protection and no rulesets, so every check here is advisory and a red PR can still be merged (**BL-11**). `mergeStateStatus: CLEAN` is *not* evidence to the contrary — with no rules configured, nothing can be violated. The API key is **never** a CLI flag or env var — it comes only from the OS keyring (setup + fallback detail in `.ai/context/modules.md`).
 
 ## Enforced module boundaries
 

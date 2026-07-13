@@ -428,3 +428,52 @@ workflow, `pr-title.yml`, with its own trigger list and its own concurrency grou
 lost the `edited` trigger entirely (closing FD2) and `lint` lost both `needs: pr-title` and its
 `if:` block, so no job in `ci.yml` carries an `if:` and none can ever report `skipped` — the
 invariant sprint 33 pins by test, structurally, rather than pinning the new wiring.
+
+---
+
+### BL-11 — None of the "required" checks are actually required; every CI gate is advisory
+*(added 2026-07-12, found during the Opus HITL review of PR #43, sprint 33 — while trying to
+confirm FD5)*
+
+**Why:** this repo has **no branch protection and no rulesets at all**. Every check the docs
+call *required* — `lint`, `format-check`, `test`, `secrets-scan`, `dependency-audit`, `sbom`,
+`pr-title`, `architect-review` — is **computed and reported, but enforces nothing**. A red PR
+can be merged. `feat/mcp-langgraph-migration` and `main` can be pushed to directly, and
+force-pushed.
+
+Evidence (2026-07-12):
+
+- Settings → Branches shows *"Classic branch protections have not been configured."*
+- `GET /repos/glunk-works/loop-engine/rulesets` → `[]`
+- `GET /repos/glunk-works/loop-engine/rules/branches/feat%2Fmcp-langgraph-migration` → `[]`
+  — this is the **effective** rules endpoint, so an org-level ruleset would appear here. None does.
+- PR #43's `reviewDecision` is empty: no required reviews either.
+
+**This is the fail-open `mergeStateStatus: CLEAN` hides.** `CLEAN` means "no rule is being
+violated," which is trivially true when no rule exists. Sprint 33's Task 5 read `CLEAN` as
+corroboration that `pr-title` still resolved as a required check; it corroborated nothing. Any
+future reasoning that treats `CLEAN` as evidence of enforcement is making the same mistake.
+
+**The sharp edge is `architect-review`, not `pr-title`.** `CLAUDE.md` asserts in bold that the
+Opus review *"is a CI gate, not a courtesy"* — that a PR touching `src/` **fails** until a
+review is posted. The workflow really does compute that failure. But a failing check blocks no
+merge, so the gate is precisely the thing it was built to replace: **a convention that works
+only as long as nobody skips it.** It was introduced *because* a convention got skipped
+(sprint 27 Task 8 shipped an R8 fix that covered `cli.py` and left every fresh-run path filing
+issues on the wrong repo — the review that would have caught it was skipped and nothing
+noticed). Today that gate has the same failure mode it was created to close.
+
+BL-10 reads differently in this light too: "a starved suite merges green and untested" was
+true, but the suite was never *blocking* the merge in the first place.
+
+**Shape:** add a repository ruleset on `main` and `feat/**` requiring the eight status checks
+above plus a PR before merging. Then FD5 (below) becomes load-bearing for real — a required
+check is matched by **check-run name**, so the `pr-title` job id and the absence of a `name:`
+override are what make the required check resolvable at all
+(`tests/test_ci_config.py::test_pr_title_workflow_defines_the_frozen_job_id` pins both).
+
+**Notes / where to look:** this is a **GitHub settings change, not a code change** — nothing in
+this repo can assert it, which is exactly why it went unnoticed for the whole life of the CI
+config. Claude is 403 on branch protection and cannot verify or set it; a human must confirm it
+in the UI. Until then, treat every "must pass" in `CLAUDE.md`,
+`sprints/GLOBAL_DEFINITION_OF_DONE.md`, and `.ai/context/workflow.md` as **aspirational**.
