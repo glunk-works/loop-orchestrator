@@ -1,0 +1,49 @@
+name: PR title
+
+# The merge is a squash, so the PR title becomes the commit subject on the
+# integration branch — it is the only message that survives, and so the only
+# one worth enforcing. WIP commits inside the branch stay free-form.
+#
+# This job used to live inside ci.yml, gating the whole heavy chain via
+# `needs:`. That coupling is BL-10: `edited` had to fire so a title fix could
+# turn this check green without a dummy push, but `edited` firing inside
+# ci.yml's shared, cancelling concurrency group let a prose-only edit cancel
+# an in-flight (or already-green) run of the heavy chain, whose replacement
+# then skipped it — `skipped` reads as satisfied, not failed, so the PR merged
+# with lint/test/secrets-scan/dependency-audit having silently never run. This
+# workflow is the fix: a cheap, standalone check with its own concurrency
+# group, gating nothing downstream. `ci.yml`'s heavy chain no longer sees
+# `edited` at all, so a title/body edit cannot touch it.
+
+on:
+  pull_request:
+    # `edited` is load-bearing here: without it a bad title could only be
+    # cleared by a dummy push. `synchronize`/`reopened` guarantee a check-run
+    # on every head SHA, which is what makes the close+reopen recovery work
+    # and what a required check needs to ever resolve.
+    types: [opened, edited, reopened, synchronize]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Conventional Commits title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|docs|test|refactor|perf|chore|ci|revert)(\([a-z0-9._/-]+\))?!?: [a-z].*[^.]$'
+          if [[ ! "$TITLE" =~ $pattern ]]; then
+            echo "::error::PR title is not a valid Conventional Commits subject: '$TITLE'"
+            echo "Expected: type(scope): imperative subject   (lower-case, no trailing period)"
+            echo "Types: feat|fix|docs|test|refactor|perf|chore|ci|revert   '!' marks a breaking change."
+            exit 1
+          fi
+          if [[ ${#TITLE} -gt 72 ]]; then
+            echo "::error::PR title is ${#TITLE} chars; the limit is 72."
+            exit 1
+          fi
+          echo "OK: $TITLE"
