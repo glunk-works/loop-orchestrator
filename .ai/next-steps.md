@@ -34,7 +34,10 @@ that is right. **Next session is Sonnet/Coder** to revise on the live `sprint/35
 is open and **not** merged, so the branch is **live, not dead**. Do not cut a new branch.
 
 1. **F1** — pin the **write** side: `write_artifact`'s `write_text(content, encoding="utf-8")`.
-   Do it at the **`state_io` single-writer boundary**, not at the caller (**F3**, altitude):
+   Do it at the **`state_io` single-writer boundary**, not at the caller (**F3**, altitude).
+   **Scope confirmed by the repo owner (2026-07-13): F3 lands inside PR #57, not the backlog** —
+   it widens the diff past Task 1's literal scope, and that is intended. A half-pinned encoding
+   policy is what produced this bug; do not narrow it back to `write_artifact` alone. Surfaces:
    `write_state_snapshot`, `write_agent_scratchpad`, `append_agent_memory` (both its read and
    write), plus the snapshot read-backs in `cli.py` and the `.agent/` reads in
    `agent_state/store.py` are all still on the locale default. `State.artifacts` is embedded in
