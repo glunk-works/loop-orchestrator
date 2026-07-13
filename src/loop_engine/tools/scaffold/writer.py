@@ -74,7 +74,7 @@ def _output_relpath(template_rel: str, *, pkg_name: str) -> Path:
 def _write_rendered(dest: Path, rel_path: Path, content: str) -> None:
     target = dest / rel_path
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content)
+    target.write_text(content, encoding="utf-8")
 
 
 def write_skeleton(tree: str, *, kind: str = "python", pkg_name: str, repo_name: str) -> list[str]:
@@ -89,14 +89,14 @@ def write_skeleton(tree: str, *, kind: str = "python", pkg_name: str, repo_name:
     for template_rel, entry in _walk_files(kind_root):
         out_rel = _output_relpath(template_rel, pkg_name=safe_pkg_name)
         content = (
-            entry.read_text()
+            entry.read_text(encoding="utf-8")
             .replace(_PKG_NAME_PLACEHOLDER, safe_pkg_name)
             .replace(_REPO_NAME_PLACEHOLDER, repo_name)
         )
         _write_rendered(dest, out_rel, content)
         written.append(str(out_rel))
 
-    conventions_text = (_templates_root() / _CONVENTIONS_TEMPLATE).read_text()
+    conventions_text = (_templates_root() / _CONVENTIONS_TEMPLATE).read_text(encoding="utf-8")
     _write_rendered(dest, Path(_CONVENTIONS_TEMPLATE), conventions_text)
     written.append(_CONVENTIONS_TEMPLATE)
 

@@ -116,7 +116,7 @@ def run(
                 selected_loop, initial_state, llm_client, start_index=start_index
             )
     else:
-        human_input = input.read_text() if input is not None else ""
+        human_input = input.read_text(encoding="utf-8") if input is not None else ""
         final_state = runner.run_new(human_input, budget_usd=budget, loop_name=loop)
     _report_outcome(final_state)
 
