@@ -48,6 +48,11 @@ anyway). **Never merge, and never force-push a pushed branch.** Full protocol in
 `.ai/context/workflow.md` (including a historical note on the one-time `feat/mcp-langgraph-migration`
 merge commit that landed the migration on `main` in sprint 35).
 
+> **Window note (sprint 35, until Task 5 executes):** "cut from `main`" / "base is `main`"
+> describe the state *after* the migration merge. Until Task 5 runs that merge, sprint
+> branches are still cut from — and PRs still based on — `feat/mcp-langgraph-migration`
+> (see PR #57, `sprint/35-tasks-1-2`). Remove this note once Task 5 completes.
+
 > **The Opus review is a CI gate, not a courtesy — and it runs in a FRESH session.**
 > Any PR touching `src/` fails the `architect-review` check until a review headed
 > `**Opus/Architect HITL review (automated)**`, carrying the fresh-session attestation, is
