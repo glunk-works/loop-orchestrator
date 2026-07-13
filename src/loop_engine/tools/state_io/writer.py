@@ -147,7 +147,14 @@ def append_agent_memory(full_content: str) -> Path:
     target_path = _agent_target(AGENT_MEMORY_PATH)
     target_path.parent.mkdir(parents=True, exist_ok=True)
     if target_path.exists():
-        existing = target_path.read_text(encoding="utf-8")
+        # newline="" (no universal-newline translation): the write below is
+        # byte-exact (newline="\n"), so the prefix check must see the file's
+        # actual on-disk content, not a CRLF->LF-translated view of it (F22)
+        # -- otherwise a whole-file CRLF rewrite could pass as a no-op prefix.
+        # Path.read_text() has no newline= param (only write_text gained one,
+        # in 3.10), so this goes through Path.open() instead.
+        with target_path.open(encoding="utf-8", newline="") as fh:
+            existing = fh.read()
         if not full_content.startswith(existing):
             raise AppendOnlyViolationError(
                 f"Refusing to write {AGENT_MEMORY_PATH}: the ledger is append-only "

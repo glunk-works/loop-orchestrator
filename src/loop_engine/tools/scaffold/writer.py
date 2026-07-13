@@ -74,7 +74,7 @@ def _output_relpath(template_rel: str, *, pkg_name: str) -> Path:
 def _write_rendered(dest: Path, rel_path: Path, content: str) -> None:
     target = dest / rel_path
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content, encoding="utf-8")
+    target.write_text(content, encoding="utf-8", newline="\n")
 
 
 def write_skeleton(tree: str, *, kind: str = "python", pkg_name: str, repo_name: str) -> list[str]:

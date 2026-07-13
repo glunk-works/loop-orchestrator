@@ -10,14 +10,36 @@ F3 (sprint 35 PR #57 review): `open()` is the third sanctioned write primitive
 legal precisely inside `state_io`/`scaffold` -- i.e. legal in exactly the two
 modules this PR touches. A bare `open(path, "w")` in text mode defaults to the
 locale's preferred encoding, the same C-locale hazard `read_text`/`write_text`
-had, so it is flagged here too."""
+had, so it is flagged here too.
+
+F20 (this round): the locale hazard is identical for a text-mode *read* --
+`open(path)` / `open(path, "r")` without `encoding=` is just as
+locale-dependent as an unencoded write. The mode-char split that used to
+exempt reads is gone; any resolvable text mode (or an unresolvable one --
+F21) is in scope unless it is binary.
+
+F21 (this round): the old `_open_mode` treated `"r+"` (write-capable, no
+`w`/`a`/`x` char) and any non-literal/dynamic mode argument as an
+unconditional read, silently exempting both. Since F20 now requires
+`encoding=` for text-mode reads too, that distinction no longer matters for
+detection purposes -- only `"b"` (binary, which takes no `encoding` kwarg at
+all) is exempt; every other resolvable-or-not mode must pin `encoding=`.
+
+F19 (this round): the guard above only ever checked `encoding=`, so a
+`write_text` call could pin `encoding="utf-8"` and still default to
+locale-translated newlines on write -- exactly the gap F18 slipped through
+(`tools/scaffold/writer.py:77`). `test_write_owning_modules_pin_newline_on_write_text`
+closes that structurally, scoped to the sanctioned file-write-owning modules
+named in `test_state_io_boundary.py::ALLOWED_DIRS` (`state_io`, `scaffold`)."""
 
 import ast
 from pathlib import Path
 
 SRC_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "loop_engine"
 _TARGET_METHODS = {"read_text", "write_text"}
-_WRITE_MODE_CHARS = {"w", "a", "x"}
+# Mirrors test_state_io_boundary.py::ALLOWED_DIRS -- the two sanctioned
+# file-write-owning modules.
+WRITE_OWNING_DIRS = {SRC_DIR / "tools" / "state_io", SRC_DIR / "tools" / "scaffold"}
 
 
 def _open_mode(node: ast.Call) -> str | None:
@@ -31,12 +53,13 @@ def _open_mode(node: ast.Call) -> str | None:
     return None
 
 
-def _is_unencoded_text_write_open(node: ast.Call) -> bool:
+def _is_unencoded_text_open(node: ast.Call) -> bool:
     mode = _open_mode(node)
-    if mode is None:
-        return False  # default mode is "r": a read, out of scope here
-    if "b" in mode or not any(char in mode for char in _WRITE_MODE_CHARS):
-        return False  # binary mode takes no encoding kwarg; plain reads are out of scope
+    if mode is not None and "b" in mode:
+        return False  # binary mode takes no encoding kwarg
+    # Text mode (explicit "r"/"w"/"a"/"x"/"r+"/... or the implicit default
+    # "r"), or a mode we couldn't resolve statically (F21): all in scope,
+    # since none of those can be proven binary.
     return not any(kw.arg == "encoding" for kw in node.keywords)
 
 
@@ -50,8 +73,27 @@ def _unencoded_calls(tree: ast.Module) -> list[str]:
             if not any(kw.arg == "encoding" for kw in node.keywords):
                 found.append(func.attr)
         elif isinstance(func, ast.Name) and func.id == "open":
-            if _is_unencoded_text_write_open(node):
+            if _is_unencoded_text_open(node):
                 found.append("open")
+    return found
+
+
+def _unpinned_newline_write_text_calls(tree: ast.Module) -> list[str]:
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (isinstance(func, ast.Attribute) and func.attr == "write_text"):
+            continue
+        newline_kwarg = next((kw for kw in node.keywords if kw.arg == "newline"), None)
+        pinned = (
+            newline_kwarg is not None
+            and isinstance(newline_kwarg.value, ast.Constant)
+            and newline_kwarg.value.value == "\n"
+        )
+        if not pinned:
+            found.append("write_text")
     return found
 
 
@@ -77,10 +119,53 @@ def test_detector_actually_flags_an_unencoded_call() -> None:
     assert _unencoded_calls(ast.parse("Path('x').write_text('y')")) == ["write_text"]
     assert _unencoded_calls(ast.parse("Path('x').read_text(encoding='utf-8')")) == []
     assert _unencoded_calls(ast.parse("do_something_harmless()")) == []
-    # open(): flagged only for an unencoded text-mode write; binary mode and
-    # plain reads are out of scope, and an explicit encoding clears it.
+    # open(): flagged for any unencoded text-mode call, read or write (F20);
+    # binary mode and an explicit encoding are the only ways out.
     assert _unencoded_calls(ast.parse("open('x', 'w')")) == ["open"]
     assert _unencoded_calls(ast.parse("open('x', mode='a')")) == ["open"]
     assert _unencoded_calls(ast.parse("open('x', 'w', encoding='utf-8')")) == []
     assert _unencoded_calls(ast.parse("open('x', 'wb')")) == []
-    assert _unencoded_calls(ast.parse("open('x')")) == []
+    assert _unencoded_calls(ast.parse("open('x')")) == ["open"]
+    assert _unencoded_calls(ast.parse("open('x', 'r')")) == ["open"]
+    assert _unencoded_calls(ast.parse("open('x', encoding='utf-8')")) == []
+    # "r+" is write-capable but has no w/a/x char (F21) -- still flagged.
+    assert _unencoded_calls(ast.parse("open('x', 'r+')")) == ["open"]
+    # A non-literal/dynamic mode can't be proven binary, so it stays in scope
+    # rather than being silently treated as a read (F21).
+    assert _unencoded_calls(ast.parse("open('x', some_mode_var)")) == ["open"]
+
+
+def test_write_owning_modules_pin_newline_on_write_text() -> None:
+    offenders = {}
+    scanned = 0
+    for allowed_dir in WRITE_OWNING_DIRS:
+        for path in allowed_dir.rglob("*.py"):
+            scanned += 1
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            calls = _unpinned_newline_write_text_calls(tree)
+            if calls:
+                offenders[path] = calls
+    # F5-shaped guard: without this, a misresolved WRITE_OWNING_DIRS makes the
+    # scan yield nothing and the assertion below passes vacuously.
+    assert scanned > 0, f"no .py files found under {WRITE_OWNING_DIRS} -- guard scanned nothing"
+    assert not offenders, f"write_text call(s) missing newline='\\n': {offenders}"
+
+
+def test_newline_detector_actually_flags_a_missing_pin() -> None:
+    # Spot-check the checker itself (same shape as F5/F12's precedent above).
+    assert _unpinned_newline_write_text_calls(
+        ast.parse("Path('x').write_text('y', encoding='utf-8')")
+    ) == ["write_text"]
+    assert (
+        _unpinned_newline_write_text_calls(
+            ast.parse("Path('x').write_text('y', encoding='utf-8', newline='\\n')")
+        )
+        == []
+    )
+    assert _unpinned_newline_write_text_calls(
+        ast.parse("Path('x').write_text('y', encoding='utf-8', newline='')")
+    ) == ["write_text"]
+    assert _unpinned_newline_write_text_calls(
+        ast.parse("Path('x').write_text('y', encoding='utf-8', newline=None)")
+    ) == ["write_text"]
+    assert _unpinned_newline_write_text_calls(ast.parse("do_something_harmless()")) == []
