@@ -577,5 +577,40 @@ unilaterally):**
   notes the integration branch merges to `main` as a **merge commit**, never a squash, when that
   happens.
 
-**Status:** Task 4 (`ruleset-drift.yml`) is **paused** pending this decision — see
-`sprints/34_ci_supply_chain_hardening/sprint_plan.md`. No PR has been opened against `main`.
+**Status: resolved 2026-07-13.** Shape (a) was taken: PR #46 backported `pr-title.yml` +
+`hitl-review.yml` to `main` verbatim (both self-referentially resolved on the PR that introduced
+them — live proof, not assumption). Task 4's PR (#47) followed, merged, and its two post-merge
+acceptance criteria were live-verified: a manual `workflow_dispatch` run confirmed
+`GITHUB_TOKEN` (with only `contents: read` — no scope escalation needed) actually read the
+effective-rules endpoint and saw all 8 checks; a second dispatch on a throwaway branch with a
+fake 9th check name confirmed the workflow goes red for the right reason, and that branch was
+deleted without merging. Shape (b) — the migration merge itself — remains open; see BL-13.
+
+---
+
+### BL-13 — Sprint 34's squash-only settings action conflicts with the documented one-time
+merge-commit landing for `main`
+*(added 2026-07-13, found by the repo owner while reviewing sprint 34's human-actions list)*
+
+**Why:** sprint 34's human-actions list (`sprints/34_ci_supply_chain_hardening/sprint_plan.md`)
+says to set `allow_merge_commit: false` + `allow_rebase_merge: false` repo-wide, to close the
+"three merge strategies, one convention" item BL-11 left open. But `.ai/context/workflow.md`
+already documents a **one-time exception**: `main` stays untouched until the whole migration
+lands as **one final PR**, and that PR merges as a **merge commit**, deliberately never a
+squash — squashing it would collapse the entire migration's history into a single commit.
+`allow_merge_commit` is a repo-wide GitHub setting; it does not distinguish PR by PR. Flipping
+it off now would silently disable the merge-commit button for that future PR too, and nobody
+re-checks a repo setting at the moment a plan from months earlier finally executes — the same
+failure shape as BL-11/BL-12 (a control quietly contradicting a documented plan), just with the
+contradiction pointed the other way (a *tightening* action breaking a *planned exception*
+instead of a weakening going unnoticed).
+
+**Shape:** set `allow_rebase_merge: false` now (nothing in this repo uses rebase merges).
+**Hold off on `allow_merge_commit: false`** until after `feat/mcp-langgraph-migration` merges to
+`main` as its one-time merge commit, then disable it. Simpler than the alternative (flip both
+now, remember to re-enable-then-disable around the migration merge) because it has no
+"remember to do X later" step to forget.
+
+**Status:** open — human settings action, not resolved by this sprint.
+`sprints/34_ci_supply_chain_hardening/sprint_plan.md`'s human-actions list item 2 is corrected in
+place to reflect this.
