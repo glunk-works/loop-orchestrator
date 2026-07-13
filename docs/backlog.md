@@ -539,3 +539,43 @@ title would never reach the branch and `pr-title` would gate nothing that surviv
   required check — a required check is only required *because* the ruleset says so, so deleting
   the ruleset would silently un-require the very check watching it, precisely on the failure it
   exists to catch.
+
+---
+
+### BL-12 — `main` is 106 commits behind and cannot currently pass its own ruleset
+*(added 2026-07-13, found live while starting sprint 34 Task 4 — the ruleset-drift workflow's
+PR is supposed to base off `main` per FD3)*
+
+**Why:** Task 4's PR must base off `main`, not `feat/mcp-langgraph-migration` (FD3 — a scheduled
+workflow only ever fires from the default branch). Before opening it, checked `main`'s actual
+state rather than assuming it mirrors the integration branch. It doesn't:
+
+- `git log origin/main..origin/feat/mcp-langgraph-migration` → **106 commits**; the reverse is
+  **0**. The entire MCP/LangGraph migration — everything since roughly sprint 09 — has never
+  merged to `main`.
+- `main`'s `.github/workflows/` contains **only `ci.yml`** (6 jobs: `lint`, `format-check`,
+  `test`, `secrets-scan`, `dependency-audit`, `sbom`). **`pr-title.yml` and `hitl-review.yml`
+  don't exist on `main` at all** — they were introduced by sprints 33/26+ on the integration
+  branch and never backported.
+
+**The trap this creates:** the `protected-integration-branches` ruleset requires all **eight**
+checks — including `pr-title` and `architect-review` — on `main` too (confirmed live, same call
+as FD1). A PR against `main` right now would need those two checks to report, but no workflow on
+`main` produces a check-run with either name. GitHub shows a required check with no matching
+check-run as **"Expected — waiting"**, indefinitely — not a red X, a silent stall. Any PR based
+on `main` (Task 4's included) would be **permanently unmergeable** the moment it's opened, and
+nothing would say why unless someone thought to check. This is BL-11's exact failure shape
+(*a control that looks present and is inert*) produced by a different mechanism.
+
+**Shape (not yet decided — needs a human call, out of scope for a sprint task to resolve
+unilaterally):**
+- **(a)** Ship `pr-title.yml` + `hitl-review.yml` to `main` in a small, narrow, mechanical PR so
+  `main`'s produced checks match what its own ruleset already demands. Unblocks Task 4 without
+  touching the larger migration question.
+- **(b)** Decide when/whether to merge `feat/mcp-langgraph-migration` into `main` outright — the
+  bigger question this finding surfaces but does not answer. `.ai/context/workflow.md` already
+  notes the integration branch merges to `main` as a **merge commit**, never a squash, when that
+  happens.
+
+**Status:** Task 4 (`ruleset-drift.yml`) is **paused** pending this decision — see
+`sprints/34_ci_supply_chain_hardening/sprint_plan.md`. No PR has been opened against `main`.

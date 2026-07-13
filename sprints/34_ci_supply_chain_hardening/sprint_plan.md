@@ -57,7 +57,12 @@
     - A workflow with **no** `uses:` at all (`pr-title.yml`, `hitl-review.yml`) passes vacuously rather than erroring.
     - Full suite green; lint/format clean.
 
-- **Task 4: The ruleset drift workflow — SHIPS IN ITS OWN PR, BASED ON `main` (FD3)**
+- **Task 4: The ruleset drift workflow — SHIPS IN ITS OWN PR, BASED ON `main` (FD3)** — **PAUSED
+  2026-07-13 (BL-12):** before opening this PR, live-checked `main` and found it 106 commits
+  behind `feat/mcp-langgraph-migration` and missing `pr-title.yml`/`hitl-review.yml` entirely —
+  so a PR against `main` would hang forever on 2 of its 8 required checks (see `docs/backlog.md`
+  BL-12 for the full finding). Escalated; awaiting a human decision on shape (a) vs (b) before
+  this task resumes.
   - **Description:** Add `.github/workflows/ruleset-drift.yml`: a scheduled workflow (a daily cron) **plus `workflow_dispatch`** (see Risks — without it, the workflow cannot be tested without waiting for the cron, and FD6's live-observation criterion is unmeetable). It calls the effective-rules endpoint `GET /repos/${{ github.repository }}/rules/branches/main` via `gh api` and **fails loudly** unless: the four rule types `deletion`, `non_fast_forward`, `pull_request`, and `required_status_checks` are all present, **and** the `required_status_checks` contexts contain all eight of `lint`, `format-check`, `test`, `secrets-scan`, `dependency-audit`, `sbom`, `pr-title`, `architect-review`. Gates nothing and is gated by nothing (FD2 — **do not** make it a required check, do not add it to `ci.yml`). Its failure message must be self-explanatory to a human reading it cold months from now: state that the repo's merge protection has been weakened or removed, name what is missing, and point at BL-11. **This task's PR is based on `main`, not `feat/mcp-langgraph-migration`** — it is the single, deliberate exception (FD3), and it carries **only** this file. Note `main` is ruleset-protected too, so it still faces all eight required checks; nothing is bypassed.
   - **Target Files:** `.github/workflows/ruleset-drift.yml` (new)
   - **Acceptance Criteria:**
