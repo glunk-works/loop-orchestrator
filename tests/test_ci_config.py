@@ -195,3 +195,27 @@ def test_hitl_review_gate_is_not_inside_the_cancel_in_progress_ci_workflow() -> 
     ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
     assert "cancel-in-progress: true" in ci
     assert "pull_request_review" not in ci
+
+
+def test_hitl_review_src_detection_does_not_pipe_into_grep_q() -> None:
+    """The src/-detection must not pipe a paginating `gh` into `grep -q`.
+
+    `grep -q` exits at its first match, closing the pipe; a `gh --paginate` with
+    pages still to write then dies of SIGPIPE (141), and under the step's
+    `pipefail` that 141 becomes the pipeline's exit status. The `if !` then reads
+    the failure as "no src/ changes" and the gate exempts itself — green, with no
+    review. It only triggers once the file list is long enough that gh is still
+    writing when grep quits, so the gate silently weakens as the diff grows, and
+    is least trustworthy on the largest PRs. Found on PR #58 (the migration
+    merge, 197 files): the gate reported "No src/ changes" over 66 changed src/
+    files. Capture into a variable, then match — no pipe, no SIGPIPE.
+    """
+    text = (REPO_ROOT / ".github" / "workflows" / "hitl-review.yml").read_text()
+    flat = " ".join(text.split())
+    assert "| grep -q" not in flat, (
+        "hitl-review.yml pipes into `grep -q`; a paginating producer upstream of "
+        "it dies of SIGPIPE and `pipefail` turns that into a silent exemption"
+    )
+    # The shape that replaced it: capture first, match second.
+    assert 'changed=$(gh api "repos/$REPO/pulls/$PR/files"' in text
+    assert "grep -q '^src/' <<<\"$changed\"" in text
