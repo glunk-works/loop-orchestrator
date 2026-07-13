@@ -87,6 +87,22 @@ def test_publish_is_idempotent_for_unchanged_non_ascii_body(monkeypatch, ctype_l
         locale.setlocale(locale.LC_CTYPE, previous_locale)
 
 
+def test_publish_overwrites_a_corrupt_non_utf8_artifact_without_raising() -> None:
+    # F13: the idempotence check used to be path.read_text(encoding="utf-8")
+    # == body, which raises UnicodeDecodeError if the on-disk artifact isn't
+    # valid UTF-8 -- crashing publish_artifacts on a file it was about to
+    # overwrite anyway. Comparing bytes instead can never raise: invalid
+    # bytes simply compare unequal to the encoded body and get overwritten.
+    state = _state(spec="v2")
+    path = Path(default_artifact_path("run-001", "spec"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\xff\xfe not valid utf-8")
+
+    publish_artifacts(state)
+
+    assert path.read_bytes() == b"v2"
+
+
 def test_has_artifact_reflects_nonempty_body() -> None:
     assert has_artifact(_state(spec="x"), "spec") is True
     assert has_artifact(_state(spec="  "), "spec") is False
