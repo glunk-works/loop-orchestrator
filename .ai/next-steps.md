@@ -5,52 +5,61 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 copy them. Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Sprint `35_migration_merge`, PR #57 — F29–F34 closed at head `783e827`, awaiting review.**
-Next session is **Opus/Architect**: fresh-session `/code-review`, post, decide verdict.
+**Sprint `35_migration_merge`, PR #57 — ninth round done: F35–F40 closed, green gate
+passed.** Next session is **Opus/Architect**: fresh-session `/code-review` #4.
 
 ## Just done (Sonnet/Coder session, 2026-07-13)
-Eighth round on PR #57: closed **F29–F34** from the second Opus follow-up review
-(posted at head `fb93715`, verdict REVISE).
+Ninth round on PR #57: closed **F35–F40** from the third Opus review (posted at head
+`a4527c0`, verdict REVISE), per the review's own instruction — F37 (the root cause) first,
+then F35 and F36 as one edit against the shared result, not two more parallel hand-mirrored
+edits.
 
-- **F29 (blocking)** — `test_state_io_boundary.py`'s `_direct_write_calls` now detects
-  method-form `.open()`. Added a write-capability check (`_is_write_capable_open`): no
-  mode arg at all → read, unflagged; an unresolvable mode → stays in scope; a resolved
-  `w`/`a`/`x`/`+` mode → flagged. Applied symmetrically to the bare-name `open()` branch
-  too, closing the inconsistency the review named (a bare `open('x','r')` was
-  unconditionally flagged while `path.open('w')` wasn't).
-- **F30 (blocking)** — `test_encoding_boundary.py` added `_is_path_open()`, which
-  excludes known non-Path receivers (`gzip`, `bz2`, `lzma`, `io`, `codecs`, `shelve`,
-  `tarfile`, `zipfile`, `dbm`, `webbrowser`, `os`) from the method-form `.open()` branch,
-  so `gzip.open('blob.gz','wt')` etc. can no longer have their filename misread as a mode.
-- **F31** — `WRITE_OWNING_DIRS` now includes `tools/agent_state` (the module this PR
-  gave its first `.open()` handle to); scanning it today finds nothing (the call is a
-  read), but a future write-mode open there is now covered.
-- **F32** — the `utf8_mode` skipif in `test_artifact_store.py` and
-  `scaffold/test_writer.py` now scopes to only the `'C'` `pytest.param`, so the
-  locale-independent `None` case can't silently vanish under PEP 686 (Python 3.15+).
-- **F33** — docstring added to `agent_state/store.py::append_memory` explaining the
-  append-only prefix check is tautological for its only caller today (its real coverage
-  is a TOCTOU race, not a mis-rendering caller) — answered as a docstring, not a refactor,
-  per the prior session's judgment call.
-- **F34** — `_is_write_capable_mode` now takes the call node directly and distinguishes
-  "no mode argument" (a read) from "an unresolvable mode" (stays in scope, F21's
-  conservatism), instead of collapsing both to the same `None`.
+- **F37 (blocking, root cause)** — extracted the triplicated AST mode-resolution logic
+  (`mode_index = 0 if is_method else 1`, plus two copies of the write-capability check)
+  into a new shared `tests/tools/_ast_open.py`: `open_call_is_method()`, `mode_node()`,
+  `is_write_capable()`. Both `test_state_io_boundary.py` and `test_encoding_boundary.py`
+  now import it instead of carrying their own copies.
+- **F35 (blocking)** — `test_state_io_boundary.py`'s write-boundary guard now runs every
+  `.open()`-shaped call through the shared `open_call_is_method()` receiver classification
+  before resolving a mode, instead of treating any `.attr == "open"` as method-form Path.open
+  with mode at index 0. `gzip.open('out.gz', 'wt')` outside the allowed dirs is now correctly
+  flagged as a write regardless of what letters are in the filename; `gzip.open(..., 'rt')`
+  is correctly not flagged.
+- **F36 (blocking)** — `test_encoding_boundary.py`'s `_NON_PATH_OPEN_RECEIVERS` exclusion is
+  gone. `gzip`/`bz2`/`lzma`/`codecs`/`io` now route through the shared classifier as
+  index-1-mode receivers (same shape as builtin `open`), so an unencoded `gzip.open(p, 'wt')`
+  or `io.open('x', 'w')` is caught instead of silently escaping the guard. Only receivers with
+  no comparable mode/encoding concept at all (`os`, `shelve`, `dbm`, `webbrowser`, `tarfile`,
+  `zipfile`) stay out of scope.
+- **F38–F40 (non-blocking)** — `WRITE_OWNING_DIRS` renamed to `NEWLINE_PIN_SCAN_DIRS`
+  (it isn't a write-owning-modules list, it's the newline-pin scan set — `agent_state` isn't
+  file-write-owning per the module boundaries doc); dead `"open"` member dropped from
+  `DISALLOWED_WRITE_CALLS` (the receiver-classification branch intercepts every open-shaped
+  call, including bare-name `open`, before that set is ever consulted); the 79-line
+  changelog docstring in `test_encoding_boundary.py` compressed to the invariant plus the
+  non-obvious mode-resolution rules.
 
 Green gate ran clean: `hatch run lint`, `hatch run format`, `hatch run test` — **553
-passed**. Commit `783e827`, pushed to `sprint/35-tasks-1-2`.
+passed**. Commit pending push — see Working tree below for the hash once pushed.
 
 ## Next — Opus/Architect
-1. Fresh session, `/resume`, then `/code-review` PR #57 at head `783e827`. Verify F29–F34
-   actually hold — don't trust the commit message.
+1. Fresh session, `/resume`, then `/code-review` PR #57 at the new head. Verify F35–F40
+   actually hold — don't trust the commit message. In particular: confirm the shared
+   `_ast_open.py` extraction didn't just move the F35/F36 bugs rather than fix them, and
+   spot-check a case the review didn't name (e.g. `bz2`/`lzma` routing, which mirrors `gzip`
+   but wasn't individually called out).
 2. Post via `gh pr review --comment` (never `--approve`).
-3. If REVISE again → hand back to Sonnet/Coder for a ninth round. If clean → tell the
+3. If REVISE again → hand back to Sonnet/Coder for a tenth round. If clean → tell the
    human it's ready to merge (Claude never merges/force-pushes).
 
 ## Notes only — do NOT fix without a fresh planning pass (→ backlog)
-- **F2, F4, F14, F17, F23** — unchanged, still correctly deferred.
-- **F28** — optional, verified moot; no backlog entry needed.
-- **Carried:** `architect-review` cannot distinguish "was reviewed" from "was approved"
-  (a REVISE turns it green) — filed, still open, harmless while a human merges.
+- **F2, F4, F14, F17, F23, F28** — unchanged, still correctly deferred.
+- **F33 residue** — `append_memory` → `append_agent_memory` still does three full-file I/Os
+  per append on a monotonically growing ledger. The docstring answer was accepted; a future
+  `append_agent_memory` variant taking the already-read `existing` would remove the duplicate
+  read without losing the invariant. **Not for this PR.**
+- **Carried:** `architect-review` cannot distinguish "was reviewed" from "was approved" — a
+  REVISE turns it green. Filed, still open, harmless while a human merges.
 
 ## Human actions
 - **DO NOT disable `allow_merge_commit`** before the migration merge (BL-13). Ordinary
@@ -65,8 +74,7 @@ passed**. Commit `783e827`, pushed to `sprint/35-tasks-1-2`.
 ## Pointers
 - [`sprints/35_migration_merge/sprint_plan.md`](../sprints/35_migration_merge/sprint_plan.md) —
   the approved plan. FD1–FD7 locked. **PR #55 approved the plan, not Tasks 3–5's execution.**
-- PR #57 — Tasks 1–2, eighth round (F29–F34 closed). Awaiting fresh-session review at
-  head `783e827`.
+- PR #57 — Tasks 1–2, ninth round done (F35–F40 closed), awaiting review #4.
 - [`docs/backlog.md`](../docs/backlog.md) — BL-11 resolved; **BL-13 open by design**.
 - [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — every phase closed since
   sprint 32.
@@ -75,8 +83,9 @@ passed**. Commit `783e827`, pushed to `sprint/35-tasks-1-2`.
 - Ruleset checked healthy 2026-07-13: 4 rule types, all 8 required checks on `main`.
 
 ## Working tree
-- `sprint/35-tasks-1-2` carries Tasks 1–2 through `783e827`, pushed, PR #57 open against
-  `feat/mcp-langgraph-migration`. **Live — still the branch to fix/review/merge.**
+- `sprint/35-tasks-1-2` carries Tasks 1–2 through the ninth-round commit (pending push),
+  PR #57 open against `feat/mcp-langgraph-migration`. **Live — still the branch to
+  fix/review/merge.**
 - `sprint/35-migration-merge` and `sprint/35-archive-34` remain **dead** (squash-merged as
   #55/#56) — never push to either again.
 - `.ai/state.json` + `.ai/archive/` are git-ignored (local mirrors); `.ai/next-steps.md` is

@@ -1,6 +1,8 @@
 import ast
 from pathlib import Path
 
+from tests.tools._ast_open import is_write_capable, open_call_is_method
+
 SRC_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "loop_engine"
 # The two sanctioned file-write-owning modules (Phase 5 sprint 25 added
 # `tools/scaffold` as the second, mirroring how sprint 24 added `tools/git_io`
@@ -8,35 +10,7 @@ SRC_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "loop_engine"
 # state/artifact persistence; `scaffold` writes a bootstrapped repo skeleton
 # into a validated foreign clone tree. Every other module must still raise.
 ALLOWED_DIRS = {SRC_DIR / "tools" / "state_io", SRC_DIR / "tools" / "scaffold"}
-DISALLOWED_WRITE_CALLS = {"open", "write_text", "write_bytes"}
-
-
-def _open_mode_node(node: ast.Call, *, is_method: bool) -> ast.expr | None:
-    # Builtin open(file, mode, ...) carries mode at positional index 1;
-    # method form path.open(mode, ...) has no implicit `self` in the AST
-    # args, so mode sits at index 0 there instead (mirrors
-    # test_encoding_boundary.py's _open_mode, F25's finding).
-    mode_index = 0 if is_method else 1
-    if len(node.args) > mode_index:
-        return node.args[mode_index]
-    for kw in node.keywords:
-        if kw.arg == "mode":
-            return kw.value
-    return None
-
-
-def _is_write_capable_open(node: ast.Call, *, is_method: bool) -> bool:
-    # F29: a genuine read (no mode arg at all -- the implicit "r" default,
-    # e.g. agent_state/store.py's `path.open(encoding="utf-8", newline="")`)
-    # is not a write-boundary violation and must not be flagged. A mode arg
-    # that can't be resolved statically stays in scope, same conservatism as
-    # F21/F34 in test_encoding_boundary.py -- it can't be proven read-only.
-    mode_node = _open_mode_node(node, is_method=is_method)
-    if mode_node is None:
-        return False
-    if isinstance(mode_node, ast.Constant) and isinstance(mode_node.value, str):
-        return any(c in mode_node.value for c in "wax+")
-    return True
+DISALLOWED_WRITE_CALLS = {"write_text", "write_bytes"}
 
 
 def _direct_write_calls(tree: ast.Module) -> list[str]:
@@ -45,19 +19,20 @@ def _direct_write_calls(tree: ast.Module) -> list[str]:
         if not isinstance(node, ast.Call):
             continue
         func = node.func
-        if isinstance(func, ast.Name) and func.id == "open":
-            if _is_write_capable_open(node, is_method=False):
-                found.append(func.id)
+        is_method = open_call_is_method(node)
+        if is_method is not None:
+            # F35: every open()-shaped call -- bare `open()`, method-form
+            # `.open()`, or a shared-module-recognized receiver like
+            # `gzip.open()` -- is resolved through the same receiver-aware
+            # mode logic used by test_encoding_boundary.py, instead of
+            # blindly reading index 0 as the mode for any `.open` attribute
+            # access (F30's defect, previously unfixed here).
+            if is_write_capable(node, is_method=is_method):
+                found.append("open")
         elif isinstance(func, ast.Name) and func.id in DISALLOWED_WRITE_CALLS:
             found.append(func.id)
         elif isinstance(func, ast.Attribute) and func.attr in {"write_text", "write_bytes"}:
             found.append(func.attr)
-        elif isinstance(func, ast.Attribute) and func.attr == "open":
-            # F29: method-form `.open()` was previously invisible here --
-            # matched neither the ast.Name branch above nor the
-            # write_text/write_bytes attribute set.
-            if _is_write_capable_open(node, is_method=True):
-                found.append(func.attr)
     return found
 
 
@@ -95,3 +70,16 @@ def test_detector_actually_flags_a_direct_write_outside_the_allowed_dirs() -> No
     # method-form treatment now, closing the inconsistency the review named).
     assert _direct_write_calls(ast.parse("open('x', 'r')")) == []
     assert _direct_write_calls(ast.parse("open('x')")) == []
+    # F35: a non-Path `.open()` receiver was previously read as method-form,
+    # misreading its filename argument as the mode -- whether it was flagged
+    # depended on the letters in the filename. gzip's mode sits at index 1
+    # like the builtin's; a write-capable mode there must be flagged
+    # regardless of the filename, and a read-mode one must not be.
+    assert _direct_write_calls(ast.parse("gzip.open('out.gz', 'wt')")) == ["open"]
+    assert _direct_write_calls(ast.parse("gzip.open('archive.gz', 'rt')")) == []
+    # ...while a receiver with no comparable mode concept at all is out of
+    # scope for this guard, not misresolved as a write -- the mirror-image
+    # false positive the review found (`webbrowser.open(url)` touches no
+    # file but was flagged before the receiver gate existed here).
+    assert _direct_write_calls(ast.parse("webbrowser.open(url)")) == []
+    assert _direct_write_calls(ast.parse("os.open(path, os.O_WRONLY)")) == []
