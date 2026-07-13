@@ -408,3 +408,126 @@ runner minutes on a bad title — the fail-fast saving is small and this is what
 pull_request: types: [..., edited]` trigger. The rationale comments on both guards are worth
 reading before changing either — each is there for a real reason; it's their *interaction*
 that's wrong.
+
+**Resolved by sprint 33** (`sprints/33_ci_title_starvation/sprint_plan.md`). This entry's
+diagnosis was correct but incomplete in two ways the planning pass found:
+
+- **FD2 — a second, independent starvation path through `concurrency`.** `github.ref` for a
+  `pull_request` event is `refs/pull/N/merge`, identical across `opened` and `edited`, and
+  `ci.yml`'s `concurrency` group is keyed on it with `cancel-in-progress: true`. Editing the
+  title *while the suite is running* — even a title that was **always valid** — cancels the
+  in-flight run; the replacement run then hits `if: != 'edited'` and skips the heavy chain.
+  This entry's preferred option (b), dropping `needs: pr-title`, does **not** close this path:
+  the killer is the shared concurrency group plus the `edited` guard, not the `needs:`.
+- **FD3 — a green test was pinning the bug in place.** `test_lint_job_gates_on_pr_title_to_fail_fast`
+  asserted the exact `needs`/`if:` wiring that caused the starvation, so any fix had to make it
+  fail before replacing it — not soften it into something that passed either way.
+
+The actual fix was a **split**, not a rewiring of `needs:`: `pr-title` moved to its own
+workflow, `pr-title.yml`, with its own trigger list and its own concurrency group. `ci.yml`
+lost the `edited` trigger entirely (closing FD2) and `lint` lost both `needs: pr-title` and its
+`if:` block, so no job in `ci.yml` carries an `if:` and none can ever report `skipped` — the
+invariant sprint 33 pins by test, structurally, rather than pinning the new wiring.
+
+---
+
+### BL-11 — None of the "required" checks are actually required; every CI gate is advisory
+*(added 2026-07-12, found during the Opus HITL review of PR #43, sprint 33 — while trying to
+confirm FD5)*
+
+**Why:** this repo has **no branch protection and no rulesets at all**. Every check the docs
+call *required* — `lint`, `format-check`, `test`, `secrets-scan`, `dependency-audit`, `sbom`,
+`pr-title`, `architect-review` — is **computed and reported, but enforces nothing**. A red PR
+can be merged. `feat/mcp-langgraph-migration` and `main` can be pushed to directly, and
+force-pushed.
+
+Evidence (2026-07-12):
+
+- Settings → Branches shows *"Classic branch protections have not been configured."*
+- `GET /repos/glunk-works/loop-engine/rulesets` → `[]`
+- `GET /repos/glunk-works/loop-engine/rules/branches/feat%2Fmcp-langgraph-migration` → `[]`
+  — this is the **effective** rules endpoint, so an org-level ruleset would appear here. None does.
+- PR #43's `reviewDecision` is empty: no required reviews either.
+
+**This is the fail-open `mergeStateStatus: CLEAN` hides.** `CLEAN` means "no rule is being
+violated," which is trivially true when no rule exists. Sprint 33's Task 5 read `CLEAN` as
+corroboration that `pr-title` still resolved as a required check; it corroborated nothing. Any
+future reasoning that treats `CLEAN` as evidence of enforcement is making the same mistake.
+
+**The sharp edge is `architect-review`, not `pr-title`.** `CLAUDE.md` asserts in bold that the
+Opus review *"is a CI gate, not a courtesy"* — that a PR touching `src/` **fails** until a
+review is posted. The workflow really does compute that failure. But a failing check blocks no
+merge, so the gate is precisely the thing it was built to replace: **a convention that works
+only as long as nobody skips it.** It was introduced *because* a convention got skipped
+(sprint 27 Task 8 shipped an R8 fix that covered `cli.py` and left every fresh-run path filing
+issues on the wrong repo — the review that would have caught it was skipped and nothing
+noticed). Today that gate has the same failure mode it was created to close.
+
+BL-10 reads differently in this light too: "a starved suite merges green and untested" was
+true, but the suite was never *blocking* the merge in the first place.
+
+**Shape:** add a repository ruleset on `main` and `feat/**` requiring the eight status checks
+above plus a PR before merging. Then FD5 (below) becomes load-bearing for real — a required
+check is matched by **check-run name**, so the `pr-title` job id and the absence of a `name:`
+override are what make the required check resolvable at all
+(`tests/test_ci_config.py::test_pr_title_workflow_defines_the_frozen_job_id` pins both).
+
+**Notes / where to look:** this is a **GitHub settings change, not a code change** — nothing in
+this repo can assert it, which is exactly why it went unnoticed for the whole life of the CI
+config. Claude is 403 on branch protection and cannot verify or set it; a human must confirm it
+in the UI. Until then, treat every "must pass" in `CLAUDE.md`,
+`sprints/GLOBAL_DEFINITION_OF_DONE.md`, and `.ai/context/workflow.md` as **aspirational**.
+
+**Resolved 2026-07-12 (sprint 33), by configuration rather than code.** The repo owner granted a
+temporary `Administration: write` scope on the fine-grained PAT; the settings below were applied
+and the scope was then revoked. Confirmation that the diagnosis was right, not merely inferred
+from a screenshot: with the scope live, `GET /repos/.../branches/main/protection` returned **404
+"Branch not protected"** — not the earlier 403. There genuinely was nothing there.
+
+**Ruleset `protected-integration-branches`** (id `18847725`), `active`, targeting
+`refs/heads/main` + `refs/heads/feat/**`, `bypass_actors: []` (it binds admins too):
+
+- `required_status_checks` — all eight: `lint`, `format-check`, `test`, `secrets-scan`,
+  `dependency-audit`, `sbom`, `pr-title`, `architect-review`.
+  `strict_required_status_checks_policy: false` — deliberately **not** requiring branches to be
+  up to date with base, which would force a merge-of-base plus a full CI re-run on every PR
+  whenever base moves (exactly the churn that produced this sprint's silent zero-CI conflict).
+- `pull_request` — a PR is required to merge, with `required_approving_review_count: 0`.
+  **The zero is deliberate:** GitHub forbids approving your own PR, and this is a solo repo, so
+  requiring even one approval would deadlock every PR. The Architect review is enforced by the
+  `architect-review` **check**, not by GitHub's review counter.
+- `non_fast_forward` + `deletion` — no force-pushes, no branch deletion.
+
+`sprint/**` branches are deliberately **unruled** — they must stay freely pushable.
+
+**Also enabled:** `secret_scanning` and `secret_scanning_push_protection`. The `secrets-scan`
+gitleaks job is *post-hoc* — on a **public** repo it reports a leaked key only once it is already
+public, when rotation is the sole remedy. Push protection rejects the push. Given this codebase's
+central rule is that the Anthropic key lives only in the OS keyring, that is the modeled threat,
+and CI was catching it one step too late. (`secret_scanning_validity_checks` and
+`secret_scanning_non_provider_patterns` accept the PATCH but do not take — they are gated behind
+GitHub Advanced Security, not the free public tier.)
+
+**Already correct, verified, no change:** `allow_auto_merge: false` (matches the no-merge-verb
+rule), `delete_branch_on_merge: true`, Actions `default_workflow_permissions: read`,
+`can_approve_pull_request_reviews: false`, Dependabot alerts + security updates on. And
+`squash_merge_commit_title: PR_TITLE` — **load-bearing for BL-10**: on the default
+`COMMIT_OR_PR_TITLE`, a single-commit PR takes its subject from the *commit*, so the enforced PR
+title would never reach the branch and `pr-title` would gate nothing that survives.
+
+**Left open, deliberately — candidates for a follow-up sprint:**
+
+- **Actions supply chain.** `allowed_actions: "all"`, `sha_pinning_required: false`, and the
+  workflows use floating tags (`actions/checkout@v4`). Turning SHA pinning on would fail every
+  workflow until the tags are replaced with commit SHAs — that is a **code** change, not a
+  settings toggle, and it was out of scope for a temporary grant.
+- **Three merge strategies, one convention.** `allow_merge_commit` and `allow_rebase_merge` are
+  both still `true` while the entire convention is squash-only. `squash_merge_commit_title:
+  PR_TITLE` applies *only* to squash, so merge-committing a PR silently drops the enforced title
+  and breaks the commit taxonomy. Restricting to squash-only would close that.
+- **Drift detection.** Nothing in the repo asserts the ruleset still exists or still requires
+  these eight checks — which is precisely how its total absence went unnoticed for the whole life
+  of the CI config. A read-only `Administration: read` scope would let a test or a `/resume`
+  preflight fail loudly if the enforcement is ever weakened, *without* granting the ability to
+  weaken it. **A gate the governed party can remove is not a gate**; write access should stay
+  human-only.

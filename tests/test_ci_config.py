@@ -2,7 +2,21 @@ import subprocess
 import tomllib
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _load_workflow(filename: str) -> dict:
+    path = REPO_ROOT / ".github" / "workflows" / filename
+    return yaml.safe_load(path.read_text())
+
+
+def _trigger_types(cfg: dict, event: str) -> list[str]:
+    # yaml.safe_load parses the bare `on:` key as the boolean True (YAML 1.1
+    # truthy) rather than the string "on" — cfg["on"] raises KeyError.
+    triggers = cfg.get("on") or cfg[True]
+    return triggers[event]["types"]
 
 
 def test_pyproject_declares_hatch_scripts() -> None:
@@ -52,16 +66,57 @@ def test_ci_workflow_defines_required_jobs_in_order() -> None:
     assert "hatch run audit" in text
 
 
-def test_lint_job_gates_on_pr_title_to_fail_fast() -> None:
-    """A failing `pr-title` must stop the heavy chain instead of racing it in
-    parallel — `lint` (and everything chained after it via `needs:`) has to
-    wait on `pr-title` and only proceed on success or (on `push`, where
-    `pr-title` doesn't run at all) skip."""
-    text = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
-    lint_section = text[text.index("\n  lint:") : text.index("\n  format-check:")]
-    assert "needs: pr-title" in lint_section
-    assert "needs.pr-title.result == 'success'" in lint_section
-    assert "needs.pr-title.result == 'skipped'" in lint_section
+def test_no_job_in_ci_workflow_can_report_skipped() -> None:
+    """BL-10: a job with a satisfied `needs:` chain and no `if:` cannot report
+    `skipped`, and a skipped job reads as satisfied to everything downstream of
+    it. A PR used to be able to reach an all-green checks page having never run
+    lint or the test suite because a gate keyed on `pr-title` reported
+    `skipped` on the wrong event. Pinning the absence — no `if:`, no `needs:`
+    on `pr-title` — closes the whole class, not just today's wiring."""
+    cfg = _load_workflow("ci.yml")
+    for job_id, job in cfg["jobs"].items():
+        assert "if" not in job, f"{job_id} carries an `if:` — it can now be skipped"
+        needs = job.get("needs", [])
+        needs_list = [needs] if isinstance(needs, str) else needs
+        assert "pr-title" not in needs_list, f"{job_id} still needs pr-title"
+
+
+def test_ci_workflow_pull_request_trigger_excludes_edited() -> None:
+    """FD2: `edited` shares ci.yml's cancelling concurrency group with `opened`
+    and `synchronize`, so a title/body edit mid-run cancels an in-flight (or
+    already-green) run of the heavy chain. That path is closed only by never
+    triggering the heavy chain on `edited` at all."""
+    cfg = _load_workflow("ci.yml")
+    assert "edited" not in _trigger_types(cfg, "pull_request")
+
+
+def test_pr_title_workflow_defines_the_frozen_job_id() -> None:
+    """FD5: branch protection matches required checks by check-run name, not by
+    workflow file. That name is `jobs.<id>.name` when present and falls back to
+    the job id only when it is absent — so a `name:` override renames the check
+    run just as surely as renaming the job does. Either drift and the required
+    check never arrives, hanging every future PR on a check that cannot resolve."""
+    cfg = _load_workflow("pr-title.yml")
+    assert "pr-title" in cfg["jobs"]
+    assert "name" not in cfg["jobs"]["pr-title"]
+
+
+def test_pr_title_workflow_trigger_types_reopen_the_check() -> None:
+    """Without `edited`, a bad title could only be cleared by a dummy push —
+    the trap this workflow exists to fix. `synchronize` guarantees a
+    check-run on every head SHA, which a required check depends on to ever
+    resolve."""
+    cfg = _load_workflow("pr-title.yml")
+    types = _trigger_types(cfg, "pull_request")
+    assert "edited" in types
+    assert "synchronize" in types
+
+
+def test_pr_title_job_gates_nothing() -> None:
+    """This job is deliberately standalone: it must not gate, and must not be
+    gated by, anything else — that coupling is what BL-10 was."""
+    cfg = _load_workflow("pr-title.yml")
+    assert "needs" not in cfg["jobs"]["pr-title"]
 
 
 def test_claude_md_documents_the_human_abort_exit_code() -> None:
