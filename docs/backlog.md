@@ -60,6 +60,37 @@ env-var webhook secret, per the `trigger/` precedent); whether it's a new
 top-level orchestrator-level caller (sibling of `trigger/`/`flows/`) or an MCP
 server.
 
+> ### SCHEDULED: BL-2 gets its planning pass immediately after sprint 36
+> *(repo owner, 2026-07-14 — the shape is now known: a **bot control plane**, which is
+> effectively all three candidate surfaces above at once. Sprint 36 was already in flight,
+> so this waits rather than forking attention.)*
+>
+> **Three things the planning pass must weigh — none of them obvious from the item above:**
+>
+> 1. **The existing inbound surface has NEVER received a real request.** That is **[BL-24]**:
+>    `trigger/` is proven only against `TestClient` with a faked dispatcher — **no port has ever
+>    been bound and no real delivery has ever arrived.** A Slack control plane would be a
+>    **second** inbound surface built while the first is still unverified. Decide deliberately
+>    whether Slack **supersedes** `trigger/`, **parallels** it, or **waits behind proving it** —
+>    "two inbound trigger paths, neither ever run live" is a bad place to land.
+> 2. **Slack may DISSOLVE the blocker that parked BL-24.** §6/BL-24 is deferred because it needs
+>    a tunnel and a publicly routable address, which neither the devcontainer nor the dev host
+>    has. **Slack's Socket Mode needs neither** — the app opens an *outbound* WebSocket, so Slack
+>    never has to reach us. That would buy a **live, exercised inbound path without solving the
+>    hosting problem at all**, which is strictly better than where the GitHub webhook sits.
+>    **Unverified:** a long-lived outbound WebSocket is a connection posture **no existing module
+>    holds**, so its fit against the module-boundary and subprocess-surface rules is an open
+>    question, not a given. Check it; do not assume it.
+> 3. **Third credential class.** A Slack bot/app token is neither the keyring-only Anthropic key
+>    nor the env-var webhook secret. `trigger/`'s posture is the precedent to reason *from*
+>    (`LOOP_ENGINE_WEBHOOK_SECRET` lives in an env var, **not** the keyring, because it
+>    authenticates an *inbound request* rather than an *outbound LLM call*) — but Socket Mode's
+>    token is used to *open an outbound connection*, so the precedent may not transfer cleanly.
+>
+> **Related:** [BL-24] (the unverified inbound surface, and the hosting blocker Socket Mode may
+> sidestep), [BL-4] (a Ralph-loop watcher wants somewhere to report *to* — the notify direction
+> here is a natural home).
+
 ### BL-3 — Review the prompt-caching implementation (correctness + improvement)
 *(added 2026-07-10, from repo owner; **absorbed `DEFERRED_VERIFICATION.md` §1** in sprint 35 Task 6,
 2026-07-14, agreed with the repo owner)*
@@ -1221,3 +1252,168 @@ opportunistically rather than standing the whole thing up twice.
 
 **Notes / where to look:** `sprints/DEFERRED_VERIFICATION.md` §6 (the full protocol),
 `src/loop_engine/trigger/` (`app.py`, `dispatch.py`), `tests/trigger/`.
+
+---
+
+### BL-25 — Should the backlog and defect register live in GitHub Issues rather than this file?
+*(added 2026-07-14, from repo owner — asked during sprint 36's planning pass)*
+
+**Why it's a real question.** Filing a backlog item currently costs a **full pull request**: seven
+required checks, including a **~380 s** test suite, to add markdown. BL-21, BL-22 and BL-23 each cost
+one (PRs #65, #67). Issues would make filing free, give every item real state (open/closed, labels,
+assignment), let a PR close an item by reference, and make the register **queryable** by the agent
+(`gh issue list`) instead of grepping a 1223-line markdown file. It would also **dogfood the product**,
+which already files GitHub issues as its human-escalation channel.
+
+> ### ⚠️ The governing constraint: this repo's issue tracker is NOT a free surface — the product writes to it
+> `tools/issue_io` files **runtime human-escalation issues** from live loop-engine runs. A dev backlog
+> in the same tracker shares a namespace with **machine-generated issues from a running engine**.
+>
+> That is not hypothetical. **Finding R8** (V3, 2026-07-12) was exactly this: escalation issues for
+> *managed* repos were filed against **`loop-engine` itself**, because `gh` derived its destination
+> from the ambient CWD. The three issues in this repo's tracker (**#16, #19, #21** — all closed) are
+> that bug's artifacts. R8 is fixed (`default_issue_filer` now names the repo explicitly), but the
+> coupling is structural: **the register of defects would live in a table a buggy run can write to.**
+> Labels can separate the namespaces — that is a deliberate choice to make, not a free win.
+
+**The counter-argument for keeping `docs/backlog.md`, and it is stronger than it looks:**
+- **The backlog is a cross-linked *argument*, not a ticket list.** `[BL-16]` is cited 4×, `[BL-10]`,
+  `[BL-11]` and `[BL-18]` 3× each. BL-23's entire payload is *"these four findings are the same defect
+  wearing different hats."* The value is in the linkage and the prose, not in the enumeration.
+- **It is versioned with the code.** When a sprint plan cites BL-21, `git show` reveals what BL-21 said
+  **at that commit**. Issues carry no per-commit snapshot, and the sprint plans lean on that property.
+- **Churn is low** — 19 commits over the file's whole life, ~1–2 per sprint. The merge-conflict pain is
+  real but rare, and already has a documented resolution (two branches appending = two additions).
+
+**The likely answer (not decided — this wants a planning pass):** the pain the owner is feeling is
+**real but misattributed**. "Every backlog item costs a full-CI PR" is **[BL-22]'s** problem, not the
+tracker's — fix what triggers the suite and filing becomes cheap **without splitting the register of
+record across two systems.** Two sources of truth is precisely the failure mode this repo keeps paying
+for. Where issues are *clearly* right is the place the factory ships nothing today: **generated repos**
+have no issue conventions at all, while the escalation ladder already terminates in a GitHub issue.
+
+**A caution for whoever picks this up**, recorded because it happened *while filing this item*: the
+first read of the tracker reported the three escalation issues as "still open, orphaned debris needing
+cleanup." They were **closed**, and there is **no** open issue on this repo. `gh issue list --state all`
+was run and its output described as if it were `--state open`. **Check the state field.** It is the same
+defect family as [BL-16]/[BL-18]/[BL-20] — an observation asserted rather than made.
+
+**Related:** [BL-22] (the cost that motivates this is actually its problem), [BL-16] (a check that
+verified the wrong property while reporting success), [BL-1] (an in-loop review stage would also need
+somewhere to file).
+
+**Notes / where to look:** `docs/backlog.md` (1223 lines), `src/loop_engine/tools/issue_io/`,
+`gh issue list --state all` on this repo (3 closed, 0 open), `docs/migration_roadmap.md` (finding R8).
+
+---
+
+### BL-26 — The factory births GitHub repos, but `global-bootstrap` is what makes a repo *real* — and nothing connects them
+*(added 2026-07-14, from repo owner — "cycle back on global-bootstrap")*
+
+**Why:** `flows/bootstrap` produces a repo containing a Python skeleton and the injected Global
+Conventions `CLAUDE.md`. **That is all it produces.** Verified against `tools/scaffold/templates/`:
+
+| A factory-born repo has | A repo that can actually *do* anything needs |
+| --- | --- |
+| `pyproject.toml`, `src/`, `tests/`, `README`, `.gitignore`, `CLAUDE.md` | ⬑ plus… |
+| **no `.github/workflows/` at all** | a CI workflow (this is also sprint 36's **FD4**) |
+| **no `backend.tf`** | an OpenTofu state backend pointing at the S3/DynamoDB backend |
+| **no entry in `global-bootstrap`'s `projects` map** | an OIDC `aws_iam_role` to assume from Actions |
+| **no IAM policy** | a hand-authored least-privilege workload policy |
+
+So the factory's output is **inert**: it has no CI, no cloud identity, and no state backend. Meanwhile
+the **Coder/IaC persona is meant to write infrastructure** — into repos that have none of the
+substrate infrastructure needs. The factory creates a *GitHub* repo; `global-bootstrap` is what makes
+it a *project*; **nothing joins the two.**
+
+**What `global-bootstrap` actually does** (read 2026-07-14 — S3 state bucket, versioned + encrypted;
+DynamoDB lock table; KMS-encrypted findings bucket; a GitHub OIDC provider): `main.tf` does
+`for_each = var.projects` and per project mints an `aws_iam_role.github_actions_role` whose trust
+condition is pinned to `repo:${org}/${repo_name}:ref:refs/heads/main`, plus a state-access policy.
+`project_policies.tf` then **hand-writes a bespoke least-privilege workload policy per project.**
+
+**So "add a repo" is TWO acts, and only one of them is mechanical:**
+1. **Mechanical** — a `projects` map entry, which yields the OIDC role + state access automatically.
+2. **A design decision** — the least-privilege workload policy, which depends on *what that project
+   provisions*. This **cannot be templated blindly**, and that is not a defect: an auto-generated
+   "least-privilege" policy that guesses is just a permissive policy with better branding. Whatever
+   the factory does here must produce **either a correct scoped policy or no policy at all** — never
+   a plausible one. (Same family as **[BL-21]**'s trap: do not template a gate you cannot honour.)
+
+**Note the branch wrinkle before designing anything.** The OIDC trust is pinned to
+`ref:refs/heads/main`, but `flows/bootstrap` creates **`develop`** as the integration branch and the
+scaffolded `CLAUDE.md` tells generated repos to target `develop`, never `main`. Those are consistent
+(deploys happen on `main`, after a merge) — but only if you notice. A generated repo whose workflow
+tries to assume the role from a `develop` PR run will fail the OIDC condition, and the error will not
+say why.
+
+**Sequence it with:** sprint 36 (which fixes **[BL-21]** — a factory-born repo gets a ruleset — and
+whose **FD4** deliberately deferred adding CI to the scaffold *because a generated repo has no CI to
+require*). **BL-26 is what makes FD4 resolvable.** Do not fold it into 36; that sprint is scoped.
+
+**Related:** [BL-21] (protection at birth — same "the invariant evaporates at the factory's output"
+shape), [BL-27] (the registry that would have to be written to), [BL-1].
+
+**Notes / where to look:** `src/loop_engine/flows/bootstrap/flow.py`,
+`src/loop_engine/tools/scaffold/templates/`, `glunk-works/global-bootstrap`
+(`main.tf`, `variables.tf`, `project_policies.tf`), sprint 36's FD4.
+
+---
+
+### BL-27 — `global-bootstrap`'s registry still points at the personal account; ONE unreadable variable decides whether that is harmless or a dangling-role hazard
+*(added 2026-07-14, found while reading global-bootstrap for [BL-26]; **corrected the same day** by the repo owner — see the correction note)*
+
+**Why:** `variables.tf`'s committed `projects` map lists `tri-loop-dev`, `bedrock-serverless-rag`,
+`bounty-infra`, `resume-optimizer`. **All four exist — under `Seuss27/`, the repo owner's personal
+account, not the `glunk-works` org.** The map is therefore **internally consistent but scoped to the
+project's previous home.** The org's real repos (`loop-engine`, `pm-agent-loop`, `appsec-triage-agent`)
+are **not registered at all**, and `bounty-infra` exists in **both** namespaces. The move from the
+personal account to the org never carried the registry with it (global-bootstrap last pushed
+**2026-06-26**).
+
+> ### ⚠️ Everything hinges on `var.github_organization`, and it CANNOT be read from the repo
+> `main.tf` mints, per project, an IAM role trusting
+> `repo:${var.github_organization}/${each.value.repo_name}:ref:refs/heads/main`. That variable has
+> **no default**, so its applied value lives outside the source. The two candidates give **opposite**
+> answers, and both are plausible:
+>
+> | If `github_organization` = | Then the roles trust… | Consequence |
+> | --- | --- | --- |
+> | **`Seuss27`** | `Seuss27/tri-loop-dev`, … — **all four repos exist** | No dangling roles. The registry is merely **stale-by-namespace**: no `glunk-works` repo has an OIDC role, so no org repo can deploy. |
+> | **`glunk-works`** | `glunk-works/tri-loop-dev`, … — **three do not exist** | **Dangling roles.** Whoever next creates a repo by one of those names in the org inherits its AWS permissions on `main` — and that is exactly the population holding the sprint-36 PAT, which now carries `administration=write` and can create org repos. |
+>
+> **This is undetermined, not dismissed.** Resolving it is one lookup against the live backend
+> (`tofu state list` / the role's trust policy in the AWS console). **Do that before acting on *or*
+> dropping the hazard.**
+
+**And there is a live question underneath it either way:** `project_policies.tf` carries a bespoke
+`bounty_infra_policy`, and the repo's most recent commits (2026-06-26) are active fixes to *that*
+pipeline's IAM. But **`bounty-infra` exists in both namespaces.** Which one actually deploys? If the
+org copy is the live one while the OIDC trust names the personal one (or vice versa), that pipeline
+cannot assume its role — and the failure surfaces as an opaque OIDC rejection, not a useful error.
+
+**The real finding — and it survives whichever way the variable resolves: `global-bootstrap`'s source
+does not determine its deployed state.** `bootstrap_bucket_name` and `github_organization` have no
+defaults and no committed tfvars (`.gitignore` does not even exclude one — there simply isn't any), so
+the applied configuration is supplied entirely from outside the repo. **An IaC repo you cannot review
+from its source is the substrate of this whole finding**, and the ambiguity above is not academic: two
+readings of one absent value point at two different sets of real repositories.
+
+**Close it in this order — any other order is guessing:** (a) establish what is actually applied;
+(b) make the repo *say so* (commit a tfvars / pin the value), so the source is reviewable;
+(c) *then* reconcile the project list and resolve the `bounty-infra` ambiguity.
+
+> **Correction note, kept deliberately** *(the mistake is the lesson)*. This item was first filed
+> claiming three **phantom repos** and probable dangling roles. That was **wrong**: all four exist
+> under `Seuss27/`. The error was reading `${var.github_organization}` and **substituting the value I
+> had been looking at** (`glunk-works`) for a value the repo never states — an inference reported as
+> an observation. It is the same defect family as [BL-16]/[BL-18]/[BL-20], and it is preserved here
+> because the corrected finding is *better* than the original: the hazard is not "phantom repos", it is
+> **an unreadable variable that decides between two very different worlds.**
+
+**Related:** [BL-26] (the registry the factory would need to write to), [BL-16] (a check — here, a
+*record* — that reports on something other than what it claims).
+
+**Notes / where to look:** `glunk-works/global-bootstrap` (`variables.tf` `projects`, `main.tf`
+`aws_iam_role.github_actions_role` / `aws_iam_role_policy.pipeline_state_policy`, both `for_each =
+var.projects`), `gh repo list glunk-works`, the real S3/DynamoDB tofu backend.
