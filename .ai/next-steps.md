@@ -43,10 +43,13 @@ positional assert in `test_flow.py` was never deleted now that a position-indepe
 R6 first half). Full text in `.ai/state.json` → `pointers.open_findings`.
 
 ## Gotchas worth remembering
-- **A check rollup shows BOTH the stale `FAILURE` and the fresh `SUCCESS` for one check name.** Seen again this
-  session on `architect-review` (`FAILURE`@21:07, `SUCCESS`@21:46). **The latest run is what counts.**
-- **`gh pr view` serves a stale `mergeStateStatus`.** `BLOCKED` with *nothing failing* is GitHub lag — wait.
-  **Do not close+reopen to "fix" it.**
+- **A check rollup shows BOTH the stale `FAILURE` and the fresh `SUCCESS` for one check name.** Seen
+  repeatedly this sprint (`pr-title`, `architect-review`; `FAILURE`@21:07, `SUCCESS`@21:46). **The latest run is what counts.**
+- **`gh pr view` serves a stale `mergeStateStatus`.** `BLOCKED`/`UNKNOWN` with *nothing failing* is GitHub lag — wait.
+  **The checks are the truth. Do not close+reopen to "fix" it.**
+- **A `CONFLICTING` PR runs ZERO CI** — an empty check rollup on #73 is not "all green", it is "nothing ran".
+  Resolve the conflict (merge `main` INTO the branch) and let CI actually run before reading it.
+- **PR title regex has no room for commas in the scope** — `[a-z0-9._/-]+` only. Pick **one** boundary-derived scope.
 - **⚠️ The PAT carries `administration=write` on the org — it can DELETE ANY REPO, `loop-engine` included.**
   Never point sprint 36's flows at `loop-engine`; hard-code the scratch repo name and read it back before every
   destructive call (FD11). `gh repo delete` takes no explicit target and resolves from the CWD — that is finding
@@ -55,9 +58,17 @@ R6 first half). Full text in `.ai/state.json` → `pointers.open_findings`.
   breaks signing and the key *appears* to vanish (`No secret key`). Recovery: reload the window. A signing
   **`Timeout` means answer the host pinentry prompt** and retry the commit.
 - **Rebase a stale branch by merging `main` INTO it** — force-pushing a pushed branch is forbidden.
+- **`.ai/state.json` is gitignored** — **`next-steps.md` is what travels.**
+
+## Open, outside the sprint
+- **[BL-27] needs one lookup**: `var.github_organization` in `global-bootstrap` has **no default**.
+- **At Task 7, decide deliberately whether to REVOKE `administration=write`** (it can delete *any*
+  repo in the org, loop-engine included).
+- **[BL-2] (Slack bot control plane) gets its planning pass immediately after sprint 36.**
 
 ## Pointers
 - [`sprints/36_live_factory_verification/sprint_plan.md`](../sprints/36_live_factory_verification/sprint_plan.md) — **the plan. FD1–FD11 locked.** Tasks 4–7 (the live protocols + teardown) are untouched.
 - [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — **§5/§7/§8 are this sprint's protocols** and the register of record. Task 7 retires them (**without renumbering**).
 - [`docs/backlog.md`](../docs/backlog.md) — open: BL-1..BL-5, BL-15, BL-16, BL-18, BL-20, **BL-21 (this sprint closes it)**, BL-22..BL-27. Resolved: BL-13, BL-17. Declined: BL-19.
+- **PR #73** (`sprint/36-bl21-ruleset` → `main`) — S1–S3 landed; **awaiting the third review round against the new head** — hold the merge.
 - Ruleset on loop-engine's own `main` healthy 2026-07-14: 4 rule types, 8 required checks, targeting exactly `refs/heads/main`.
