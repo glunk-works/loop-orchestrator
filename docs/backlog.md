@@ -60,6 +60,37 @@ env-var webhook secret, per the `trigger/` precedent); whether it's a new
 top-level orchestrator-level caller (sibling of `trigger/`/`flows/`) or an MCP
 server.
 
+> ### SCHEDULED: BL-2 gets its planning pass immediately after sprint 36
+> *(repo owner, 2026-07-14 — the shape is now known: a **bot control plane**, which is
+> effectively all three candidate surfaces above at once. Sprint 36 was already in flight,
+> so this waits rather than forking attention.)*
+>
+> **Three things the planning pass must weigh — none of them obvious from the item above:**
+>
+> 1. **The existing inbound surface has NEVER received a real request.** That is **[BL-24]**:
+>    `trigger/` is proven only against `TestClient` with a faked dispatcher — **no port has ever
+>    been bound and no real delivery has ever arrived.** A Slack control plane would be a
+>    **second** inbound surface built while the first is still unverified. Decide deliberately
+>    whether Slack **supersedes** `trigger/`, **parallels** it, or **waits behind proving it** —
+>    "two inbound trigger paths, neither ever run live" is a bad place to land.
+> 2. **Slack may DISSOLVE the blocker that parked BL-24.** §6/BL-24 is deferred because it needs
+>    a tunnel and a publicly routable address, which neither the devcontainer nor the dev host
+>    has. **Slack's Socket Mode needs neither** — the app opens an *outbound* WebSocket, so Slack
+>    never has to reach us. That would buy a **live, exercised inbound path without solving the
+>    hosting problem at all**, which is strictly better than where the GitHub webhook sits.
+>    **Unverified:** a long-lived outbound WebSocket is a connection posture **no existing module
+>    holds**, so its fit against the module-boundary and subprocess-surface rules is an open
+>    question, not a given. Check it; do not assume it.
+> 3. **Third credential class.** A Slack bot/app token is neither the keyring-only Anthropic key
+>    nor the env-var webhook secret. `trigger/`'s posture is the precedent to reason *from*
+>    (`LOOP_ENGINE_WEBHOOK_SECRET` lives in an env var, **not** the keyring, because it
+>    authenticates an *inbound request* rather than an *outbound LLM call*) — but Socket Mode's
+>    token is used to *open an outbound connection*, so the precedent may not transfer cleanly.
+>
+> **Related:** [BL-24] (the unverified inbound surface, and the hosting blocker Socket Mode may
+> sidestep), [BL-4] (a Ralph-loop watcher wants somewhere to report *to* — the notify direction
+> here is a natural home).
+
 ### BL-3 — Review the prompt-caching implementation (correctness + improvement)
 *(added 2026-07-10, from repo owner; **absorbed `DEFERRED_VERIFICATION.md` §1** in sprint 35 Task 6,
 2026-07-14, agreed with the repo owner)*
