@@ -63,10 +63,18 @@ No HITL gate is open.
   is **two additions, not a disagreement**: keep **both** sides.
 
 ## Human actions
-- **BL-17 — retire `feat/**`.** It still exists at `b669482`, having survived the merge *by design*
-  (FD6: the ruleset's `deletion` rule beat `delete_branch_on_merge`). **Ordered:** drop `feat/**`
-  from the ruleset's targets **first**, then delete the branch, then **re-verify `main` still has
-  all four rule types + all eight required checks**.
+**None outstanding.**
+
+- ~~**BL-17 — retire `feat/**`**~~ — **DONE 2026-07-14.** The owner dropped `feat/**` from the
+  ruleset's targets (it now targets exactly `refs/heads/main`); the branch was proven fully merged
+  (`b669482` is an **ancestor of `main`** and is `d2135e7`'s second parent — **zero** unmerged
+  commits, so nothing was discarded) and deleted. **`main`'s protection was verified before *and*
+  after**, then confirmed **independently** by dispatching `ruleset-drift.yml`, which reported
+  `OK: ruleset intact -- 4 rule types, 8 required checks`. A weakened `main` fails **open** — every
+  check still runs and reports, and none of them blocks — so the after-check is the item, not
+  bookkeeping.
+- Loose end, folded into **BL-22** (not lost): `ci.yml` still has `push: branches: [main, 'feat/**']`.
+  That glob is now **dead** — it matches nothing, costs nothing. Drop it in the next CI-config pass.
 
 ## Pointers
 - [`docs/backlog.md`](../docs/backlog.md) — open: BL-1..BL-5, **BL-15**, **BL-16**, **BL-17**, **BL-18**, **BL-20**, **BL-21**, **BL-22**, **BL-23**, **BL-24**. Resolved: BL-13 (+ BL-12/BL-14's pattern, closed by the merge). Declined: **BL-19**.

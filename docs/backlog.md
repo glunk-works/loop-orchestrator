@@ -794,9 +794,38 @@ one of them is a one-liner.
 
 ---
 
-### BL-17 — Retire `feat/**`: drop it from the ruleset's targets, then delete the branch
+### BL-17 — RESOLVED: `feat/**` is retired
 *(added 2026-07-14, sprint 35 Task 5 — deferred by the repo owner, who was away from a terminal
-when the migration merged; it is the one step of Task 5 left unexecuted)*
+when the migration merged; **executed and closed the same day**)*
+
+**Status: RESOLVED 2026-07-14.** Executed in the ordered sequence below, which was the whole point
+of the item:
+
+1. **The repo owner removed `feat/**` from the `protected-integration-branches` ruleset's targets.**
+   It now targets exactly `refs/heads/main` (`include: ["refs/heads/main"]`, `exclude: []`).
+2. **`main`'s protection was verified BEFORE the deletion** — 4 rule types, 8 required checks — so
+   the ruleset edit was confirmed clean rather than assumed. This is the trap the item warned about:
+   the edit that drops `feat/**` is the same edit that could silently un-protect `main`.
+3. **The branch was proven fully merged before deletion, not asserted:** `b669482` is an **ancestor
+   of `main`** (`git merge-base --is-ancestor` → true) and is literally `d2135e7`'s **second
+   parent**, with **zero** commits not in `main`. Deleting the ref discarded nothing — all 113
+   commits remain reachable through the merge commit.
+4. **`feat/mcp-langgraph-migration` deleted.** No `feat/**` branch remains.
+5. **`main` re-verified AFTER the deletion** — still 4 rule types, still 8 required checks — and
+   then confirmed **independently** by dispatching `ruleset-drift.yml`, which reported
+   `OK: ruleset intact -- 4 rule types, 8 required checks`. That is the backstop the item named,
+   doing its job, reporting from something other than the actor who made the change.
+
+**What the check-after-the-fact is for, and why it is not bookkeeping.** Steps 2 and 5 are the item.
+A weakened `main` fails **open**: every check still *runs* and still *reports*, and none of them
+*blocks* — the same failure shape as BL-11, and indistinguishable from health unless you look. The
+independent drift-check run in step 5 is the only evidence here not produced by the party that made
+the change.
+
+---
+
+<details>
+<summary>Original item (retained for the reasoning, which still applies to any future ruleset edit)</summary>
 
 **Why:** the migration merged (PR #58 → merge commit `d2135e7`), so
 `feat/mcp-langgraph-migration` has no remaining purpose: development returns to `main`, and per
@@ -838,6 +867,13 @@ same pass.
 **Blocked on:** nothing. It is a human settings action (ruleset edit + branch delete). Claude was
 deliberately not asked to perform it — see sprint 35's Task 5, which reserves the settings sequence
 for the repo owner.
+
+</details>
+
+**One loose end this leaves — folded into [BL-22], not lost.** `ci.yml` still carries
+`push: branches: [main, 'feat/**']`. With no `feat/**` branch in existence, that glob is now
+**dead** — it matches nothing, costs nothing, and breaks nothing. Drop it in the next pass that
+touches CI config; BL-22 is that pass.
 
 ---
 
