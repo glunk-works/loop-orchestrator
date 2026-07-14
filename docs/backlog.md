@@ -1304,3 +1304,102 @@ somewhere to file).
 
 **Notes / where to look:** `docs/backlog.md` (1223 lines), `src/loop_engine/tools/issue_io/`,
 `gh issue list --state all` on this repo (3 closed, 0 open), `docs/migration_roadmap.md` (finding R8).
+
+---
+
+### BL-26 — The factory births GitHub repos, but `global-bootstrap` is what makes a repo *real* — and nothing connects them
+*(added 2026-07-14, from repo owner — "cycle back on global-bootstrap")*
+
+**Why:** `flows/bootstrap` produces a repo containing a Python skeleton and the injected Global
+Conventions `CLAUDE.md`. **That is all it produces.** Verified against `tools/scaffold/templates/`:
+
+| A factory-born repo has | A repo that can actually *do* anything needs |
+| --- | --- |
+| `pyproject.toml`, `src/`, `tests/`, `README`, `.gitignore`, `CLAUDE.md` | ⬑ plus… |
+| **no `.github/workflows/` at all** | a CI workflow (this is also sprint 36's **FD4**) |
+| **no `backend.tf`** | an OpenTofu state backend pointing at the S3/DynamoDB backend |
+| **no entry in `global-bootstrap`'s `projects` map** | an OIDC `aws_iam_role` to assume from Actions |
+| **no IAM policy** | a hand-authored least-privilege workload policy |
+
+So the factory's output is **inert**: it has no CI, no cloud identity, and no state backend. Meanwhile
+the **Coder/IaC persona is meant to write infrastructure** — into repos that have none of the
+substrate infrastructure needs. The factory creates a *GitHub* repo; `global-bootstrap` is what makes
+it a *project*; **nothing joins the two.**
+
+**What `global-bootstrap` actually does** (read 2026-07-14 — S3 state bucket, versioned + encrypted;
+DynamoDB lock table; KMS-encrypted findings bucket; a GitHub OIDC provider): `main.tf` does
+`for_each = var.projects` and per project mints an `aws_iam_role.github_actions_role` whose trust
+condition is pinned to `repo:${org}/${repo_name}:ref:refs/heads/main`, plus a state-access policy.
+`project_policies.tf` then **hand-writes a bespoke least-privilege workload policy per project.**
+
+**So "add a repo" is TWO acts, and only one of them is mechanical:**
+1. **Mechanical** — a `projects` map entry, which yields the OIDC role + state access automatically.
+2. **A design decision** — the least-privilege workload policy, which depends on *what that project
+   provisions*. This **cannot be templated blindly**, and that is not a defect: an auto-generated
+   "least-privilege" policy that guesses is just a permissive policy with better branding. Whatever
+   the factory does here must produce **either a correct scoped policy or no policy at all** — never
+   a plausible one. (Same family as **[BL-21]**'s trap: do not template a gate you cannot honour.)
+
+**Note the branch wrinkle before designing anything.** The OIDC trust is pinned to
+`ref:refs/heads/main`, but `flows/bootstrap` creates **`develop`** as the integration branch and the
+scaffolded `CLAUDE.md` tells generated repos to target `develop`, never `main`. Those are consistent
+(deploys happen on `main`, after a merge) — but only if you notice. A generated repo whose workflow
+tries to assume the role from a `develop` PR run will fail the OIDC condition, and the error will not
+say why.
+
+**Sequence it with:** sprint 36 (which fixes **[BL-21]** — a factory-born repo gets a ruleset — and
+whose **FD4** deliberately deferred adding CI to the scaffold *because a generated repo has no CI to
+require*). **BL-26 is what makes FD4 resolvable.** Do not fold it into 36; that sprint is scoped.
+
+**Related:** [BL-21] (protection at birth — same "the invariant evaporates at the factory's output"
+shape), [BL-27] (the registry that would have to be written to), [BL-1].
+
+**Notes / where to look:** `src/loop_engine/flows/bootstrap/flow.py`,
+`src/loop_engine/tools/scaffold/templates/`, `glunk-works/global-bootstrap`
+(`main.tf`, `variables.tf`, `project_policies.tf`), sprint 36's FD4.
+
+---
+
+### BL-27 — `global-bootstrap`'s project registry has drifted from reality, and the phantom entries may be dangling OIDC roles
+*(added 2026-07-14, found while reading global-bootstrap for [BL-26])*
+
+**Why:** `variables.tf`'s **committed** `projects` default lists:
+
+```
+tri-loop-dev, bedrock-serverless-rag, bounty-infra, resume-optimizer
+```
+
+The `glunk-works` org actually contains **`loop-engine`, `bounty-infra`, `pm-agent-loop`,
+`appsec-triage-agent`, `global-bootstrap`**. **Only `bounty-infra` overlaps.** Three named projects
+have no repo; three real repos are not registered. Whatever cadence once kept this current has lapsed
+(the repo was last pushed **2026-06-26**).
+
+> ### ⚠️ The security question — UNCONFIRMED, and it must be confirmed before it is either acted on or dismissed
+> `main.tf` mints, per project, an IAM role trusting
+> `token.actions.githubusercontent.com:sub = repo:glunk-works/<repo_name>:ref:refs/heads/main`.
+> **If the phantom entries are actually applied, they are roles trusting repos that do not exist** —
+> and whoever next creates a repo by one of those names in the org **inherits that role's AWS
+> permissions from `main`**. That is normally a small circle of actors, but note it is exactly the
+> population that the sprint-36 PAT (now carrying `administration=write`, able to create repos in the
+> org) belongs to.
+>
+> **This is a hypothesis about live AWS, not an observation.** It is stated as a question on purpose.
+
+**What is NOT known, and why the repo cannot tell you** — this is the load-bearing part:
+`bootstrap_bucket_name` and `github_organization` have **no defaults**, so the applied configuration
+**must** be supplied from outside the repo (env `TF_VAR_*`, `-var`, or an uncommitted tfvars — and
+`.gitignore` does *not* exclude tfvars, so there simply is no committed one). **Therefore the repo is
+not a reliable record of what is deployed**, and the live value of `var.projects` cannot be read from
+it. The committed default is stale; whether the *applied* value is stale is a separate question that
+needs `tofu state list` / the AWS console against the real backend.
+
+**That gap is itself the finding.** An IaC repo whose source does not determine its deployed state is
+a repo you cannot review. Closing BL-27 means (a) establishing what is actually applied, (b) making the
+repo say so, and only then (c) reconciling the list. Doing (c) first would be guessing.
+
+**Related:** [BL-26] (the registry the factory would need to write to), [BL-16] (a check that verified
+the wrong property while reporting success — here, a *record* that does).
+
+**Notes / where to look:** `glunk-works/global-bootstrap` (`variables.tf` `projects`, `main.tf`
+`aws_iam_role.github_actions_role` / `aws_iam_role_policy.pipeline_state_policy`, both `for_each =
+var.projects`), `gh repo list glunk-works`, the real S3/DynamoDB tofu backend.
