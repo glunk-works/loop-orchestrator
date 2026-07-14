@@ -31,8 +31,10 @@ preflight predicted. The two-branch era is over: cut sprint branches from **`mai
 **Task 6 (PLANNING, no code).** Two bodies of work the merge released:
 1. **Dependabot #50–53.** All green now, but all four are **major** jumps (`checkout` 4→7,
    `upload-artifact` 4→7, `setup-python` 5→6, `gitleaks-action` 2→3). **Green CI is necessary and
-   not sufficient — read each changelog.** #50 is entangled with **BL-19**: if the gitleaks-CLI swap
-   is taken, #50 is retired by *deletion* rather than review. Decide BL-19 first, or defer it aloud.
+   not sufficient — read each changelog.** **BL-19 is DECLINED** (we keep `gitleaks-action`), so #50
+   is a real major bump to review on its merits, not something retired by deletion.
+   **Before trusting any Dependabot PR's green, check the run's actor is `dependabot[bot]`** — a
+   human close+reopen reads the *other* secret store and produces a meaningless pass (**BL-20**).
 2. **`sprints/DEFERRED_VERIFICATION.md`'s five never-run checks** — give each a named, scheduled
    home (recommended shape is in the sprint plan's Task 6). Record outcomes in `docs/backlog.md` +
    this file, **not** a new file.
@@ -58,7 +60,7 @@ No HITL gate is open.
 
 ## Pointers
 - [`sprints/35_migration_merge/sprint_plan.md`](../sprints/35_migration_merge/sprint_plan.md) — FD1–FD7; only Task 6 remains.
-- [`docs/backlog.md`](../docs/backlog.md) — **BL-13 resolved**; BL-12/BL-14's topology pattern **closed by the merge**; **new: BL-17, BL-18, BL-19**; BL-15/BL-16 open.
+- [`docs/backlog.md`](../docs/backlog.md) — **BL-13 resolved**; BL-12/BL-14's topology pattern **closed by the merge**; **BL-19 DECLINED** (keep `gitleaks-action`); **new: BL-17, BL-18, BL-20**; BL-15/BL-16 open.
 - [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — every phase closed; the merge closes the topology question too.
 - [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — the five never-run checks (Task 6 homes them).
 - Ruleset checked healthy 2026-07-14: 4 rule types, all 8 required checks on `main`.

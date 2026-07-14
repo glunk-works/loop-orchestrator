@@ -876,30 +876,93 @@ corrected sentence), `tests/test_ci_config.py`. Live evidence: PRs #50–53 befo
 
 ---
 
-### BL-19 — Option: drop `gitleaks-action` for the free gitleaks CLI binary
-*(added 2026-07-14, sprint 35 — an option, not a defect; nothing is broken)*
+### BL-19 — DECLINED: keep `gitleaks-action`; do not move to the gitleaks CLI binary
+*(added 2026-07-14, sprint 35 — **decided and closed the same day** by the repo owner)*
 
-**Not a finding.** `secrets-scan` works. The org **Dependabot** `GITLEAKS_LICENSE` secret has been
-added and all four Dependabot PRs pass. This item exists only so the trade-off is written down
-rather than rediscovered.
+**Status: DECLINED. We are staying on `gitleaks/gitleaks-action`.** Recorded so the question is not
+re-opened from first principles every time someone notices the licence.
 
-**The trade-off:** `gitleaks/gitleaks-action` requires a **paid licence** for repositories under an
-organization (`[glunk-works] is an organization. License key is required.`). The gitleaks **CLI
-binary is free and MIT-licensed** and performs the same scan. Running the binary directly would:
-- remove a paid dependency from CI;
-- remove a third-party **action** from the supply chain (one fewer `uses:` to SHA-pin and trust —
-  note sprint 34 pinned every action precisely because a tag is a mutable pointer);
-- delete the two-secret-store trap entirely (GitHub keeps org **Actions** secrets and org
-  **Dependabot** secrets in separate stores, and Dependabot-triggered runs can read only the
-  latter — the cause of #50–53's red `secrets-scan`, and a trap that will otherwise recur for any
-  future secret CI depends on);
-- make **PR #50** (`gitleaks-action` 2→3, a major bump) moot by deletion rather than by changelog
-  review.
+**The correction that mattered more than the decision.** This item was originally filed on a claim
+that turned out to be **false**: that the Dependabot `GITLEAKS_LICENSE` secret "has been added and
+all four Dependabot PRs pass." It had not been, and they did not. The four PRs were green only
+because a human close+reopen had re-triggered their CI, which silently switched which secret store
+the run read (see **BL-20** — that is the real, durable finding). The actual defect was a **name
+mismatch**: the org Dependabot store held `GITLEAKS_SECRETS` while the workflow reads
+`secrets.GITLEAKS_LICENSE`. Renaming it fixed `secrets-scan` on a genuinely `dependabot[bot]`-actored
+run, verified 2026-07-14.
 
-**The case against (do not skip this):** it works today, it is SHA-pinned, the licence is already
-paid for and now correctly wired. Swapping it means writing and testing a new `secrets-scan` step —
-real work, including pinning the binary's version/checksum, which re-introduces a supply-chain
-decision of its own. `secrets-scan` is a **required** check on `main`, so a botched swap breaks
-every PR until fixed.
+**What was considered:** `gitleaks/gitleaks-action` requires a **paid licence** for repositories
+under an organization (`[glunk-works] is an organization. License key is required.`), whereas the
+gitleaks **CLI binary is free and MIT-licensed** and performs the same scan. Swapping would have
+removed a paid dependency and one third-party action from the supply chain.
 
-**Blocked on:** a human decision. Sequence it with PR #50, which it would retire.
+**Why we're not doing it:** the licence is already paid for and now correctly wired in *both* secret
+stores; the action is SHA-pinned; and `secrets-scan` is a **required** check on `main`, so a botched
+swap breaks every PR until fixed. Running the binary directly would mean pinning its version and
+checksum ourselves — trading one supply-chain decision for another rather than eliminating it. The
+argument that the swap would "delete the two-secret-store trap" is **no longer load-bearing**: that
+trap is understood, documented (BL-20), and fixed. It was never a reason to change tooling, only a
+reason to understand the tooling — and now we do.
+
+**Consequence:** **PR #50** (`gitleaks-action` 2→3) is a real major bump that must be reviewed on
+its merits, not retired by deletion. It goes through Task 6's changelog review like the other three.
+
+---
+
+### BL-20 — Dependabot runs read a *different* secret store, a missing secret resolves to *empty*, and re-triggering as a human reads the other store
+*(added 2026-07-14, sprint 35 — found the hard way; it produced a false "verified" claim that
+reached `main` in PR #61)*
+
+**Why:** three independent mechanisms compose into a trap where **the obvious way to test the fix is
+the one way that cannot detect the bug.**
+
+1. **Two stores, not one.** GitHub keeps **Actions** secrets and **Dependabot** secrets in separate
+   stores (at both org and repo level). A workflow run triggered by `dependabot[bot]` can read *only*
+   the Dependabot store; every other run reads *only* the Actions store. Same repo, same workflow,
+   same `${{ secrets.X }}` expression — different store, decided by **who triggered the run**.
+2. **A missing secret is not an error.** GitHub substitutes the **empty string** silently. So a
+   secret that is absent, mis-scoped, or *misnamed* looks identical to one that is present, until
+   whatever consumes it fails on its own terms (here: `missing gitleaks license`).
+3. **Re-triggering changes the actor.** Closing and reopening a Dependabot PR — the natural way to
+   refresh stale checks — makes **you** the triggering actor, so the re-run reads the **Actions**
+   store and goes green. That green says nothing whatsoever about whether Dependabot can see the
+   secret.
+
+**How it actually bit us.** `secrets-scan` was red on Dependabot PRs #50–53. The org **Dependabot**
+store did have a secret — named **`GITLEAKS_SECRETS`** — but the workflow reads
+`secrets.GITLEAKS_LICENSE`. Name mismatch ⇒ empty ⇒ gitleaks refuses (an org repo requires a
+licence). A human close+reopen turned all four green, and that green was reported as proof the
+Dependabot secret worked. It wasn't: those runs had actor `Seuss27`, not `dependabot[bot]`, and were
+reading the Actions store — where a repo-level `GITLEAKS_LICENSE` does exist. **The verification
+changed the thing being verified.**
+
+**The rules that fall out of this — the actual deliverable:**
+- **Refresh a Dependabot PR's checks with `gh run rerun`, never close+reopen.** `run rerun` preserves
+  the actor; close+reopen does not, and hands you a false pass. (This needs `actions: write` on the
+  PAT — its absence is what forced the close+reopen in the first place, so the missing permission
+  *caused* the wrong diagnosis.)
+- **A green check on a Dependabot PR is only meaningful if the run's actor is `dependabot[bot]`.**
+  Verify with `gh api repos/OWNER/REPO/actions/runs/<id> --jq .actor.login`.
+- **Any secret the CI depends on must exist, with the same name, in BOTH stores** (or the workflow
+  must tolerate its absence). Name equality across stores is invisible from the workflow file — the
+  workflow refers to one name and cannot tell you which stores hold it.
+- **`@dependabot recreate` / `@dependabot rebase`** re-trigger CI *as Dependabot*, and are the right
+  tool when you specifically need a Dependabot-actored run.
+
+**Related:** [BL-16] (a gate verified *required*, never *functional*), [BL-18] (an invariant that
+reads as protective while the real protection comes from elsewhere), [BL-14] (Dependabot reads its
+config only from the default branch — another "correct config, wrong place, silently inert").
+This is the same family: **the alarm is green because it is measuring the wrong thing.** BL-16 said
+the repo verifies its gates are *required*, never that they *work*; this says a *human* can verify a
+gate the same wrong way.
+
+**Shape (not designed yet):** mostly a documentation/discipline finding, but worth asking whether
+`secrets-scan` should **fail loudly on an empty `GITLEAKS_LICENSE`** instead of letting
+`gitleaks-action` discover it downstream — a one-line guard that converts a silent empty string into
+a named failure, and would have made this a five-minute bug. The same reasoning applies to any
+future secret the workflow depends on.
+
+**Notes / where to look:** `.github/workflows/ci.yml` (`secrets-scan`, the `GITLEAKS_LICENSE` env
+line). Live evidence: run `29338705025` (actor `dependabot[bot]`, `GITLEAKS_LICENSE:` empty, red) vs.
+run `29340103433` after the rename (actor `dependabot[bot]`, `GITLEAKS_LICENSE: ***`, green) vs. the
+misleading `#51` run (actor `Seuss27`, green, proving nothing).
