@@ -966,3 +966,138 @@ future secret the workflow depends on.
 line). Live evidence: run `29338705025` (actor `dependabot[bot]`, `GITLEAKS_LICENSE:` empty, red) vs.
 run `29340103433` after the rename (actor `dependabot[bot]`, `GITLEAKS_LICENSE: ***`, green) vs. the
 misleading `#51` run (actor `Seuss27`, green, proving nothing).
+
+---
+
+### BL-22 — Review what *triggers* the full test suite: a lot of runner time is spent re-proving the same thing
+*(added 2026-07-14, from repo owner)*
+
+**Why:** the suite is re-run constantly, and a measurable share of those runs cannot possibly learn
+anything new. Measured 2026-07-14, not estimated:
+
+| Measurement | Value |
+| --- | --- |
+| Tests | **555** |
+| Suite wall time (local) | **289 s** (4m49s) |
+| `test` job in CI | **~380 s**, consistently (365–398 s over the last 8 runs) |
+| CI runs in the 7 days to 2026-07-14 | **29** |
+| **10 slowest tests** | **~90 s — roughly 30% of the entire suite** |
+
+**The clearest waste — docs-only PRs run everything.** PRs **#61, #64 and #66** this week changed
+*markdown only* (`docs/backlog.md`, `.ai/next-steps.md`, `CLAUDE.md`, …) and each ran the full chain:
+`lint` → `format-check` → **`test` (~380 s)** → `secrets-scan` → `dependency-audit` → `sbom`. Three
+PRs, zero lines of Python, ~20 minutes of `test` alone. `architect-review` already knows how to
+exempt docs PRs; `ci.yml` does not.
+
+> ### ⚠️ The obvious fix is the one that has already burned this repo twice. Read this before touching `ci.yml`.
+>
+> The instinct is `paths-ignore:` on `ci.yml`. **Do not reach for it casually.** These are **required**
+> checks on `main`, and a required check that does not run does not "pass" — it either:
+> - **never reports at all**, and GitHub shows *"Expected — waiting"* **indefinitely**, leaving the PR
+>   permanently unmergeable with no error anywhere — this is exactly **BL-12**; or
+> - **reports `skipped`**, which can read as *satisfied* — exactly **BL-10**, the defect that made an
+>   all-green checks page possible over a suite that never ran, and the reason `ci.yml` currently
+>   carries **no `if:` on any job at all**.
+>
+> So the cheap optimization and the two most expensive CI bugs in this repo's history are **the same
+> change**. Any proposal here must say explicitly how a skipped-or-absent required check still
+> reports a *green check-run of the same name* — the standard answer is an always-running
+> **aggregator job** (`if: always()`, explicitly inspecting `needs.*.result` rather than relying on
+> `needs:` semantics) that is the required check, with the heavy jobs conditional behind it. That
+> pattern is sound but subtle, and **BL-18** is a live reminder that `needs:`-based reasoning about
+> `skipped` is easy to get wrong. Design it deliberately; do not bolt on a `paths-ignore`.
+
+**Other threads worth pulling (none decided):**
+- **~30% of the suite is 10 tests.** The slowest are MCP provider/server tests (`test_mcp_provider`,
+  `test_github_server`, `test_issue_io_server`, `test_issue_provider` — 6.7–13.2 s *each*) that
+  **spawn a real MCP server subprocess per test**, plus four `test_ralph_coder` tests at ~12 s each.
+  Session-scoped fixtures that amortize server launch across tests could reclaim most of that without
+  weakening a single assertion. This is likely the **highest-value, lowest-risk** change here — it
+  makes the suite faster *everywhere* (local TDD included), rather than running it less often.
+- **No parallelism.** No `pytest-xdist`; the suite is strictly serial. Much of the slow tail is
+  subprocess-bound (MCP servers, `gh`-less `pytest` subprocesses), which parallelizes well. `-n auto`
+  is worth measuring — but note the subprocess-spawning tests must be checked for shared-state
+  collisions first.
+- **`push: [main]` re-runs the whole chain on every merge.** Tempting to call redundant, and it is
+  **not**: GitHub does *not* re-run a PR's checks when `main` moves underneath it, so a PR can merge
+  green having been validated against a stale base. The post-merge run is the only thing that catches
+  a semantic conflict between two PRs that were each green in isolation. **Evaluate it, don't assume
+  it's waste** — but a merge queue is the principled alternative if the cost is judged too high.
+- **`sbom` and `dependency-audit` run on every PR** even when `pyproject.toml` is untouched. Same
+  path-filter trap as above — same aggregator requirement.
+- `pr-title` ran **40** times in 7 days. It is seconds long and gates nothing; leave it alone.
+
+**The frame the owner set, and it's the right one:** running the suite on every change is **essential
+to TDD and is not the problem**. The goal is not "run the tests less" — it is to **stop paying for
+runs that cannot fail** (markdown PRs) and to **make the run itself cheap** (fixture scoping,
+parallelism), so that running it constantly stays affordable.
+
+**Related:** [BL-10], [BL-12] (why the naive fix is dangerous), [BL-18] (`needs:`/`skipped` reasoning
+is where this gets subtle), [BL-23] (its sibling: *are the tests worth running at all?*).
+
+**Notes / where to look:** `.github/workflows/ci.yml` (`on:` triggers, the `needs:` chain),
+`pyproject.toml` (`test = "pytest {args}"`; no xdist), `tests/tools/test_mcp_provider.py`,
+`tests/tools/test_github_server.py`, `tests/personas/test_ralph_coder.py`. Reproduce the timings with
+`hatch run test --durations=10`.
+
+---
+
+### BL-23 — Audit the tests themselves: are they still testing what they claim, and are they still valid?
+*(added 2026-07-14, from repo owner — "some of those tests came from early in the development cycle
+where the methodologies were not as well defined")*
+
+**Why:** **555 tests across 67 files**, accumulated over 35 sprints. The earliest were written before
+this project's conventions existed; the codebase underneath them has since been through a full
+architectural migration (Phase 6 **deleted** the classic engine, tools, personas and Coder outright).
+A test written against a design that no longer exists does not usually fail — it usually **passes
+while proving nothing**, which is worse, because it is counted as coverage.
+
+**This is not a hypothetical worry in this repo — it is a documented, repeated pattern.** In the last
+month alone, four separate findings were all the same defect wearing different hats:
+- **BL-16** — every CI gate is verified to be *required*, never to be *functional*. An inert gate
+  passes every alarm **because** it is inert.
+- **BL-18** — the "no `if:`, so nothing can be `skipped`" invariant is simply **not the mechanism**;
+  the real protection comes from somewhere else entirely.
+- **BL-20** — a green check that was green **because the verification changed the thing being
+  verified**.
+- **BL-15** — the AST write/encoding guards, which `CLAUDE.md` advertises as "checked by static tests,
+  not just convention", classify `open()` receivers **by name** — so `import gzip as gz` walks
+  straight through them. The guard is **weaker than advertised**, and nothing said so.
+
+Every one of those is *a check that verified the wrong property while reporting success*. **BL-23 is
+that same audit, turned on the test suite itself.** Given four confirmed instances at the CI layer,
+the prior that the 555-test suite is free of them is not credible.
+
+**What to actually look for (not designed yet):**
+- **Tests that would still pass if the code were deleted.** The principled instrument is **mutation
+  testing** (`mutmut`, `cosmic-ray`): mutate the source, and any mutant that survives is a line no
+  test actually constrains. It is the only method that answers *"would this test fail if the code
+  were wrong?"* rather than *"does this test pass?"*. Expensive to run on all 555 — scope it to the
+  boundary guards and `core/` first.
+- **Tests that pin the implementation rather than the behaviour.** 42 of 67 files use
+  mocks/`monkeypatch`. Mock-*assertion* density is reassuringly low (**30** `assert_called` /
+  `call_count` sites), but **BL-3 already flags** that "the mocked suite pins exact transport call
+  counts" — a test that breaks when you refactor without changing behaviour is a tax, not a guard.
+- **Orphans and vestiges.** Phase 6 deleted whole subsystems. Which tests now exercise a path that
+  only still exists *because a test exercises it*?
+- **Guards that are weaker than their docstring.** BL-15 is a proven instance. `CLAUDE.md` makes
+  strong claims ("enforced by static tests, not just convention") for the module-boundary, subprocess-
+  surface and write-owner guards — **each of those claims should be attacked, not assumed.** Try to
+  defeat each guard deliberately; if you can, the guard is the finding.
+- **Early-cycle tests (sprints 01–08)** predate the conventions; re-read them against today's
+  Definition of Done rather than grandfathering them.
+
+**Explicitly NOT the goal:** deleting tests to make the suite faster. That is **BL-22's** job, and
+conflating the two would let "this test is slow" masquerade as "this test is invalid". A slow test
+that catches real bugs stays. **The output of BL-23 is a verdict per test — keep / fix / delete —
+with a reason**, not a smaller number.
+
+**Related:** [BL-22] (its sibling: *how often should we run them?*), [BL-15] (a proven weak guard),
+[BL-16] / [BL-18] / [BL-20] (the same failure mode, at the CI layer), [BL-1] (an in-loop review stage
+would face this same question for generated code).
+
+**Notes / where to look:** `tests/` (67 files, 555 tests), especially the guards `CLAUDE.md` leans on:
+`tests/tools/test_subprocess_surfaces.py`, `tests/tools/test_state_io_boundary.py`,
+`tests/tools/test_encoding_boundary.py`, `tests/tools/_ast_open.py` (BL-15's subject),
+`tests/core/test_boundaries.py`, `tests/flows/test_boundaries.py`, `tests/trigger/test_boundaries.py`,
+`tests/tools/test_mcp_provider.py`.
