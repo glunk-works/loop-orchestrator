@@ -10,19 +10,25 @@ copy them. Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh 
 **FD1–FD9 are locked; do not re-open them.**
 
 > ## ⛔ ONE HUMAN ACTION BLOCKS THE ENTIRE SPRINT (Task 1)
-> Grant the fine-grained PAT (the token `gh` authenticates as **`Seuss27`**)
-> **Administration: Read and write** on the **`glunk-works`** org.
-> *Settings → Developer settings → Fine-grained tokens → Organization permissions.*
+> On the fine-grained PAT (the token `gh` authenticates as **`Seuss27`**), set
+> **Repository access → All repositories** *and* grant
+> **Repository permissions → Administration: Read and write**.
+> (A scratch repo that does not exist yet cannot be in a "selected repositories" list.)
 >
-> **Measured, not guessed** — all three 403 today, all three are the same grant:
+> **Measured, not guessed** — both 403 today, both are the same grant:
 > ```
-> POST orgs/glunk-works/repos                 -> 403  X-Accepted-Github-Permissions: administration=write
-> POST repos/glunk-works/<r>/rulesets         -> 403  X-Accepted-Github-Permissions: administration=write
-> GET  orgs/glunk-works/rulesets              -> 403  Resource not accessible by personal access token
+> POST orgs/glunk-works/repos           -> 403  X-Accepted-Github-Permissions: administration=write
+> POST repos/glunk-works/<r>/rulesets   -> 403  X-Accepted-Github-Permissions: administration=write
 > ```
-> **Verify by OBSERVING `gh api orgs/glunk-works/rulesets` return 200** — not by the settings UI
-> having been saved. ⚠️ This grant can **delete any repo in the org, loop-engine included.**
-> Never point sprint 36's flows at `loop-engine`; hard-code the scratch repo's name.
+> **Verify by exercising those two endpoints — a `422` is a PASS** (permission cleared, body rejected).
+>
+> 🚩 **`GET orgs/glunk-works/rulesets` is NOT a valid signal (FD10).** It returns
+> `403 "Upgrade to GitHub Team"` **whatever you grant** — org-level rulesets are a Team feature, which
+> is FD3's own premise. The first cut of this plan used it as Task 1's acceptance criterion anyway.
+> A check that can never go green is **BL-16 wearing a different hat**. Do not reintroduce it.
+>
+> ⚠️ This grant can **delete any repo in the org, loop-engine included.** Never point sprint 36's flows
+> at `loop-engine`; hard-code the scratch repo's name.
 
 ## Just done
 **Sprint 35 is COMPLETE and archived**; the migration is landed on `main` (merge commit `d2135e7`) and
