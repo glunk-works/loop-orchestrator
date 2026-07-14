@@ -5,70 +5,69 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 copy them. Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Sprint `35_migration_merge` — Tasks 1–2 DONE and merged** (PR #57, squashed as `a273ba0`
-onto `feat/mcp-langgraph-migration`). Next up: **Tasks 3–4, Opus/Architect.**
+**Sprint `35_migration_merge` — Tasks 3–4 DONE.** The migration PR (**#58**) is open and sits at
+**seven of eight green**. Status: **`awaiting_hitl_review`**.
 
-## Just done (Opus/Architect session, 2026-07-13)
-Fourth fresh-session `/code-review` of PR #57 at head `8fc8b43` — **verdict ACCEPT**,
-posted via `gh pr review --comment`. The owner squash-merged it.
+## Just done (Opus/Architect session, 2026-07-13/14)
+- **Task 3 preflight PASSED, twice** — re-run after the gate fix at `main`=`3e7116f`,
+  `feat`=`b669482`: `merge-tree` exit 0, merged tree `4aad78e`, delta vs `feat` is **exactly**
+  `.github/workflows/ruleset-drift.yml` (+70). Dependabot #50–53 all still OPEN. **FD1 holds.**
+- **Task 4: PR #58 opened** — base `main`, head `feat/mcp-langgraph-migration` @ `b669482`,
+  113 commits, 197 files. Body carries the observed preflight + the **never-squash** instruction.
+- **Found and fixed a live gate defect (#59 → `feat`, #60 → `main`, both merged).**
+  `architect-review` was **exempting itself on large PRs**: its `src/`-detection piped a
+  paginating `gh` into `grep -q`; grep exits at its first match, `gh` dies of SIGPIPE (141),
+  `pipefail` promotes 141 to the pipeline's status, and `if !` reads that as *"no src/ changes"* →
+  `exit 0`, **green**. It reported "No src/ changes" over **66 changed `src/` files** on #58.
+  It failed **green, not `skipped`**, and only on diffs large enough to keep `gh` paginating — so
+  the gate **silently weakened as diffs grew** and was least trustworthy on the largest PRs.
+  Fix had to be **byte-identical on both branches** (the file is absent at the merge base and was
+  added independently on each side — patching one alone = add/add conflict = **zero CI, silently**).
+  **Proven fixed by #58 itself:** its `architect-review` went from green-with-no-review to
+  correctly **RED**. Pinned by a structural test that fails against the pre-fix workflow.
+- **Filed [BL-16]** (`7875c79`) — the finding that outlives the bug: `ruleset-drift.yml` verifies a
+  gate is *required*, never that it *works*. An inert gate passes every alarm **because** it is inert.
 
-- **F35–F40 verified closed**, re-derived against the diff rather than taken on trust. The
-  open question was whether the `tests/tools/_ast_open.py` extraction merely *relocated*
-  F35/F36 behind a function boundary. It did not: `open_call_is_method()` classifies the
-  receiver *before* resolving a mode, and both guards call it first and bail on `None`.
-  Verified by driving the guards' internals with synthetic call shapes, not by reading them.
-- **The bz2/lzma spot-check passed** — both route identically to `gzip` across all three
-  guards. The generalization is real, not gzip-special-cased. F38/F39/F40 confirmed in-file.
-- **Green gate reproduced independently** at `8fc8b43`: lint clean, **553 passed**.
-- Ruleset re-checked healthy: 4 rule types, all 8 required checks on `main`.
+## Next — Opus/Architect, FRESH SESSION
+1. `/resume`, then `/code-review` **PR #58** and post it:
+   `gh pr review 58 --comment --body-file <f>` — **never `--approve`**.
+2. **Scope it per FD7:** an **integration** review of the merged tree's coherence (does the merge
+   produce the predicted workflow set; is `ci.yml` the post-sprint-33 version; do the four
+   workflows co-exist; is `main`'s topology correct). **Explicitly decline** to re-review the 113
+   commits — each already carried its own architect-review. A review claiming otherwise is a lie of
+   exactly the kind these gates exist to prevent.
+3. Must carry the `**Opus/Architect HITL review (automated)**` header + the fresh-session
+   attestation, and bind to head **`b669482`**. That turns the 8th check green.
+4. **Task 5 (the merge + the `allow_merge_commit` sequence) is HUMAN-ONLY.** Task 6 is planning.
 
-## Next — Opus/Architect
-1. Fresh session, `/resume`, then pick up **Tasks 3–4** from the sprint plan.
-2. **Task 5 (the migration merge itself) is HUMAN-ONLY.** Task 6 is planning.
-3. Work lands on `sprint/35-tasks-3-4` (already cut from `feat/mcp-langgraph-migration` at
-   `a273ba0`); open the PR against `feat/mcp-langgraph-migration` — **not** `main` — until
-   Task 5 executes.
+> **This session cannot post that review** — it authored the diff under review (#59/#60). That is
+> precisely what the attestation forbids.
 
-## Notes only — do NOT fix without a fresh planning pass (→ backlog)
-- **F41/F42 → filed as [BL-15]** in `docs/backlog.md`. The `_ast_open` classifier matches
-  `open()` receivers by *bare module name*, so `import gzip as gz` defeats it and revives the
-  exact F35 failure mode (`gz.open('out.gz','wt')` is a **missed write**;
-  `gz.open('data.gz','rt')` is a read **false-positived** as a write). Not live in `src/`.
-  The real finding is the *pattern*: F30 → F35 → F41 is one defect recurring because each
-  round enumerated another name into a set instead of removing the assumption. Fix is to bind
-  `ast.Import`/`ast.ImportFrom` aliases instead of guessing. F42 (gzip/bz2/lzma default to
-  **binary**, not text, so a bare `gzip.open(p)` is misflagged) is a one-liner in the same
-  file — fix both together.
-- **F2, F4, F14, F17, F23, F28** — unchanged, still correctly deferred.
-- **F33 residue** — `append_agent_memory` still does three full-file I/Os per append. The
-  docstring answer was accepted. Not a blocker.
-- **Carried:** `architect-review` cannot distinguish "was reviewed" from "was approved" — a
-  REVISE turns it green. Filed, still open, harmless while a human merges.
+## Freeze / branch discipline
+- **`feat/mcp-langgraph-migration` is FROZEN at `b669482`** (FD3). Any push moves #58's head and
+  invalidates the review binding. `main` is at `3e7116f`.
+- **`sprint/35-tasks-3-4`** holds 3 docs commits (cursor, BL-15, BL-16), **not yet PR'd**. Do **not**
+  merge it into `feat` before the review is posted — it lands on `main` after the merge (Task 6).
+- Dead (squash-merged), never push: `sprint/35-tasks-1-2`, `sprint/35-hitl-gate-fix`,
+  `sprint/35-hitl-gate-fix-main`, `sprint/35-migration-merge`, `sprint/35-archive-34`.
+
+## Gotcha worth remembering
+When #59's merge moved `feat`, GitHub **did not fire `synchronize`** on #58 — `pr-title` and
+`architect-review` had **no check-run at all** at the new head, and the PR read `blocked` (it fails
+safe, not mergeable). Recovery is **close + reopen** (`reopened` is in both workflows' triggers) —
+never an empty commit, never a force-push. **"Checks vanished" looks nothing like "checks failed."**
 
 ## Human actions
-- **DO NOT disable `allow_merge_commit`** before the migration merge (BL-13) — the
-  merge-commit button exists only for the migration PR (Task 5). Ordinary sprint PRs squash.
-- **Dependabot PRs #50–53 must NOT merge before the migration PR** (FD5) — four **major**
-  action bumps that rewrite the exact `ci.yml` `uses:` SHA lines the clean merge depends on
-  being identical. Real review in Task 6, after the merge.
-- **Carried:** delete `glunk-works/loop-engine-v3-scratch` (private, issues #1–#6); trim the
-  PAT's repo list.
+- **DO NOT disable `allow_merge_commit`** before the migration merge (BL-13).
+- **Dependabot #50–53 must NOT merge before #58** (FD5) — they rewrite the exact `ci.yml` `uses:`
+  lines whose byte-identity makes the merge conflict-free.
+- **Carried:** delete `glunk-works/loop-engine-v3-scratch`; trim the PAT's repo list.
 
 ## Pointers
-- [`sprints/35_migration_merge/sprint_plan.md`](../sprints/35_migration_merge/sprint_plan.md) —
-  the approved plan. FD1–FD7 locked. **PR #55 approved the plan, not Tasks 3–5's execution.**
-- PR #57 — Tasks 1–2, **MERGED** (squashed as `a273ba0`).
-- [`docs/backlog.md`](../docs/backlog.md) — BL-11 resolved; **BL-13 open by design**.
-- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — every phase closed since
-  sprint 32.
-- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — five checks
-  never run. **FD4: none blocks the merge**, but Task 6 gives each a scheduled home.
+- [`sprints/35_migration_merge/sprint_plan.md`](../sprints/35_migration_merge/sprint_plan.md) — FD1–FD7 locked.
+- PR **#58** — the migration PR (open, 7/8 green). PRs #59/#60 — the gate fix, **merged**.
+- [`docs/backlog.md`](../docs/backlog.md) — **BL-16 new**; BL-15 open; BL-13 open by design.
+- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — every phase closed since sprint 32.
+- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — five checks never run
+  (**FD4: none blocks the merge**; Task 6 homes them).
 - Ruleset checked healthy 2026-07-13: 4 rule types, all 8 required checks on `main`.
-
-## Working tree
-- `sprint/35-tasks-3-4` — **live**, cut from `feat/mcp-langgraph-migration` at `a273ba0`.
-  Carries this cursor commit; Tasks 3–4 land here.
-- `sprint/35-tasks-1-2`, `sprint/35-migration-merge`, `sprint/35-archive-34` are all **dead**
-  (squash-merged as #57/#55/#56) — never push to any of them again.
-- `.ai/state.json` + `.ai/archive/` are git-ignored (local mirrors); `.ai/next-steps.md` is
-  tracked.
