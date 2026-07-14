@@ -966,3 +966,47 @@ future secret the workflow depends on.
 line). Live evidence: run `29338705025` (actor `dependabot[bot]`, `GITLEAKS_LICENSE:` empty, red) vs.
 run `29340103433` after the rename (actor `dependabot[bot]`, `GITLEAKS_LICENSE: ***`, green) vs. the
 misleading `#51` run (actor `Seuss27`, green, proving nothing).
+
+---
+
+### BL-21 — `flows/bootstrap` ships repos with an unprotected `main`; the org cannot protect them for us
+*(added 2026-07-14, from a review of the `glunk-works` org settings)*
+
+**Why:** the factory's whole thesis is that integration branches are PR-gated and auto-merge is
+impossible — loop-engine enforces this on *itself* via the `protected-integration-branches` ruleset,
+and structurally by giving `repo_io` no merge verb at all. But `flows/bootstrap` hands a brand-new
+repo to the world with **no ruleset**, so the repo it just created accepts direct pushes to `main`,
+force-pushes, and deletion. The invariant holds inside the factory and evaporates at its output.
+This is observable today: of the five repos in `glunk-works`, only `loop-engine` has a ruleset; the
+other four (`bounty-infra`, `global-bootstrap`, `appsec-triage-agent`, `pm-agent-loop`) have none.
+
+**The obvious fix is not available.** An **org-level** ruleset would cover every repo at birth
+without touching the code — but it is a **GitHub Team** feature. On the org's current Free plan the
+endpoint returns `403 "Upgrade to GitHub Team to enable this feature."` **Repo-level** rulesets *are*
+free on public repos (loop-engine's is live proof), so the protection must be installed **per repo,
+by the thing that creates the repo**. That makes this a code change, not a settings change.
+
+**Shape (not designed yet):**
+1. A new `repo_io` verb — roughly `create_ruleset(repo, ...)` — shelling `gh` like its four siblings.
+   Note this **widens the github MCP server's pinned four-verb set to five** if it is exposed there;
+   it likely should **not** be, since it is orchestrator-invoked only, exactly like the existing
+   factory verbs (`build_github_provider()`, never the model's coder loop). Decide deliberately —
+   the "four verbs, pairwise disjoint" assertion in `tests/tools/test_mcp_provider.py` is load-bearing.
+2. Call it from `flows/bootstrap` **after** the `push_branch(main)` — the same ordering constraint
+   that already forces `create_branch(develop, base=main)` to run post-push, because a ruleset
+   targeting a ref that does not exist yet is not meaningful.
+3. Decide the shipped default: at minimum `deletion` + `non_fast_forward` + `pull_request`. Required
+   status checks are **repo-specific** and cannot be templated blindly — a generated repo has no
+   `architect-review` check, and requiring a check that never reports is a merge deadlock, not a gate.
+
+**The trap to avoid:** do **not** template loop-engine's own eight required checks into generated
+repos. A required check that no workflow ever reports is permanently pending, and the repo can never
+merge anything — the mirror-image of BL-11 (there, gates that looked required but blocked nothing;
+here, gates that block everything and can never pass).
+
+**Related:** [BL-11] (a required check is required only because the ruleset says so), [BL-16] (a gate
+verified *required*, never *functional*). Same family, one step out: the factory verifies its *own*
+gates and never asks whether its **output** has any.
+
+**Blocked on:** nothing, but it is a design decision (the verb's shape + whether it touches the MCP
+verb set), so it wants an Architect planning pass rather than a direct implementation task.
