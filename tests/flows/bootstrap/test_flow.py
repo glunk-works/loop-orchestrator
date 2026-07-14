@@ -33,13 +33,13 @@ class _FakeRepoIO:
         return f"refs/heads/{branch}"
 
     def create_ruleset(self, owner, repo, *, branches, name="protect-integration-branches"):
-        self.calls.append(("create_ruleset", owner, repo, tuple(branches)))
+        self.calls.append(("create_ruleset", owner, repo, tuple(branches), name))
         return 1
 
 
 class _FailingRulesetRepoIO(_FakeRepoIO):
     def create_ruleset(self, owner, repo, *, branches, name="protect-integration-branches"):
-        self.calls.append(("create_ruleset", owner, repo, tuple(branches)))
+        self.calls.append(("create_ruleset", owner, repo, tuple(branches), name))
         raise RuntimeError("422 Unprocessable Entity")
 
 
@@ -93,7 +93,13 @@ def test_run_bootstrap_drives_full_chain_in_order_and_returns_created() -> None:
     assert git_io.calls[1][1] == "demo"
     assert git_io.calls[2] == ("push_branch", "demo", "main", "origin")
     assert repo_io.calls[2] == ("create_branch", "glunk-works", "demo", "develop", "main")
-    assert repo_io.calls[3] == ("create_ruleset", "glunk-works", "demo", ("main", "develop"))
+    assert repo_io.calls[3] == (
+        "create_ruleset",
+        "glunk-works",
+        "demo",
+        ("main", "develop"),
+        "protect-integration-branches",
+    )
 
 
 def test_create_branch_fires_after_push_with_base_equal_to_default_branch() -> None:
@@ -125,7 +131,13 @@ def test_create_ruleset_fires_last_strictly_after_create_branch() -> None:
     run_bootstrap(_request(), repo_io=repo_io, git_io=git_io, scaffold=scaffold)
 
     create_branch_call = ("create_branch", "glunk-works", "demo", "develop", "main")
-    create_ruleset_call = ("create_ruleset", "glunk-works", "demo", ("main", "develop"))
+    create_ruleset_call = (
+        "create_ruleset",
+        "glunk-works",
+        "demo",
+        ("main", "develop"),
+        "protect-integration-branches",
+    )
     assert repo_io.calls[-1] == create_ruleset_call
     assert repo_io.calls.index(create_branch_call) < repo_io.calls.index(create_ruleset_call)
 

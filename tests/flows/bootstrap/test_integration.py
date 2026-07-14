@@ -64,7 +64,7 @@ class _FakeRepoIO:
         return f"refs/heads/{branch}"
 
     def create_ruleset(self, owner, repo, *, branches, name="protect-integration-branches"):
-        self.create_ruleset_calls.append((owner, repo, tuple(branches)))
+        self.create_ruleset_calls.append((owner, repo, tuple(branches), name))
         return 1
 
 
@@ -106,7 +106,9 @@ def test_bootstrap_writes_skeleton_pushes_main_and_creates_develop_after_push(
     assert "refs/heads/main" in remote_heads
 
     assert repo_io.create_branch_calls == [("glunk-works", "demo", "develop", "main")]
-    assert repo_io.create_ruleset_calls == [("glunk-works", "demo", ("main", "develop"))]
+    assert repo_io.create_ruleset_calls == [
+        ("glunk-works", "demo", ("main", "develop"), "protect-integration-branches")
+    ]
 
 
 def test_no_open_pr_or_merge_verb_reachable_end_to_end() -> None:

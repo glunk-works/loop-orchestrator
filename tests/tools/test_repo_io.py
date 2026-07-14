@@ -207,6 +207,44 @@ def test_create_ruleset_declares_exactly_three_rule_types() -> None:
     assert rule_types == {"deletion", "non_fast_forward", "pull_request"}
 
 
+def test_create_ruleset_pull_request_rule_declares_full_parameters() -> None:
+    """S1: `test_create_ruleset_declares_exactly_three_rule_types` reads only
+    rule *type* strings -- deleting the `pull_request` rule's `parameters`
+    dict entirely still passes it and 563/563 still pass, but a live POST
+    would 422 (GitHub requires the full parameters schema, not just the
+    rule type). Assert the dict itself."""
+    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+        run_gh.return_value = json.dumps({"id": 1})
+        create_ruleset("glunk-works", "widget", branches=["main", "develop"])
+
+    body = json.loads(run_gh.call_args.kwargs["input_data"])
+    pull_request_rule = next(rule for rule in body["rules"] if rule["type"] == "pull_request")
+    assert pull_request_rule["parameters"] == {
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": False,
+        "require_code_owner_review": False,
+        "require_last_push_approval": False,
+        "required_review_thread_resolution": False,
+    }
+
+
+def test_create_ruleset_body_carries_the_required_name_field() -> None:
+    """S2: `name` is a REQUIRED field in GitHub's ruleset POST schema and was
+    pinned by no test -- assert it rides the body under both the default and
+    an explicit override."""
+    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+        run_gh.return_value = json.dumps({"id": 1})
+        create_ruleset("glunk-works", "widget", branches=["main", "develop"])
+    body = json.loads(run_gh.call_args.kwargs["input_data"])
+    assert body["name"] == "protect-integration-branches"
+
+    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+        run_gh.return_value = json.dumps({"id": 1})
+        create_ruleset("glunk-works", "widget", branches=["main"], name="custom-name")
+    body = json.loads(run_gh.call_args.kwargs["input_data"])
+    assert body["name"] == "custom-name"
+
+
 def test_create_ruleset_declares_no_required_status_checks() -> None:
     """FD4's trap, named explicitly: a generated repo ships no CI, so a
     required status check in the shipped ruleset would be a permanent merge
