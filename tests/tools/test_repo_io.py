@@ -220,6 +220,29 @@ def test_create_ruleset_declares_no_required_status_checks() -> None:
     assert "required_status_checks" not in rule_types
 
 
+def test_create_ruleset_pipes_body_through_subprocess_input() -> None:
+    """R3: every other test here patches `_run_gh` itself, so a dropped or
+    misspelled `input=` in `_run_gh` would ship green. Patch `subprocess.run`
+    directly and assert the JSON body actually rides the `input` kwarg --
+    the channel `create_ruleset`'s body travels through, not just the body
+    it hands to `_run_gh`."""
+    with patch("loop_engine.tools.repo_io.github.subprocess.run") as run:
+        run.return_value = subprocess.CompletedProcess(
+            args=["gh"], returncode=0, stdout=json.dumps({"id": 42}), stderr=""
+        )
+        ruleset_id = create_ruleset("glunk-works", "widget", branches=["main", "develop"])
+
+    assert ruleset_id == 42
+    _args, kwargs = run.call_args
+    assert kwargs["input"] is not None
+    body = json.loads(kwargs["input"])
+    assert body["target"] == "branch"
+    assert body["conditions"]["ref_name"]["include"] == [
+        "refs/heads/main",
+        "refs/heads/develop",
+    ]
+
+
 def test_resolve_repo_slug_shells_gh_repo_view() -> None:
     """Repo introspection lives here, not in `issue_io` — but its caller is the
     issue filer, which needs an explicit destination instead of `gh`'s implicit

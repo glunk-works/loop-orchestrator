@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from loop_engine.flows.bootstrap import (
     BootstrapRequest,
+    BootstrapResult,
     BootstrapStatus,
     run_bootstrap,
 )
@@ -34,6 +35,12 @@ class _FakeRepoIO:
     def create_ruleset(self, owner, repo, *, branches, name="protect-integration-branches"):
         self.calls.append(("create_ruleset", owner, repo, tuple(branches)))
         return 1
+
+
+class _FailingRulesetRepoIO(_FakeRepoIO):
+    def create_ruleset(self, owner, repo, *, branches, name="protect-integration-branches"):
+        self.calls.append(("create_ruleset", owner, repo, tuple(branches)))
+        raise RuntimeError("422 Unprocessable Entity")
 
 
 class _FakeGitIO:
@@ -139,6 +146,23 @@ def test_private_repo_skips_ruleset_installation_and_reports_it() -> None:
     assert result.ruleset_installed is False
     assert repo_io.calls[0] == ("create_repository", "demo", "glunk-works", True)
     assert not any(call[0] == "create_ruleset" for call in repo_io.calls)
+
+
+def test_ruleset_failure_returns_repo_ref_instead_of_propagating() -> None:
+    """R2: a live create_ruleset failure must not lose the RepoRef -- the repo
+    is already created and main is already pushed by the time this call runs,
+    so FD11 teardown needs the slug back, not a bare exception."""
+    repo_io = _FailingRulesetRepoIO()
+    git_io = _FakeGitIO()
+    scaffold = _FakeScaffold()
+
+    result = run_bootstrap(_request(), repo_io=repo_io, git_io=git_io, scaffold=scaffold)
+
+    assert isinstance(result, BootstrapResult)
+    assert result.status == BootstrapStatus.RULESET_FAILED
+    assert result.repo == repo_io.repo
+    assert result.ruleset_installed is False
+    assert any(call[0] == "create_ruleset" for call in repo_io.calls)
 
 
 def test_no_open_pr_or_merge_verb_is_ever_reachable() -> None:

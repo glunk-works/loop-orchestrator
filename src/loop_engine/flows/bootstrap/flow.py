@@ -27,6 +27,12 @@ to 403 and swallowing the failure into a log line is exactly BL-16's shape
 refuses to pretend: it skips the call outright and reports
 `ruleset_installed=False` on the result, never a silent `CREATED`.
 
+A *live* `create_ruleset` call can still fail (R2, sprint 36 review) even on a
+public repo -- by then `main` is already pushed to a real, existing remote
+repo, so the failure is caught and reported as `RULESET_FAILED` with the
+`RepoRef` intact, rather than propagating and leaving the caller with a
+dangling repo it has no slug to tear down (FD11).
+
 Collaborators (`repo_io`, `git_io`, `scaffold`) are injectable, mirroring
 `flows/maintenance`, so tests fake every external effect: no real create,
 clone, or push runs in CI. See `tests/flows/bootstrap/test_flow.py` /
@@ -87,6 +93,13 @@ class BootstrapRequest(BaseModel):
 
 class BootstrapStatus(str, Enum):
     CREATED = "created"
+    RULESET_FAILED = "ruleset_failed"
+    """`create_ruleset` was attempted (repo is public) and raised. The repo
+    exists and `main` is already pushed, so the `RepoRef` is still returned --
+    a caller doing FD11 teardown needs the slug, not an exception with no
+    result. Distinct from a `private=True` request (which reports `CREATED`
+    with `ruleset_installed=False` because the call was never attempted at
+    all -- see `BootstrapRequest.private`)."""
 
 
 class BootstrapResult(BaseModel):
@@ -155,9 +168,26 @@ def run_bootstrap(
             request.default_branch,
             request.integration_branch,
         )
-        repo_io.create_ruleset(
-            owner, repo_name, branches=[request.default_branch, request.integration_branch]
-        )
+        try:
+            repo_io.create_ruleset(
+                owner, repo_name, branches=[request.default_branch, request.integration_branch]
+            )
+        except Exception:
+            logger.exception(
+                "create_ruleset failed on %s/%s -- the repo exists and %s is already "
+                "pushed, but is NOT protected; returning the RepoRef so the caller can "
+                "decide whether to tear it down (FD11)",
+                owner,
+                repo_name,
+                request.default_branch,
+            )
+            return BootstrapResult(
+                status=BootstrapStatus.RULESET_FAILED,
+                repo=repo,
+                default_branch=request.default_branch,
+                integration_branch=request.integration_branch,
+                ruleset_installed=False,
+            )
         ruleset_installed = True
 
     return BootstrapResult(
