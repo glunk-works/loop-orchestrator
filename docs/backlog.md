@@ -1360,45 +1360,59 @@ shape), [BL-27] (the registry that would have to be written to), [BL-1].
 
 ---
 
-### BL-27 — `global-bootstrap`'s project registry has drifted from reality, and the phantom entries may be dangling OIDC roles
-*(added 2026-07-14, found while reading global-bootstrap for [BL-26])*
+### BL-27 — `global-bootstrap`'s registry still points at the personal account; ONE unreadable variable decides whether that is harmless or a dangling-role hazard
+*(added 2026-07-14, found while reading global-bootstrap for [BL-26]; **corrected the same day** by the repo owner — see the correction note)*
 
-**Why:** `variables.tf`'s **committed** `projects` default lists:
+**Why:** `variables.tf`'s committed `projects` map lists `tri-loop-dev`, `bedrock-serverless-rag`,
+`bounty-infra`, `resume-optimizer`. **All four exist — under `Seuss27/`, the repo owner's personal
+account, not the `glunk-works` org.** The map is therefore **internally consistent but scoped to the
+project's previous home.** The org's real repos (`loop-engine`, `pm-agent-loop`, `appsec-triage-agent`)
+are **not registered at all**, and `bounty-infra` exists in **both** namespaces. The move from the
+personal account to the org never carried the registry with it (global-bootstrap last pushed
+**2026-06-26**).
 
-```
-tri-loop-dev, bedrock-serverless-rag, bounty-infra, resume-optimizer
-```
-
-The `glunk-works` org actually contains **`loop-engine`, `bounty-infra`, `pm-agent-loop`,
-`appsec-triage-agent`, `global-bootstrap`**. **Only `bounty-infra` overlaps.** Three named projects
-have no repo; three real repos are not registered. Whatever cadence once kept this current has lapsed
-(the repo was last pushed **2026-06-26**).
-
-> ### ⚠️ The security question — UNCONFIRMED, and it must be confirmed before it is either acted on or dismissed
+> ### ⚠️ Everything hinges on `var.github_organization`, and it CANNOT be read from the repo
 > `main.tf` mints, per project, an IAM role trusting
-> `token.actions.githubusercontent.com:sub = repo:glunk-works/<repo_name>:ref:refs/heads/main`.
-> **If the phantom entries are actually applied, they are roles trusting repos that do not exist** —
-> and whoever next creates a repo by one of those names in the org **inherits that role's AWS
-> permissions from `main`**. That is normally a small circle of actors, but note it is exactly the
-> population that the sprint-36 PAT (now carrying `administration=write`, able to create repos in the
-> org) belongs to.
+> `repo:${var.github_organization}/${each.value.repo_name}:ref:refs/heads/main`. That variable has
+> **no default**, so its applied value lives outside the source. The two candidates give **opposite**
+> answers, and both are plausible:
 >
-> **This is a hypothesis about live AWS, not an observation.** It is stated as a question on purpose.
+> | If `github_organization` = | Then the roles trust… | Consequence |
+> | --- | --- | --- |
+> | **`Seuss27`** | `Seuss27/tri-loop-dev`, … — **all four repos exist** | No dangling roles. The registry is merely **stale-by-namespace**: no `glunk-works` repo has an OIDC role, so no org repo can deploy. |
+> | **`glunk-works`** | `glunk-works/tri-loop-dev`, … — **three do not exist** | **Dangling roles.** Whoever next creates a repo by one of those names in the org inherits its AWS permissions on `main` — and that is exactly the population holding the sprint-36 PAT, which now carries `administration=write` and can create org repos. |
+>
+> **This is undetermined, not dismissed.** Resolving it is one lookup against the live backend
+> (`tofu state list` / the role's trust policy in the AWS console). **Do that before acting on *or*
+> dropping the hazard.**
 
-**What is NOT known, and why the repo cannot tell you** — this is the load-bearing part:
-`bootstrap_bucket_name` and `github_organization` have **no defaults**, so the applied configuration
-**must** be supplied from outside the repo (env `TF_VAR_*`, `-var`, or an uncommitted tfvars — and
-`.gitignore` does *not* exclude tfvars, so there simply is no committed one). **Therefore the repo is
-not a reliable record of what is deployed**, and the live value of `var.projects` cannot be read from
-it. The committed default is stale; whether the *applied* value is stale is a separate question that
-needs `tofu state list` / the AWS console against the real backend.
+**And there is a live question underneath it either way:** `project_policies.tf` carries a bespoke
+`bounty_infra_policy`, and the repo's most recent commits (2026-06-26) are active fixes to *that*
+pipeline's IAM. But **`bounty-infra` exists in both namespaces.** Which one actually deploys? If the
+org copy is the live one while the OIDC trust names the personal one (or vice versa), that pipeline
+cannot assume its role — and the failure surfaces as an opaque OIDC rejection, not a useful error.
 
-**That gap is itself the finding.** An IaC repo whose source does not determine its deployed state is
-a repo you cannot review. Closing BL-27 means (a) establishing what is actually applied, (b) making the
-repo say so, and only then (c) reconciling the list. Doing (c) first would be guessing.
+**The real finding — and it survives whichever way the variable resolves: `global-bootstrap`'s source
+does not determine its deployed state.** `bootstrap_bucket_name` and `github_organization` have no
+defaults and no committed tfvars (`.gitignore` does not even exclude one — there simply isn't any), so
+the applied configuration is supplied entirely from outside the repo. **An IaC repo you cannot review
+from its source is the substrate of this whole finding**, and the ambiguity above is not academic: two
+readings of one absent value point at two different sets of real repositories.
 
-**Related:** [BL-26] (the registry the factory would need to write to), [BL-16] (a check that verified
-the wrong property while reporting success — here, a *record* that does).
+**Close it in this order — any other order is guessing:** (a) establish what is actually applied;
+(b) make the repo *say so* (commit a tfvars / pin the value), so the source is reviewable;
+(c) *then* reconcile the project list and resolve the `bounty-infra` ambiguity.
+
+> **Correction note, kept deliberately** *(the mistake is the lesson)*. This item was first filed
+> claiming three **phantom repos** and probable dangling roles. That was **wrong**: all four exist
+> under `Seuss27/`. The error was reading `${var.github_organization}` and **substituting the value I
+> had been looking at** (`glunk-works`) for a value the repo never states — an inference reported as
+> an observation. It is the same defect family as [BL-16]/[BL-18]/[BL-20], and it is preserved here
+> because the corrected finding is *better* than the original: the hazard is not "phantom repos", it is
+> **an unreadable variable that decides between two very different worlds.**
+
+**Related:** [BL-26] (the registry the factory would need to write to), [BL-16] (a check — here, a
+*record* — that reports on something other than what it claims).
 
 **Notes / where to look:** `glunk-works/global-bootstrap` (`variables.tf` `projects`, `main.tf`
 `aws_iam_role.github_actions_role` / `aws_iam_role_policy.pipeline_state_policy`, both `for_each =
