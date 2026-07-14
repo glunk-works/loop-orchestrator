@@ -29,6 +29,27 @@ Phase 6 artifact and does not close with it.
 
 Sections still open: **§1, §5, §6, §7, §8.**
 
+> ## Every open section now has a scheduled owner (sprint 35, Task 6 — agreed with the repo owner, 2026-07-14)
+>
+> "After the merge" had been the answer for five sprints, and **an obligation with no
+> scheduled home is an obligation nobody owns** (FD4). So each one now names its destination.
+> These are commitments, not suggestions — if a destination slips, move it explicitly rather
+> than letting it drift back to "later".
+>
+> | Section | Destination | Why there |
+> | --- | --- | --- |
+> | **§5** `github_server` live verbs | **Sprint 36 — live factory verification** | All three need the *same* thing: a daemon-bearing host, authenticated `gh`, network, and a disposable scratch repo they create and destroy. They share the setup and one scratch-repo lifecycle. |
+> | **§7** maintenance flow live | **Sprint 36** | ⬑ |
+> | **§8** bootstrap flow live | **Sprint 36** | ⬑ |
+> | **§1** caching + USD smoke | **Folded into [BL-3]** (prompt-caching review) | §1 needs a real Anthropic key and real spend; BL-3 needs *the same session*. BL-3 cannot assess caching without live `Cache R` data — and §1 **is** that data. Running them apart means paying for two key-bearing sessions to learn one thing. §1 is now BL-3's evidence-gathering step, not a standalone check. |
+> | **§6** live webhook | **[BL-24]** — lowest priority | Needs a tunnel and a publicly reachable address (neither host nor devcontainer has one), and it validates a surface nothing currently depends on. Real, but not urgent. |
+>
+> **Why §5/§7/§8 are together, and why they matter most.** They are the only checks in this
+> file with *real side effects on GitHub*, and together they are the checks that decide
+> whether **the factory actually works** — the product's central claim, still unverified
+> against real GitHub after 25 sprints. Every other guarantee in this repo is hermetic and
+> says nothing about it.
+
 ## 1. Caching + USD budget smoke (validates Sprints 10–12)
 
 ```bash
@@ -162,10 +183,13 @@ real `tools/scaffold` + real `tools/git_io` against a `tmp_path` repo + a local
 bare remote — but `repo_io.create_repository`/`clone_repo`/`create_branch` are
 always faked; no real `gh repo create`, no real clone, no real push, and no
 real `develop` branch creation happen in CI. Run on a daemon-bearing host with
-`gh` authenticated and network access, and with resolved org access to
-`glunk-works` (still an open hosting question — the org may not exist yet;
-confirm access or substitute a disposable scratch org before running this
-check):
+`gh` authenticated and network access.
+
+> **The org question is CLOSED (sprint 35, Task 6).** This section used to warn that
+> `glunk-works` "may not exist yet" and to confirm access or substitute a scratch org.
+> It exists, and is the org this repo itself lives in — verified live via
+> `gh api orgs/glunk-works`. No substitute org is needed. **Still create and destroy a
+> disposable scratch *repo* inside it** — that part was never about the org.
 
 - **Run `flows.bootstrap.run_bootstrap`** with all collaborators at their real
   defaults (`repo_io`, `git_io`, `tools/scaffold`) against a disposable scratch

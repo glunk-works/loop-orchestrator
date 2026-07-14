@@ -27,17 +27,49 @@ preflight predicted. The two-branch era is over: cut sprint branches from **`mai
   Commits prefix + a test that runs Dependabot's generated subject through `pr-title.yml`'s *own*
   regex). Both **CLEAN**, both docs/CI-config only so `architect-review` is exempt.
 
+## Task 6 — DONE (the planning; the merges are the human's)
+
+### (a) Dependabot #50–53 — reviewed on their merits. **Verdict: merge all four.**
+**They are not four upgrades. They are one deadline.** Every one is, at root, the **Node 20 → Node
+24 runtime migration** — not features. GitHub flipped the runner default to Node 24 on **2026-06-02**
+(already past — our logs show `actions target Node.js 20 but are being forced to run on Node.js 24`)
+and **removes Node 20 entirely on 2026-09-16**. `secrets-scan` is a **required** check: when
+`gitleaks-action@v2` stops working, **every PR in this repo becomes unmergeable**, on a known date.
+
+Each verdict was checked against how we *actually* use the action, not just the changelog:
+- **#50 `gitleaks-action` 2.3.9→3.0.0 — merge first.** Release notes: *"No changes to inputs,
+  outputs, or behavior."* Pure runtime. **This is the one with the deadline.**
+- **#53 `checkout` 4.3.1→7.0.0.** The only genuinely behavioral change in the whole set is v7
+  **blocking fork-PR checkout for `pull_request_target` / `workflow_run`** — and we have **neither
+  trigger anywhere**; only `ci.yml` checks out, and CI never pushes. v6's "persist creds to a
+  separate file" likewise cannot reach us. v7's change is a security *hardening*.
+- **#51 `setup-python` 5.6.0→6.3.0.** v6's break is Node 24 + runner floor; its other changes are all
+  cache-related and **we pass no `cache:` input**, only `python-version`.
+- **#52 `upload-artifact` 4.6.2→7.0.1.** v7's `archive:` param is **additive and opt-in** (its
+  multi-file-glob failure applies only with `archive: false`, which we don't set). Single
+  `sbom.json`, default settings, behavior unchanged.
+- The **`v2.327.1` minimum-runner** requirement is a non-issue: all six jobs are `ubuntu-latest`
+  (GitHub-hosted). It would only bite self-hosted runners; we have none.
+
+**Merging (human):** one at a time — all four edit `ci.yml`'s `uses:` lines, so each merge staleness
+the rest and Dependabot rebases them (same conflict logic as FD5). **And check the actor before
+trusting any green** — `gh api repos/glunk-works/loop-engine/actions/runs/<id> --jq .actor.login`
+must say `dependabot[bot]`; a human close+reopen reads the *other* secret store (**BL-20**).
+
+### (b) The five never-run checks now each have a scheduled owner (agreed 2026-07-14)
+| Section | Home |
+| --- | --- |
+| **§5** `github_server` verbs, **§7** maintenance flow, **§8** bootstrap flow | **Sprint 36 — live factory verification** (one daemon-bearing host, authenticated `gh`, one scratch-repo lifecycle) |
+| **§1** caching + USD smoke | **folded into BL-3** — it *is* BL-3's evidence-gathering step |
+| **§6** live webhook | **BL-24** — lowest priority (needs a tunnel; nothing depends on the surface) |
+
+**§8's org blocker is closed:** `glunk-works` exists (verified live) — no substitute org needed.
+
 ## Next — Opus/Architect
-**Task 6 (PLANNING, no code).** Two bodies of work the merge released:
-1. **Dependabot #50–53.** All green now, but all four are **major** jumps (`checkout` 4→7,
-   `upload-artifact` 4→7, `setup-python` 5→6, `gitleaks-action` 2→3). **Green CI is necessary and
-   not sufficient — read each changelog.** **BL-19 is DECLINED** (we keep `gitleaks-action`), so #50
-   is a real major bump to review on its merits, not something retired by deletion.
-   **Before trusting any Dependabot PR's green, check the run's actor is `dependabot[bot]`** — a
-   human close+reopen reads the *other* secret store and produces a meaningless pass (**BL-20**).
-2. **`sprints/DEFERRED_VERIFICATION.md`'s five never-run checks** — give each a named, scheduled
-   home (recommended shape is in the sprint plan's Task 6). Record outcomes in `docs/backlog.md` +
-   this file, **not** a new file.
+**Plan sprint 36 — live factory verification (§5 + §7 + §8).** These are the only checks with real
+side effects on GitHub, and together they decide whether **the factory actually works** — the
+product's central claim, still unverified against real GitHub after 25 sprints. Everything else in
+this repo is hermetic and says nothing about it.
 
 No HITL gate is open.
 
@@ -51,12 +83,15 @@ No HITL gate is open.
   host pinentry prompt**, not repair the agent. Recovery: reload the Cursor window.
 
 ## Human actions
-- **Merge #61 and #62** (squash — now the only option).
-- **Review #50–53 on their merits** (see Task 6). **BL-17:** retire `feat/**` — it still exists at
-  `b669482`, having survived the merge *by design* (FD6: the ruleset's `deletion` rule beat
-  `delete_branch_on_merge`).
-- **Carried:** delete `glunk-works/loop-engine-v3-scratch`; **trim the PAT** — it lacks
-  `actions:write` and any secrets scope (`gh run rerun` and secret reads both 403).
+- **Merge #50–53** — one at a time, letting Dependabot rebase between (Task 6(a) above has the
+  verdicts and the reasoning). **#50 first — it carries the 2026-09-16 deadline.**
+- **BL-17:** retire `feat/**` — it still exists at `b669482`, having survived the merge *by design*
+  (FD6: the ruleset's `deletion` rule beat `delete_branch_on_merge`).
+- **Grant the PAT `actions: write`** — its absence forced the close+reopen that produced BL-20's
+  false pass. `gh run rerun` is the correct way to refresh a Dependabot PR's checks, and it needs
+  this. (Secrets **read** was granted 2026-07-14 and is what finally diagnosed the gitleaks bug.)
+- ~~delete `glunk-works/loop-engine-v3-scratch`~~ — **done**; the repo no longer exists (verified
+  against the org's repo list, 2026-07-14).
 
 ## Pointers
 - [`sprints/35_migration_merge/sprint_plan.md`](../sprints/35_migration_merge/sprint_plan.md) — FD1–FD7; only Task 6 remains.
