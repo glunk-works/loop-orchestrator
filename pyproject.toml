@@ -26,7 +26,7 @@ dependencies = [
   "typer==0.26.8",
   # Orchestration substrate: the engine runs as a LangGraph StateGraph (behind
   # the LOOP_ENGINE_ENGINE=langgraph flag during the migration).
-  "langgraph==1.2.8",
+  "langgraph==1.2.9",
   # Model Context Protocol: coder tools are re-fronted as stdio MCP servers
   # (mcp_servers/) and discovered/dispatched by the LLM client behind the
   # LOOP_ENGINE_TOOLS=mcp flag during the migration.
