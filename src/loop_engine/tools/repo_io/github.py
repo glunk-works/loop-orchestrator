@@ -8,13 +8,18 @@ token, so no credential ever passes through this process's own
 configuration. `repo_io` imports no `keyring` and writes no files (`gh repo
 clone`'s destination is `gh`'s own I/O, not a `state_io`-guarded write).
 
-These four verbs (`create_repository`, `clone_repo`, `create_branch`,
-`open_pr`) are orchestrator-invoked factory operations, never model tools —
-see `tools/mcp/provider.py::build_github_provider` for the consumer-scoped
-boundary that keeps them out of the agentic Coder's tool loop. Deliberately
-no merge verb: auto-merge is prohibited.
+These five verbs (`create_repository`, `clone_repo`, `create_branch`,
+`open_pr`, `create_ruleset`) are orchestrator-invoked factory operations,
+never model tools — see `tools/mcp/provider.py::build_github_provider` for
+the consumer-scoped boundary that keeps them out of the agentic Coder's tool
+loop. Deliberately no merge verb: auto-merge is prohibited. `create_ruleset`
+(sprint 36, BL-21) is deliberately **not** a sixth MCP verb — it follows
+`resolve_repo_slug`'s precedent of orchestrator-only introspection/admin
+verbs that never enter `mcp_servers/github_server`, which stays pinned at
+exactly four.
 """
 
+import json
 import subprocess
 from pathlib import Path, PurePosixPath
 
@@ -44,7 +49,9 @@ class PullRef(BaseModel):
     url: str
 
 
-def _run_gh(args: list[str], *, cwd: str | Path | None = None) -> str:
+def _run_gh(
+    args: list[str], *, cwd: str | Path | None = None, input_data: str | None = None
+) -> str:
     result = subprocess.run(  # noqa: S603 -- fixed executable, no shell, args are not attacker-controlled strings
         ["gh", *args],  # noqa: S607 -- resolved via PATH intentionally: gh's install location varies by platform
         capture_output=True,
@@ -52,6 +59,7 @@ def _run_gh(args: list[str], *, cwd: str | Path | None = None) -> str:
         check=True,
         timeout=60,
         cwd=cwd,
+        input=input_data,
     )
     return result.stdout
 
@@ -163,3 +171,61 @@ def open_pr(owner: str, repo: str, *, head: str, base: str, title: str, body: st
     ).strip()
     number = int(url.rstrip("/").rsplit("/", 1)[-1])
     return PullRef(number=number, url=url)
+
+
+def create_ruleset(
+    owner: str,
+    repo: str,
+    *,
+    branches: list[str],
+    name: str = "protect-integration-branches",
+) -> int:
+    """Install a repository ruleset protecting `branches` -- BL-21's fix.
+    Targets **every** branch in `branches` (FD5: a generated repo's PRs land
+    on `develop`, not `main`, via `flows/maintenance`'s `base="develop"`, so
+    protecting `main` alone would gate a door nobody uses). Ships exactly
+    `deletion` + `non_fast_forward` + `pull_request`, and deliberately
+    **no** `required_status_checks` rule (FD4 -- a factory-scaffolded repo
+    ships no CI workflow at all; a required check that can never report
+    would permanently deadlock the repo's merges). `enforcement="active"`,
+    no bypass actors.
+
+    Orchestrator-only (FD6), following `resolve_repo_slug`'s precedent: this
+    is a `repo_io` verb but never an MCP tool, so `mcp_servers/github_server`
+    stays pinned at exactly four verbs.
+
+    The ruleset POST body is non-trivial nested JSON, so it is built
+    explicitly and piped through `gh api --input -` rather than hand-spliced
+    as `-f` flags (which cannot express nested arrays/objects).
+    """
+    body = {
+        "name": name,
+        "target": "branch",
+        "enforcement": "active",
+        "bypass_actors": [],
+        "conditions": {
+            "ref_name": {
+                "include": [f"refs/heads/{branch}" for branch in branches],
+                "exclude": [],
+            }
+        },
+        "rules": [
+            {"type": "deletion"},
+            {"type": "non_fast_forward"},
+            {
+                "type": "pull_request",
+                "parameters": {
+                    "required_approving_review_count": 0,
+                    "dismiss_stale_reviews_on_push": False,
+                    "require_code_owner_review": False,
+                    "require_last_push_approval": False,
+                    "required_review_thread_resolution": False,
+                },
+            },
+        ],
+    }
+    output = _run_gh(
+        ["api", "--method", "POST", f"repos/{owner}/{repo}/rulesets", "--input", "-"],
+        input_data=json.dumps(body),
+    )
+    return json.loads(output)["id"]

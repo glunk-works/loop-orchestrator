@@ -1,72 +1,62 @@
 # Next steps — dev-workflow cursor
 
 Thin, live cursor for whoever picks up this repo next. Points into the deep record
-(`docs/migration_roadmap.md`, `docs/backlog.md`) + the active sprint file — it does not
+(`sprints/36_live_factory_verification/sprint_plan.md`, `docs/backlog.md`) — it does not
 copy them. Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Sprint `36_live_factory_verification` — `implementing` (review rework). Tasks 1–3 done, PR #73
-reviewed. `architect-review` is GREEN — but the review recommends *against* merging as-is.**
-[`sprints/36_live_factory_verification/sprint_plan.md`](../sprints/36_live_factory_verification/sprint_plan.md) —
-**FD1–FD11 locked; do not re-open them.**
+**Sprint `36_live_factory_verification` — `implementing`. S1–S3 landed; awaiting a THIRD review round.**
+PR **#73** (`sprint/36-bl21-ruleset` → `main`) — pushing the S1–S3 fix commit re-reds `architect-review`
+**by design**; it must NOT be merged until a fresh Opus session posts a new review against the new head.
+FD1–FD11 are locked; do not re-open them.
 
-> **A green `architect-review` means the review *happened*, not that it *approved*.** Do not
-> merge PR #73 until R1–R3 below land. That distinction is the whole point of the gate.
+> ## ⚠️ A GREEN `architect-review` MEANS THE REVIEW *HAPPENED*, NOT THAT IT *APPROVED*
+> Once the third review is posted, verify what it actually says before merging — a green check proves a
+> fresh-session review exists for that head SHA, nothing more. Merging on the strength of the green check
+> alone is BL-16's exact shape, on our own process.
 
-## Just done (Opus/Architect session, 2026-07-14)
-- **Posted the fresh-session HITL review on PR #73** against head `684e03d`
-  (`gh pr review --comment`, never `--approve`). The gate flipped green on the
-  `pull_request_review: submitted` trigger.
-- **Verdict: the design is sound.** `create_ruleset` is in the right module, orchestrator-only is
-  the right posture (it follows `resolve_repo_slug`'s precedent instead of becoming a fifth MCP
-  verb), running it strictly last is correctly reasoned *and* tested, FD4's `required_status_checks`
-  trap is avoided **and** named in its own test, and `private=True` → skip-outright is the right
-  call on BL-16 grounds. No design objection.
-- **8 findings at `high` effort. Three of them fire on Task 4's first live call** — see below.
-- Ruleset preflight: healthy (4 rule types, all 8 required checks on `main`).
+## Just done (this session — Sonnet, S1–S3 landed on top of `75e8d42`)
+- **S1 fixed** — `tests/tools/test_repo_io.py::test_create_ruleset_pull_request_rule_declares_full_parameters`
+  now asserts the full `pull_request` rule `parameters` dict, not just rule *type* strings.
+- **S2 fixed** — `test_create_ruleset_body_carries_the_required_name_field` asserts `body["name"]` under both
+  the default and an explicit override. Both `_FakeRepoIO.create_ruleset` fakes
+  (`tests/flows/bootstrap/test_flow.py`, `tests/flows/bootstrap/test_integration.py`) now record `name` in
+  their call tuples instead of silently discarding it, closing the flow-level assertion gap too.
+- **S3 fixed** — `CLAUDE.md:99` now says `repo_io` is five verbs (adds `create_ruleset`, notes it's
+  orchestrator-only, never an MCP verb); `CLAUDE.md:107` and `.ai/context/modules.md:65` now describe the
+  full bootstrap chain through `create_ruleset`, `private=False` default, and the `RULESET_FAILED` /
+  `ruleset_installed` result shape.
+- **565/565 tests pass** (563 + 2 new), lint clean, format clean. S4–S9 were left open (not required to
+  unblock the third review; see `.ai/state.json` → `pointers.open_findings` if picked up later).
 
-## Next — fix R1–R3 on `sprint/36-bl21-ruleset` (**Sonnet/Coder**)
-1. **R1 — the `pull_request` rule body is probably incomplete** (`tools/repo_io/github.py:210`). It
-   ships only `required_approving_review_count`; GitHub's schema also wants
-   `dismiss_stale_reviews_on_push`, `require_code_owner_review`, `require_last_push_approval`,
-   `required_review_thread_resolution`. loop-engine's *own* live ruleset round-trips all seven. A
-   partial body likely **422s** — and it would do so *after* the repo is created and pushed.
-2. **R2 — a failed `create_ruleset` loses the `RepoRef`** (`flows/bootstrap/flow.py:141`).
-   `run_bootstrap` propagates and never returns a `BootstrapResult`, so the caller is left with a
-   real, public, already-pushed repo and **no slug to tear it down by** — FD11's teardown discipline
-   has nothing to consume. Catch it and return `ruleset_installed=False` with a distinct status, or
-   attach the `RepoRef` to the raised error.
-3. **R3 — the new `input=input_data` plumbing is never exercised** (`tools/repo_io/github.py:52`).
-   Every test patches `_run_gh` *itself*, so a dropped/misspelled `input=` would ship **green**. Add
-   one test that patches `subprocess.run` and asserts `kwargs["input"]` carries the body. R1 and R3
-   compound: an unverified body sent through an unverified channel.
+## Next — push, then a THIRD fresh Opus review
+**Model: Opus/Architect, fresh session.** Push `sprint/36-bl21-ruleset`, then `/resume` → `/code-review` →
+post against the **new head** with `gh pr review 73 --comment`. **Sonnet must not self-review.** If the
+third review is clean, the human merge is next; if it finds anything, land it same as this round.
 
-**Optional, same pass or filed:** **R4** — FD3's public-and-protected invariant lives *only* in
-`flows/bootstrap`; `repo_io.create_repository` **and** the MCP `github_server.create_repository`
-verb still default `private=True` and silently make an unprotected repo. **R5** — `CLAUDE.md:99`
-(four-verb `repo_io`), `CLAUDE.md:107` (chain still ends at `create_branch`), and
-`.ai/context/modules.md:65` (`private=True`, pre-ruleset chain/result) are **stale**. **R6** —
-`test_flow.py:105`'s `len(calls) - 2` is brittle positional coupling; `test_flow.py:34`'s fakes drop
-the `name` arg, so nothing pins the ruleset name.
-
-## Then
-4. **Pushing the fix turns `architect-review` RED again** — by design; it binds the review to the
-   head SHA. So: fresh **Opus** session → `/resume` → `/code-review` → post against the **new** head.
-   **Sonnet must not self-review.** Then merge #73.
-5. **Then Tasks 4–7** — the sprint's real payload. **Real, irreversible GitHub side effects** and
-   **real LLM spend** ($5.00 budget for Task 6). Re-read FD1–FD11 first, especially **FD11**
-   (explicit `owner/repo` on every destructive call) and **FD9** (prove the ruleset *rejects* a
-   push — observed, not inferred from its existence).
+**S4–S9 are still open and undone** (deliberately deferred — not blocking): `ruleset_installed` doesn't carry
+the discarded ruleset id (S4); the bare `except Exception` in `flow.py` can swallow a successful create's
+response parse and report `RULESET_FAILED` on a protected repo (S5); `RULESET_FAILED` carries no 403-vs-422
+error detail (S6); `branches=[]` is unguarded (S7); `create_repository` still defaults `private=True` in
+`repo_io` and the MCP verb even though `flows/bootstrap` overrides it to `False` (S8, = R4); a brittle
+positional assert in `test_flow.py` was never deleted now that a position-independent test covers it (S9, =
+R6 first half). Full text in `.ai/state.json` → `pointers.open_findings`.
 
 ## Gotchas worth remembering
-- **A check rollup can show a stale `FAILURE` *and* a fresh `SUCCESS` for the same check.** Seen
-  twice this sprint (`pr-title`, `architect-review`). **The latest run is what counts.**
-- **`gh pr view` serves a stale `mergeStateStatus`.** `BLOCKED`/`UNKNOWN` with *nothing failing* is
-  GitHub lag — **the checks are the truth.** Do not close+reopen to "fix" it.
-- **PR title regex has no room for commas in the scope** — `[a-z0-9._/-]+` only. Pick **one**
-  boundary-derived scope.
-- **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** A signing **`Timeout` means
-  answer the host pinentry prompt** and retry the commit.
+- **A check rollup shows BOTH the stale `FAILURE` and the fresh `SUCCESS` for one check name.** Seen
+  repeatedly this sprint (`pr-title`, `architect-review`; `FAILURE`@21:07, `SUCCESS`@21:46). **The latest run is what counts.**
+- **`gh pr view` serves a stale `mergeStateStatus`.** `BLOCKED`/`UNKNOWN` with *nothing failing* is GitHub lag — wait.
+  **The checks are the truth. Do not close+reopen to "fix" it.**
+- **A `CONFLICTING` PR runs ZERO CI** — an empty check rollup on #73 is not "all green", it is "nothing ran".
+  Resolve the conflict (merge `main` INTO the branch) and let CI actually run before reading it.
+- **PR title regex has no room for commas in the scope** — `[a-z0-9._/-]+` only. Pick **one** boundary-derived scope.
+- **⚠️ The PAT carries `administration=write` on the org — it can DELETE ANY REPO, `loop-engine` included.**
+  Never point sprint 36's flows at `loop-engine`; hard-code the scratch repo name and read it back before every
+  destructive call (FD11). `gh repo delete` takes no explicit target and resolves from the CWD — that is finding
+  R8 with an irreversible verb on the other end.
+- **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** Cursor owns the same agent socket; the script
+  breaks signing and the key *appears* to vanish (`No secret key`). Recovery: reload the window. A signing
+  **`Timeout` means answer the host pinentry prompt** and retry the commit.
 - **Rebase a stale branch by merging `main` INTO it** — force-pushing a pushed branch is forbidden.
 - **`.ai/state.json` is gitignored** — **`next-steps.md` is what travels.**
 
@@ -77,8 +67,8 @@ the `name` arg, so nothing pins the ruleset name.
 - **[BL-2] (Slack bot control plane) gets its planning pass immediately after sprint 36.**
 
 ## Pointers
-- [`sprints/36_live_factory_verification/sprint_plan.md`](../sprints/36_live_factory_verification/sprint_plan.md) — **the plan. FD1–FD11 locked.**
-- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — **§5/§7/§8 are Tasks 4–6's protocols**, the register of record. Task 7 retires them (**without renumbering**).
-- [`docs/backlog.md`](../docs/backlog.md) — open: BL-1..BL-5, BL-15, BL-16, BL-18, BL-20, **BL-21 (Task 7 closes it)**, BL-22..BL-27. Resolved: BL-13, BL-17. Declined: BL-19.
-- **PR #73** (`sprint/36-bl21-ruleset` → `main`, head `684e03d`) — reviewed, green, **hold the merge**.
-- **PR #74** (`sprint/36-tasks2-3-handoff` → `main`) — docs-only, carries this cursor.
+- [`sprints/36_live_factory_verification/sprint_plan.md`](../sprints/36_live_factory_verification/sprint_plan.md) — **the plan. FD1–FD11 locked.** Tasks 4–7 (the live protocols + teardown) are untouched.
+- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — **§5/§7/§8 are this sprint's protocols** and the register of record. Task 7 retires them (**without renumbering**).
+- [`docs/backlog.md`](../docs/backlog.md) — open: BL-1..BL-5, BL-15, BL-16, BL-18, BL-20, **BL-21 (this sprint closes it)**, BL-22..BL-27. Resolved: BL-13, BL-17. Declined: BL-19.
+- **PR #73** (`sprint/36-bl21-ruleset` → `main`) — S1–S3 landed; **awaiting the third review round against the new head** — hold the merge.
+- Ruleset on loop-engine's own `main` healthy 2026-07-14: 4 rule types, 8 required checks, targeting exactly `refs/heads/main`.
