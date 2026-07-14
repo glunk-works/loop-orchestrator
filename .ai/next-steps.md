@@ -5,88 +5,60 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 copy them. Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Sprint `35_migration_merge`, PR #57 — ninth round done: F35–F40 closed, green gate
-passed.** Next session is **Opus/Architect**: fresh-session `/code-review` #4.
+**THE MIGRATION IS ON `main`.** PR #58 merged as merge commit **`d2135e7`** — two parents, 113
+commits preserved, **not squashed**. `main`'s tree is `4aad78e`, byte-for-byte the tree the Task 3
+preflight predicted. The two-branch era is over: cut sprint branches from **`main`**, base PRs on
+**`main`**. Sprint `35_migration_merge` — **Task 6 (planning) is all that's left.**
 
-## Just done (Sonnet/Coder session, 2026-07-13)
-Ninth round on PR #57: closed **F35–F40** from the third Opus review (posted at head
-`a4527c0`, verdict REVISE), per the review's own instruction — F37 (the root cause) first,
-then F35 and F36 as one edit against the shared result, not two more parallel hand-mirrored
-edits.
-
-- **F37 (blocking, root cause)** — extracted the triplicated AST mode-resolution logic
-  (`mode_index = 0 if is_method else 1`, plus two copies of the write-capability check)
-  into a new shared `tests/tools/_ast_open.py`: `open_call_is_method()`, `mode_node()`,
-  `is_write_capable()`. Both `test_state_io_boundary.py` and `test_encoding_boundary.py`
-  now import it instead of carrying their own copies.
-- **F35 (blocking)** — `test_state_io_boundary.py`'s write-boundary guard now runs every
-  `.open()`-shaped call through the shared `open_call_is_method()` receiver classification
-  before resolving a mode, instead of treating any `.attr == "open"` as method-form Path.open
-  with mode at index 0. `gzip.open('out.gz', 'wt')` outside the allowed dirs is now correctly
-  flagged as a write regardless of what letters are in the filename; `gzip.open(..., 'rt')`
-  is correctly not flagged.
-- **F36 (blocking)** — `test_encoding_boundary.py`'s `_NON_PATH_OPEN_RECEIVERS` exclusion is
-  gone. `gzip`/`bz2`/`lzma`/`codecs`/`io` now route through the shared classifier as
-  index-1-mode receivers (same shape as builtin `open`), so an unencoded `gzip.open(p, 'wt')`
-  or `io.open('x', 'w')` is caught instead of silently escaping the guard. Only receivers with
-  no comparable mode/encoding concept at all (`os`, `shelve`, `dbm`, `webbrowser`, `tarfile`,
-  `zipfile`) stay out of scope.
-- **F38–F40 (non-blocking)** — `WRITE_OWNING_DIRS` renamed to `NEWLINE_PIN_SCAN_DIRS`
-  (it isn't a write-owning-modules list, it's the newline-pin scan set — `agent_state` isn't
-  file-write-owning per the module boundaries doc); dead `"open"` member dropped from
-  `DISALLOWED_WRITE_CALLS` (the receiver-classification branch intercepts every open-shaped
-  call, including bare-name `open`, before that set is ever consulted); the 79-line
-  changelog docstring in `test_encoding_boundary.py` compressed to the invariant plus the
-  non-obvious mode-resolution rules.
-
-Green gate ran clean: `hatch run lint`, `hatch run format`, `hatch run test` — **553
-passed**. Commit pending push — see Working tree below for the hash once pushed.
+## Just done (Opus/Architect session, 2026-07-14)
+- **Posted PR #58's `architect-review`** from a genuinely fresh session, bound to head `b669482`,
+  scoped per **FD7** as an *integration* review (does the merge produce the predicted workflow set;
+  is `ci.yml` post-sprint-33; do the four workflows co-exist) and **explicitly declining** to
+  re-review the 113 already-reviewed commits. Owner merged. **Task 4 done.**
+- **Task 5 done bar one step.** `allow_merge_commit` held across the merge, merge-commit button
+  used, then set back to **`false`** — repo is now squash-only, closing **BL-13** and BL-11's
+  "three strategies, one convention" gap. Retiring `feat/**` was **deferred by the owner → BL-17**.
+- **Unblocked all four Dependabot PRs (#50–53).** They were never conflicted (FD5 vindicated), but
+  were blocked by **two** structural faults: `GITLEAKS_LICENSE` lived in the org **Actions** secret
+  store while Dependabot-triggered runs can read only the org **Dependabot** store (owner fixed);
+  and Dependabot's default title `Bump X from A to B` fails the required `pr-title` check. Retitled
+  all four by hand — **all now `CLEAN`, 8/8**.
+- **PR #61** (docs: Task 5 close-out, BL-17/18/19) and **PR #62** (`dependabot.yml` Conventional
+  Commits prefix + a test that runs Dependabot's generated subject through `pr-title.yml`'s *own*
+  regex). Both **CLEAN**, both docs/CI-config only so `architect-review` is exempt.
 
 ## Next — Opus/Architect
-1. Fresh session, `/resume`, then `/code-review` PR #57 at the new head. Verify F35–F40
-   actually hold — don't trust the commit message. In particular: confirm the shared
-   `_ast_open.py` extraction didn't just move the F35/F36 bugs rather than fix them, and
-   spot-check a case the review didn't name (e.g. `bz2`/`lzma` routing, which mirrors `gzip`
-   but wasn't individually called out).
-2. Post via `gh pr review --comment` (never `--approve`).
-3. If REVISE again → hand back to Sonnet/Coder for a tenth round. If clean → tell the
-   human it's ready to merge (Claude never merges/force-pushes).
+**Task 6 (PLANNING, no code).** Two bodies of work the merge released:
+1. **Dependabot #50–53.** All green now, but all four are **major** jumps (`checkout` 4→7,
+   `upload-artifact` 4→7, `setup-python` 5→6, `gitleaks-action` 2→3). **Green CI is necessary and
+   not sufficient — read each changelog.** #50 is entangled with **BL-19**: if the gitleaks-CLI swap
+   is taken, #50 is retired by *deletion* rather than review. Decide BL-19 first, or defer it aloud.
+2. **`sprints/DEFERRED_VERIFICATION.md`'s five never-run checks** — give each a named, scheduled
+   home (recommended shape is in the sprint plan's Task 6). Record outcomes in `docs/backlog.md` +
+   this file, **not** a new file.
 
-## Notes only — do NOT fix without a fresh planning pass (→ backlog)
-- **F2, F4, F14, F17, F23, F28** — unchanged, still correctly deferred.
-- **F33 residue** — `append_memory` → `append_agent_memory` still does three full-file I/Os
-  per append on a monotonically growing ledger. The docstring answer was accepted; a future
-  `append_agent_memory` variant taking the already-read `existing` would remove the duplicate
-  read without losing the invariant. **Not for this PR.**
-- **Carried:** `architect-review` cannot distinguish "was reviewed" from "was approved" — a
-  REVISE turns it green. Filed, still open, harmless while a human merges.
+No HITL gate is open.
+
+## Gotchas worth remembering
+- **`gh pr view` serves stale `mergeStateStatus`.** `BLOCKED` with *nothing failing* is usually
+  GitHub not having recomputed — re-read via GraphQL before intervening (hit on #58 *and* #62; both
+  were actually `CLEAN`). Do **not** close+reopen to "fix" it.
+- **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** Cursor does its own GPG agent
+  forwarding and owns `~/.gnupg/S.gpg-agent`; the script fights it for the same path and breaks
+  signing (the key then appears to vanish: `No secret key`). A signing **`Timeout` means answer the
+  host pinentry prompt**, not repair the agent. Recovery: reload the Cursor window.
 
 ## Human actions
-- **DO NOT disable `allow_merge_commit`** before the migration merge (BL-13). Ordinary
-  sprint PRs (including #57) are **SQUASH** — the merge-commit button exists only for
-  the migration PR.
-- **Dependabot PRs #50–53 must NOT merge before the migration PR** (FD5) — four **major**
-  action bumps that rewrite the exact `ci.yml` `uses:` SHA lines the clean merge depends
-  on being identical. Real review in Task 6, after the merge.
-- **Carried:** delete `glunk-works/loop-engine-v3-scratch` (private, issues #1–#6); trim
-  the PAT's repo list.
+- **Merge #61 and #62** (squash — now the only option).
+- **Review #50–53 on their merits** (see Task 6). **BL-17:** retire `feat/**` — it still exists at
+  `b669482`, having survived the merge *by design* (FD6: the ruleset's `deletion` rule beat
+  `delete_branch_on_merge`).
+- **Carried:** delete `glunk-works/loop-engine-v3-scratch`; **trim the PAT** — it lacks
+  `actions:write` and any secrets scope (`gh run rerun` and secret reads both 403).
 
 ## Pointers
-- [`sprints/35_migration_merge/sprint_plan.md`](../sprints/35_migration_merge/sprint_plan.md) —
-  the approved plan. FD1–FD7 locked. **PR #55 approved the plan, not Tasks 3–5's execution.**
-- PR #57 — Tasks 1–2, ninth round done (F35–F40 closed), awaiting review #4.
-- [`docs/backlog.md`](../docs/backlog.md) — BL-11 resolved; **BL-13 open by design**.
-- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — every phase closed since
-  sprint 32.
-- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — five checks
-  never run. **FD4: none blocks the merge**, but Task 6 gives each a scheduled home.
-- Ruleset checked healthy 2026-07-13: 4 rule types, all 8 required checks on `main`.
-
-## Working tree
-- `sprint/35-tasks-1-2` carries Tasks 1–2 through the ninth-round commit (pending push),
-  PR #57 open against `feat/mcp-langgraph-migration`. **Live — still the branch to
-  fix/review/merge.**
-- `sprint/35-migration-merge` and `sprint/35-archive-34` remain **dead** (squash-merged as
-  #55/#56) — never push to either again.
-- `.ai/state.json` + `.ai/archive/` are git-ignored (local mirrors); `.ai/next-steps.md` is
-  tracked.
+- [`sprints/35_migration_merge/sprint_plan.md`](../sprints/35_migration_merge/sprint_plan.md) — FD1–FD7; only Task 6 remains.
+- [`docs/backlog.md`](../docs/backlog.md) — **BL-13 resolved**; BL-12/BL-14's topology pattern **closed by the merge**; **new: BL-17, BL-18, BL-19**; BL-15/BL-16 open.
+- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — every phase closed; the merge closes the topology question too.
+- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — the five never-run checks (Task 6 homes them).
+- Ruleset checked healthy 2026-07-14: 4 rule types, all 8 required checks on `main`.

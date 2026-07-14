@@ -66,23 +66,20 @@ without it. Claude commits and pushes freely on a sprint branch, opens the PR, a
   may be any branch that exists on the remote — it does not have to be the default —
   but `main` is the one this repo uses.
 
-  > **Historical note — the `feat/mcp-langgraph-migration` era (through sprint 35).**
+  > **Historical note — the `feat/mcp-langgraph-migration` era (sprints 26–35, now over).**
   > While the MCP/LangGraph migration was in flight, `main` was deliberately left
   > untouched: every sprint branch was cut from, and every sprint PR based on,
-  > `feat/mcp-langgraph-migration` instead, keeping ~109 commits of in-progress
-  > migration work off the default branch until it was whole. Sprint 35's Task 5 will
-  > land that branch on `main` as **one deliberate merge commit** — never squashed,
-  > since squashing would collapse the entire migration's history into a single
-  > commit — the **one-time exception** to this repo's normal squash-merge
-  > convention (`allow_merge_commit` stays enabled only until that PR merges, then
-  > is turned back off — see BL-13). `feat/mcp-langgraph-migration` is retired the
-  > same day. If you find a merge commit in `main`'s history, that is why.
-  >
-  > **Window note (as of sprint 35, Tasks 1–2 in revision): Task 5 has not run yet.**
-  > `main` does not contain the migration yet, and `sprint/35-tasks-1-2`/PR #57 are
-  > still cut from and based on `feat/mcp-langgraph-migration`, not `main` — the
-  > "cut from `main`" / "base is `main`" rules above take effect only once Task 5
-  > executes. Remove this window note then; the historical note above it stays.
+  > `feat/mcp-langgraph-migration` instead, keeping 113 commits of in-progress
+  > migration work off the default branch until it was whole. Sprint 35's Task 5
+  > landed that branch on `main` as **one deliberate merge commit** (PR #58, merge
+  > commit `d2135e7`, 2026-07-14) — never squashed, since squashing would have
+  > collapsed the entire migration's history into a single commit. That was the
+  > **one-time exception** to this repo's squash-merge convention, and it is spent:
+  > `allow_merge_commit` was turned back off immediately afterwards (BL-13 closed),
+  > so the merge-commit button no longer exists on any PR. **If you find a merge
+  > commit in `main`'s history, that is why — and there should be exactly one.**
+  > The rules above ("cut from `main`", "base is `main`") are now simply true, with
+  > no window or exception attached.
 
 - **CI runs on the PR.** `.github/workflows/ci.yml` triggers on `pull_request:` with
   no branch filter, and on `push:` to `main` and `feat/**` (the latter is what let CI

@@ -611,9 +611,15 @@ instead of a weakening going unnoticed).
 now, remember to re-enable-then-disable around the migration merge) because it has no
 "remember to do X later" step to forget.
 
-**Status:** open — human settings action, not resolved by this sprint.
-`sprints/34_ci_supply_chain_hardening/sprint_plan.md`'s human-actions list item 2 is corrected in
-place to reflect this.
+**Status: resolved 2026-07-14 (sprint 35, Task 5).** The plan held. `allow_merge_commit` stayed
+enabled across the migration merge — PR #58 landed on `main` as merge commit `d2135e7`, two
+parents, 113 commits of history preserved — and was set to `false` immediately afterwards.
+Verified live post-merge: `allow_merge_commit: false`, `allow_rebase_merge: false`,
+`allow_squash_merge: true`. That closes both this item and the "three merge strategies, one
+convention" gap BL-11 left open: the repo is now squash-only, and the one-time exception is spent
+rather than standing. The deferral was the right call precisely because it had no
+"remember to re-enable X later" step to forget — the setting was never wrong at any point in the
+window.
 
 ---
 
@@ -643,10 +649,257 @@ narrow-scope discipline the original Task 1 used. Also added the `github-actions
 `main`'s `dependabot.yml` verbatim. CI on that PR is the live proof the SHAs resolve under
 `main`'s own trigger config, not just the migration branch's.
 
-**Not resolved by this:** the underlying branch-topology gap (config living on
-`feat/mcp-langgraph-migration` doesn't take effect until it reaches `main`) is structural, not a
-one-time bug — BL-12 and BL-14 are two instances of the same pattern, and a third could surface
-the same way for any future file that needs to live on the default branch to function
-(Dependabot config, scheduled workflows per FD3, branch-protection-adjacent settings). No
-general fix is proposed here; each instance has been backported narrowly as found. Worth
-revisiting if a fourth instance turns up.
+**The underlying pattern — closed 2026-07-14 by the migration merge (sprint 35, Task 5).** The
+branch-topology gap behind this (config living on `feat/mcp-langgraph-migration` doesn't take
+effect until it reaches `main`) was structural, not a one-time bug: BL-12, BL-13 and BL-14 are
+three instances of the same shape, all found in a single week, and each was backported narrowly
+as found. **The generator is now gone.** PR #58 merged the migration into `main` (merge commit
+`d2135e7`), and `feat/mcp-langgraph-migration` is retired — there is no longer a second
+long-lived branch for a default-branch-only control (Dependabot config, scheduled workflows,
+branch-protection-adjacent settings) to sit inert on. Development happens on `main`, so a control
+committed to the branch you are working on **is** the control that runs.
+
+Retained as a live lesson, because the class outlives this instance: **a control that only
+functions on the default branch is inert everywhere else, and nothing tells you.** If a
+long-lived branch is ever reintroduced, this failure mode returns with it — and BL-16 is its
+sibling (a control that is *present* but *doesn't work*, with every alarm still green).
+
+---
+
+### BL-15 — The AST write/encoding guards classify `open()` receivers by name, so an import alias defeats them
+*(added 2026-07-13, found during the fourth Opus HITL review of PR #57, sprint 35 — filed as
+findings F41/F42, both non-blocking, and merged unfixed by design)*
+
+**Why:** `tests/tools/_ast_open.py` is the shared classifier behind two of the repo's
+**enforced module boundaries** — the write-boundary guard (`test_state_io_boundary.py`, which
+asserts only `state_io`/`scaffold` write files) and the encoding/newline guard
+(`test_encoding_boundary.py`). It decides where an `open()`-shaped call's mode argument lives by
+matching the **receiver's bare module name** against two hardcoded sets. Everything it doesn't
+recognize falls through to "method-form `Path.open`, mode at index 0."
+
+That default is right for the common case (`p.open('w')`) and wrong in a way that silently
+reintroduces the bug the last three review rounds were spent closing.
+
+**F41 — an import alias reverts the guard to the F35 failure mode.** With `import gzip as gz`,
+the receiver `gz` is in neither set, so it's treated as a `Path` and the mode resolves to
+`args[0]` — the *filename*. Write-capability is then decided by which letters happen to appear in
+the path string. Verified by driving the guards directly:
+
+- `gz.open('out.gz', 'wt')` → **write MISSED** by the write-boundary guard (`"out.gz"` contains no
+  `w`/`a`/`x`/`+`).
+- `gz.open('data.gz', 'rt')` → a read **FALSE-POSITIVED** as a write (the `a` in `"data"`).
+- `from gzip import open as gzopen` → classified `None`, skipped by **both** guards entirely.
+
+**Not live today** — `src/` contains no aliased or `from`-imports of the five index-1 receivers
+(checked). This is a latent weakness in a defense-in-depth control, not a shipped bug.
+
+**The pattern is the actual finding.** F30 → F35 → F41 are the same defect wearing different
+hats, and it keeps returning because each round's fix *enumerated another name into a set*
+rather than removing the assumption underneath. A name-matching classifier cannot be made
+correct by adding names.
+
+**Shape:** bind imports instead of guessing. Both guards already parse the whole `ast.Module`, so
+walk `ast.Import`/`ast.ImportFrom` first to build an alias → real-module map and pass it into the
+classifier. That closes the alias case *and* the `from`-import case together, and is
+name-set-independent — the fix stops being a list that needs maintaining.
+
+**F42 — `gzip`/`bz2`/`lzma` default to binary, not text.** `_ast_open.py` describes its index-1
+receivers as "the same call shape as the builtin `open()`". True of the mode *position*; false of
+the mode *default*. Builtin `open(p)` defaults to text `'r'`, but `gzip.open(p)` / `bz2.open(p)` /
+`lzma.open(p)` default to `'rb'`. So a bare `gzip.open('blob.gz')` — a legitimate binary read that
+**rejects** `encoding=` with a `TypeError` — is flagged by the encoding guard as an unencoded text
+open, and the fix the guard demands would crash at runtime. Only `codecs` and `io` genuinely share
+the builtin's text default.
+
+---
+
+### BL-16 — Every CI gate is verified to be *required*, never to be *functional* — a gate can fail open and all four alarms stay green
+*(added 2026-07-14, found while driving PR #58 (the migration merge) to green, sprint 35. The
+specific bug is FIXED — PRs #59/#60 — but the reason it went undetected is not, and that is
+what this item is for.)*
+
+**Why:** `architect-review` — a **required** check on `main`, and the gate this repo built
+precisely because a rule living only in prose gets skipped — spent an unknown number of sprints
+**exempting itself on large PRs**, and nothing in the repo could have told us.
+
+The mechanism was a shell pipeline (`gh api --paginate | grep -q '^src/'`): `grep -q` exits at
+its first match, closing the pipe; the still-paginating `gh` dies of SIGPIPE (141); `set -o
+pipefail` promotes 141 to the pipeline's status; and `if !` reads that failure as *"no `src/`
+changes"* and takes the exemption branch. Exit 0. Green check. On PR #58 it reported "No src/
+changes in this PR" over **66 changed files under `src/`**.
+
+**Three properties made this invisible, and all three generalize beyond this one bug:**
+
+1. **It failed *green*, not `skipped`.** BL-10 taught us `skipped` reads as satisfied; this is
+   worse. A green `architect-review` is *affirmative evidence* that a review happened. It
+   satisfies the `protected-integration-branches` required-check rule. There is no artifact
+   anywhere that distinguishes "the gate ran and found a review" from "the gate ran and excused
+   itself" — both are `exit 0`.
+2. **Severity was inverted with diff size.** On a small PR, `gh` finishes writing before `grep`
+   quits, so no SIGPIPE, and the gate works correctly — that is every sprint PR to date,
+   including #57. It only misfires once the file list is long enough to keep `gh` paginating. So
+   the gate **silently weakened as the diff grew** and was least trustworthy on the largest,
+   least-reviewable PRs. Testing it on ordinary PRs would never have found it.
+3. **`ruleset-drift.yml` watches the wrong thing.** It verifies the check is *required* — the
+   BL-11 concern. It cannot verify the check *works*. A gate that is required, always-green, and
+   structurally inert passes the drift check forever, and passes it *because* it is inert.
+
+**The pattern is the finding.** BL-11 asked "is this gate required?" and answered it. Nobody
+asked "does this gate fail closed?" The `architect-review` exemption branch is the sharpest case
+because its whole job is to decide whether enforcement applies — a malfunction of its guard
+condition is indistinguishable from a legitimate pass.
+
+**Shape (for a planning pass — do not fix piecemeal):**
+- **Negative fixtures.** Each gate should be exercised against an input it *must* reject. The
+  `src/`-detection deserves a test that feeds it a synthetic 200-file list and asserts it demands
+  a review — the structural test added in #59 pins the *shape* of the fix (no pipe into `grep -q`)
+  but still cannot observe the gate's runtime behavior.
+- **Fail closed, and make the exemption loud.** An early `exit 0` should have to *prove* its
+  precondition, not merely fail to disprove it: assert the file list is non-empty (a real PR
+  always changes ≥1 file), and echo the count and the branch taken, so an exemption is an
+  auditable statement rather than a silent default. (The #59 fix already gets part of this for
+  free: `changed=$(gh api …)` under `set -e` now aborts the step if `gh` fails, rather than
+  reinterpreting the failure as an answer.)
+- **Audit the other three workflows for the same construct** — the class, not the instance. This
+  is the F30→F35→F41 lesson from [BL-15] restated at the CI layer: fixing the instance and leaving
+  the assumption is how a defect comes back wearing a different hat.
+
+**Related:** [BL-11] (required-ness — necessary, and now demonstrably not sufficient), [BL-10]
+(`skipped` reads as satisfied), [BL-6] (a gate cannot tell *who* reviewed; this one could not
+tell *whether* it reviewed).
+
+Fails **loud** (a red test), not silent, which is the safe direction for a boundary guard — hence
+non-blocking. One-line fix: for `_INDEX1_MODE_RECEIVERS` minus `{codecs, io}`, treat a *missing*
+mode argument as binary rather than as the implicit text `"r"`.
+
+**Priority:** low-ish but not cosmetic. Neither defect can bite until someone adds a compression- or
+`codecs`-based call to `src/`, but the write-boundary guard is one of the controls `CLAUDE.md`
+advertises as "checked by static tests, not just convention" — and a guard defeatable by
+`import gzip as gz` is weaker than advertised. Fix F41 and F42 together; they're the same file and
+one of them is a one-liner.
+
+**Notes / where to look:** `tests/tools/_ast_open.py` (`open_call_is_method`, `_INDEX1_MODE_RECEIVERS`,
+`_NO_MODE_CONCEPT_RECEIVERS`), its two consumers `tests/tools/test_state_io_boundary.py` and
+`tests/tools/test_encoding_boundary.py`. Full review reasoning is on PR #57
+(`gh pr view 57 --comments`).
+
+---
+
+### BL-17 — Retire `feat/**`: drop it from the ruleset's targets, then delete the branch
+*(added 2026-07-14, sprint 35 Task 5 — deferred by the repo owner, who was away from a terminal
+when the migration merged; it is the one step of Task 5 left unexecuted)*
+
+**Why:** the migration merged (PR #58 → merge commit `d2135e7`), so
+`feat/mcp-langgraph-migration` has no remaining purpose: development returns to `main`, and per
+`.ai/context/workflow.md` sprint branches are now cut from — and based on — `main`. The branch
+still exists. It **survived the merge on purpose**, not by accident: the repo has
+`delete_branch_on_merge: true`, but the `protected-integration-branches` ruleset targets
+`refs/heads/feat/**` with a **`deletion`** rule, and the rule won (sprint 35, FD6). That collision
+was predicted and is benign — but it means the branch cannot simply be deleted, and retiring it is
+a deliberate two-step act rather than something the merge did for you.
+
+**Shape (ordered — the order is the whole item):**
+1. Remove `feat/**` from the `protected-integration-branches` ruleset's target list (ruleset id
+   `18847725`), leaving `refs/heads/main` targeted. This is correct on its own merits once no
+   `feat/**` branch exists — the ruleset should not claim to protect a namespace that is empty.
+2. Delete `feat/mcp-langgraph-migration` (currently at `b669482`, now an ancestor of `main` — so
+   nothing is lost; the merge commit's second parent preserves every one of the 113 commits).
+3. **Verify `main` is untouched afterwards** via the read-only
+   `gh api repos/glunk-works/loop-engine/rules/branches/main` — all **four** rule types
+   (`deletion`, `non_fast_forward`, `pull_request`, `required_status_checks`) and all **eight**
+   required checks (`lint`, `format-check`, `test`, `secrets-scan`, `dependency-audit`, `sbom`,
+   `pr-title`, `architect-review`) still present. Same endpoint `/resume` and `ruleset-drift.yml`
+   already use — **no new PAT scope** (BL-11/FD1).
+
+**The trap to avoid:** step 1 edits the very ruleset that makes all eight checks required on
+`main`. A careless edit that drops `refs/heads/main` from the targets, or trims the check list
+while trimming the branch list, **silently un-protects the default branch** — every check would
+still *run* and still *report*, and none would *block*. That is BL-11's exact failure shape, and
+it is why step 3 is not optional bookkeeping. `ruleset-drift.yml`'s daily cron is the backstop and
+**will** fail loudly on the next run if `main`'s protection is weakened — which is the drift check
+working, not breaking. Do not "fix" a red drift check by relaxing the check.
+
+**Not urgent, and safe to leave.** Nothing is broken while the branch lives: it is frozen, no CI is
+wasted on it (nothing will be pushed), and `ci.yml`'s `push: branches: [main, 'feat/**']` trigger
+simply matches nothing. The costs are cosmetic — a dead branch inviting someone to branch from it,
+and a vestigial `feat/**` in both the ruleset and `ci.yml`'s trigger list. Fold into the next
+sprint that touches CI config; drop the now-dead `'feat/**'` from `ci.yml`'s `push:` trigger in the
+same pass.
+
+**Blocked on:** nothing. It is a human settings action (ruleset edit + branch delete). Claude was
+deliberately not asked to perform it — see sprint 35's Task 5, which reserves the settings sequence
+for the repo owner.
+
+---
+
+### BL-18 — "No `if:`, so nothing can be `skipped`" is the wrong invariant: a failed `needs:` skips too
+*(added 2026-07-14, observed live while unblocking Dependabot PRs #50–53 in sprint 35)*
+
+**Why:** `CLAUDE.md` claimed — and `tests/test_ci_config.py` was read as pinning — that because no
+job in `ci.yml` carries an `if:`, **no job can ever report `skipped`**. That is false, and it was
+watched being false: with `secrets-scan` red on the Dependabot PRs, `sbom` (which `needs:
+secrets-scan`) reported **`skipped`**, and flipped to `success` the instant `secrets-scan` passed.
+No `if:` was involved. **A job whose `needs:` dependency fails is skipped by GitHub, full stop.**
+
+The claim and the mechanism don't line up. Removing every `if:` prevents a job being skipped **by a
+condition** — which is genuinely what BL-10 was about (a gate keyed on the wrong event reported
+`skipped`, satisfied `needs:`, and let an all-green checks page hide a suite that never ran). It
+does not, and cannot, prevent a skip caused by an upstream failure.
+
+**Why it isn't currently exploitable — and why that's not a reason to leave it:** a `needs:`-skip
+only happens *because* an upstream job failed, and that failure blocks the merge by itself. So the
+safety today comes from **the failing job**, not from the absence of `skipped`. The stated
+invariant is doing no work; the thing actually protecting `main` is something else. That is exactly
+the configuration in which a later, reasonable-looking change — reordering the chain, making a job
+non-required, adding `continue-on-error`, or splitting a job out from under `needs:` — quietly
+removes the real protection while the documented one still reads as intact. **BL-16's lesson
+verbatim:** the alarm is green because it is measuring the wrong thing.
+
+**Shape (not designed yet):**
+- Correct the claim wherever it is stated (done for `CLAUDE.md` in this sprint — say what the
+  absence of `if:` actually buys, and that a `needs:`-failure skip is possible and safe *because
+  the upstream failure blocks*).
+- Decide whether `tests/test_ci_config.py` should assert the real invariant rather than the proxy.
+  The honest property is closer to *"every required check either succeeds, or something red blocks
+  the merge"* — which a static test over `ci.yml` cannot fully express. Worth being explicit that
+  this is a limit of the static test, not something to fake.
+- Consider whether `skipped` satisfying a *required* check is a live risk for any job **not** behind
+  a `needs:` that would independently fail. Today every job in the chain is; a future job added
+  outside the chain would not be, and that is the case to watch for.
+
+**Related:** [BL-10] (the original — `skipped` reads as satisfied), [BL-16] (a gate verified
+*required*, never *functional*), [BL-11] (required-ness is necessary, not sufficient).
+
+**Notes / where to look:** `.github/workflows/ci.yml` (the `needs:` chain), `CLAUDE.md` (the
+corrected sentence), `tests/test_ci_config.py`. Live evidence: PRs #50–53 before the org Dependabot
+`GITLEAKS_LICENSE` secret was added — `sbom` = `skipped`, `secrets-scan` = `failure`.
+
+---
+
+### BL-19 — Option: drop `gitleaks-action` for the free gitleaks CLI binary
+*(added 2026-07-14, sprint 35 — an option, not a defect; nothing is broken)*
+
+**Not a finding.** `secrets-scan` works. The org **Dependabot** `GITLEAKS_LICENSE` secret has been
+added and all four Dependabot PRs pass. This item exists only so the trade-off is written down
+rather than rediscovered.
+
+**The trade-off:** `gitleaks/gitleaks-action` requires a **paid licence** for repositories under an
+organization (`[glunk-works] is an organization. License key is required.`). The gitleaks **CLI
+binary is free and MIT-licensed** and performs the same scan. Running the binary directly would:
+- remove a paid dependency from CI;
+- remove a third-party **action** from the supply chain (one fewer `uses:` to SHA-pin and trust —
+  note sprint 34 pinned every action precisely because a tag is a mutable pointer);
+- delete the two-secret-store trap entirely (GitHub keeps org **Actions** secrets and org
+  **Dependabot** secrets in separate stores, and Dependabot-triggered runs can read only the
+  latter — the cause of #50–53's red `secrets-scan`, and a trap that will otherwise recur for any
+  future secret CI depends on);
+- make **PR #50** (`gitleaks-action` 2→3, a major bump) moot by deletion rather than by changelog
+  review.
+
+**The case against (do not skip this):** it works today, it is SHA-pinned, the licence is already
+paid for and now correctly wired. Swapping it means writing and testing a new `secrets-scan` step —
+real work, including pinning the binary's version/checksum, which re-introduces a supply-chain
+decision of its own. `secrets-scan` is a **required** check on `main`, so a botched swap breaks
+every PR until fixed.
+
+**Blocked on:** a human decision. Sequence it with PR #50, which it would retire.
