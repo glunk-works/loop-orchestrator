@@ -611,9 +611,15 @@ instead of a weakening going unnoticed).
 now, remember to re-enable-then-disable around the migration merge) because it has no
 "remember to do X later" step to forget.
 
-**Status:** open — human settings action, not resolved by this sprint.
-`sprints/34_ci_supply_chain_hardening/sprint_plan.md`'s human-actions list item 2 is corrected in
-place to reflect this.
+**Status: resolved 2026-07-14 (sprint 35, Task 5).** The plan held. `allow_merge_commit` stayed
+enabled across the migration merge — PR #58 landed on `main` as merge commit `d2135e7`, two
+parents, 113 commits of history preserved — and was set to `false` immediately afterwards.
+Verified live post-merge: `allow_merge_commit: false`, `allow_rebase_merge: false`,
+`allow_squash_merge: true`. That closes both this item and the "three merge strategies, one
+convention" gap BL-11 left open: the repo is now squash-only, and the one-time exception is spent
+rather than standing. The deferral was the right call precisely because it had no
+"remember to re-enable X later" step to forget — the setting was never wrong at any point in the
+window.
 
 ---
 
@@ -643,13 +649,20 @@ narrow-scope discipline the original Task 1 used. Also added the `github-actions
 `main`'s `dependabot.yml` verbatim. CI on that PR is the live proof the SHAs resolve under
 `main`'s own trigger config, not just the migration branch's.
 
-**Not resolved by this:** the underlying branch-topology gap (config living on
-`feat/mcp-langgraph-migration` doesn't take effect until it reaches `main`) is structural, not a
-one-time bug — BL-12 and BL-14 are two instances of the same pattern, and a third could surface
-the same way for any future file that needs to live on the default branch to function
-(Dependabot config, scheduled workflows per FD3, branch-protection-adjacent settings). No
-general fix is proposed here; each instance has been backported narrowly as found. Worth
-revisiting if a fourth instance turns up.
+**The underlying pattern — closed 2026-07-14 by the migration merge (sprint 35, Task 5).** The
+branch-topology gap behind this (config living on `feat/mcp-langgraph-migration` doesn't take
+effect until it reaches `main`) was structural, not a one-time bug: BL-12, BL-13 and BL-14 are
+three instances of the same shape, all found in a single week, and each was backported narrowly
+as found. **The generator is now gone.** PR #58 merged the migration into `main` (merge commit
+`d2135e7`), and `feat/mcp-langgraph-migration` is retired — there is no longer a second
+long-lived branch for a default-branch-only control (Dependabot config, scheduled workflows,
+branch-protection-adjacent settings) to sit inert on. Development happens on `main`, so a control
+committed to the branch you are working on **is** the control that runs.
+
+Retained as a live lesson, because the class outlives this instance: **a control that only
+functions on the default branch is inert everywhere else, and nothing tells you.** If a
+long-lived branch is ever reintroduced, this failure mode returns with it — and BL-16 is its
+sibling (a control that is *present* but *doesn't work*, with every alarm still green).
 
 ---
 
@@ -769,3 +782,50 @@ one of them is a one-liner.
 `_NO_MODE_CONCEPT_RECEIVERS`), its two consumers `tests/tools/test_state_io_boundary.py` and
 `tests/tools/test_encoding_boundary.py`. Full review reasoning is on PR #57
 (`gh pr view 57 --comments`).
+
+---
+
+### BL-17 — Retire `feat/**`: drop it from the ruleset's targets, then delete the branch
+*(added 2026-07-14, sprint 35 Task 5 — deferred by the repo owner, who was away from a terminal
+when the migration merged; it is the one step of Task 5 left unexecuted)*
+
+**Why:** the migration merged (PR #58 → merge commit `d2135e7`), so
+`feat/mcp-langgraph-migration` has no remaining purpose: development returns to `main`, and per
+`.ai/context/workflow.md` sprint branches are now cut from — and based on — `main`. The branch
+still exists. It **survived the merge on purpose**, not by accident: the repo has
+`delete_branch_on_merge: true`, but the `protected-integration-branches` ruleset targets
+`refs/heads/feat/**` with a **`deletion`** rule, and the rule won (sprint 35, FD6). That collision
+was predicted and is benign — but it means the branch cannot simply be deleted, and retiring it is
+a deliberate two-step act rather than something the merge did for you.
+
+**Shape (ordered — the order is the whole item):**
+1. Remove `feat/**` from the `protected-integration-branches` ruleset's target list (ruleset id
+   `18847725`), leaving `refs/heads/main` targeted. This is correct on its own merits once no
+   `feat/**` branch exists — the ruleset should not claim to protect a namespace that is empty.
+2. Delete `feat/mcp-langgraph-migration` (currently at `b669482`, now an ancestor of `main` — so
+   nothing is lost; the merge commit's second parent preserves every one of the 113 commits).
+3. **Verify `main` is untouched afterwards** via the read-only
+   `gh api repos/glunk-works/loop-engine/rules/branches/main` — all **four** rule types
+   (`deletion`, `non_fast_forward`, `pull_request`, `required_status_checks`) and all **eight**
+   required checks (`lint`, `format-check`, `test`, `secrets-scan`, `dependency-audit`, `sbom`,
+   `pr-title`, `architect-review`) still present. Same endpoint `/resume` and `ruleset-drift.yml`
+   already use — **no new PAT scope** (BL-11/FD1).
+
+**The trap to avoid:** step 1 edits the very ruleset that makes all eight checks required on
+`main`. A careless edit that drops `refs/heads/main` from the targets, or trims the check list
+while trimming the branch list, **silently un-protects the default branch** — every check would
+still *run* and still *report*, and none would *block*. That is BL-11's exact failure shape, and
+it is why step 3 is not optional bookkeeping. `ruleset-drift.yml`'s daily cron is the backstop and
+**will** fail loudly on the next run if `main`'s protection is weakened — which is the drift check
+working, not breaking. Do not "fix" a red drift check by relaxing the check.
+
+**Not urgent, and safe to leave.** Nothing is broken while the branch lives: it is frozen, no CI is
+wasted on it (nothing will be pushed), and `ci.yml`'s `push: branches: [main, 'feat/**']` trigger
+simply matches nothing. The costs are cosmetic — a dead branch inviting someone to branch from it,
+and a vestigial `feat/**` in both the ruleset and `ci.yml`'s trigger list. Fold into the next
+sprint that touches CI config; drop the now-dead `'feat/**'` from `ci.yml`'s `push:` trigger in the
+same pass.
+
+**Blocked on:** nothing. It is a human settings action (ruleset edit + branch delete). Claude was
+deliberately not asked to perform it — see sprint 35's Task 5, which reserves the settings sequence
+for the repo owner.
