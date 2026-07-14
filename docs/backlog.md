@@ -1221,3 +1221,55 @@ opportunistically rather than standing the whole thing up twice.
 
 **Notes / where to look:** `sprints/DEFERRED_VERIFICATION.md` §6 (the full protocol),
 `src/loop_engine/trigger/` (`app.py`, `dispatch.py`), `tests/trigger/`.
+
+---
+
+### BL-25 — Should the backlog and defect register live in GitHub Issues rather than this file?
+*(added 2026-07-14, from repo owner — asked during sprint 36's planning pass)*
+
+**Why it's a real question.** Filing a backlog item currently costs a **full pull request**: seven
+required checks, including a **~380 s** test suite, to add markdown. BL-21, BL-22 and BL-23 each cost
+one (PRs #65, #67). Issues would make filing free, give every item real state (open/closed, labels,
+assignment), let a PR close an item by reference, and make the register **queryable** by the agent
+(`gh issue list`) instead of grepping a 1223-line markdown file. It would also **dogfood the product**,
+which already files GitHub issues as its human-escalation channel.
+
+> ### ⚠️ The governing constraint: this repo's issue tracker is NOT a free surface — the product writes to it
+> `tools/issue_io` files **runtime human-escalation issues** from live loop-engine runs. A dev backlog
+> in the same tracker shares a namespace with **machine-generated issues from a running engine**.
+>
+> That is not hypothetical. **Finding R8** (V3, 2026-07-12) was exactly this: escalation issues for
+> *managed* repos were filed against **`loop-engine` itself**, because `gh` derived its destination
+> from the ambient CWD. The three issues in this repo's tracker (**#16, #19, #21** — all closed) are
+> that bug's artifacts. R8 is fixed (`default_issue_filer` now names the repo explicitly), but the
+> coupling is structural: **the register of defects would live in a table a buggy run can write to.**
+> Labels can separate the namespaces — that is a deliberate choice to make, not a free win.
+
+**The counter-argument for keeping `docs/backlog.md`, and it is stronger than it looks:**
+- **The backlog is a cross-linked *argument*, not a ticket list.** `[BL-16]` is cited 4×, `[BL-10]`,
+  `[BL-11]` and `[BL-18]` 3× each. BL-23's entire payload is *"these four findings are the same defect
+  wearing different hats."* The value is in the linkage and the prose, not in the enumeration.
+- **It is versioned with the code.** When a sprint plan cites BL-21, `git show` reveals what BL-21 said
+  **at that commit**. Issues carry no per-commit snapshot, and the sprint plans lean on that property.
+- **Churn is low** — 19 commits over the file's whole life, ~1–2 per sprint. The merge-conflict pain is
+  real but rare, and already has a documented resolution (two branches appending = two additions).
+
+**The likely answer (not decided — this wants a planning pass):** the pain the owner is feeling is
+**real but misattributed**. "Every backlog item costs a full-CI PR" is **[BL-22]'s** problem, not the
+tracker's — fix what triggers the suite and filing becomes cheap **without splitting the register of
+record across two systems.** Two sources of truth is precisely the failure mode this repo keeps paying
+for. Where issues are *clearly* right is the place the factory ships nothing today: **generated repos**
+have no issue conventions at all, while the escalation ladder already terminates in a GitHub issue.
+
+**A caution for whoever picks this up**, recorded because it happened *while filing this item*: the
+first read of the tracker reported the three escalation issues as "still open, orphaned debris needing
+cleanup." They were **closed**, and there is **no** open issue on this repo. `gh issue list --state all`
+was run and its output described as if it were `--state open`. **Check the state field.** It is the same
+defect family as [BL-16]/[BL-18]/[BL-20] — an observation asserted rather than made.
+
+**Related:** [BL-22] (the cost that motivates this is actually its problem), [BL-16] (a check that
+verified the wrong property while reporting success), [BL-1] (an in-loop review stage would also need
+somewhere to file).
+
+**Notes / where to look:** `docs/backlog.md` (1223 lines), `src/loop_engine/tools/issue_io/`,
+`gh issue list --state all` on this repo (3 closed, 0 open), `docs/migration_roadmap.md` (finding R8).
