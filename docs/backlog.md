@@ -61,7 +61,16 @@ top-level orchestrator-level caller (sibling of `trigger/`/`flows/`) or an MCP
 server.
 
 ### BL-3 — Review the prompt-caching implementation (correctness + improvement)
-*(added 2026-07-10, from repo owner)*
+*(added 2026-07-10, from repo owner; **absorbed `DEFERRED_VERIFICATION.md` §1** in sprint 35 Task 6,
+2026-07-14, agreed with the repo owner)*
+
+> **§1 (caching + USD budget smoke) is now BL-3's evidence-gathering step, not a separate check.**
+> Both need the same scarce thing — a **real Anthropic key and real spend** — and BL-3 cannot
+> assess caching without live `Cache R` numbers, which is precisely what §1 produces. Running them
+> apart would mean paying for two key-bearing sessions to learn one thing. **Do §1's smoke first
+> *within* this item** (it is the measurement); the review below is the interpretation. If every
+> `Cache R` is 0, stop and find the invalidator — that finding *is* BL-3's headline, and no further
+> review is meaningful until it's resolved.
 
 A focused review of the Anthropic prompt-caching implementation (landed in
 `sprints/11_prompt_caching/`, primarily in `tools/llm/client.py` with rate
@@ -966,3 +975,38 @@ future secret the workflow depends on.
 line). Live evidence: run `29338705025` (actor `dependabot[bot]`, `GITLEAKS_LICENSE:` empty, red) vs.
 run `29340103433` after the rename (actor `dependabot[bot]`, `GITLEAKS_LICENSE: ***`, green) vs. the
 misleading `#51` run (actor `Seuss27`, green, proving nothing).
+
+---
+
+### BL-21 — `DEFERRED_VERIFICATION.md` §6: the trigger surface has never received a real webhook
+*(added 2026-07-14, sprint 35 Task 6 — the home agreed with the repo owner for §6; **lowest
+priority of the five**, and deliberately so)*
+
+**Why:** sprint 23's coverage is entirely hermetic. `TestClient` deliveries against
+`create_app(dispatcher=fake)` prove HMAC-verify → parse → dispatch end to end, but
+`InProcessDispatcher` is only ever exercised with `runner.run_new` patched — **no real loop ever
+runs, and no port is ever bound.** What has never happened: a real GitHub delivery reaching a real
+listening server and driving a real default-loop run. The full protocol (stand up `uvicorn`,
+register a real webhook on a scratch repo, deliver a signed `agent-action` label event and an
+`/agent-run` comment, confirm the redelivery dedupe, confirm 23a's malformed-body path returns
+`400` and not `500`) is written out in `sprints/DEFERRED_VERIFICATION.md` §6 — **not duplicated
+here**, per that file's role as the register of record.
+
+**Why it is a backlog item and not a sprint:** it needs a **tunnel and a publicly reachable
+address** — neither the devcontainer nor the dev host has one — which is real setup for a surface
+**nothing currently depends on**. `trigger/` is a live entrypoint, but no scheduled work routes
+through it; the factory flows (`flows/maintenance`, `flows/bootstrap`) do not. So the check is
+genuinely owed and genuinely not urgent, and saying so plainly is better than parking it in a
+sprint that then slips.
+
+**Do not read "lowest priority" as "optional."** The HMAC secret is an inbound credential
+(`LOOP_ENGINE_WEBHOOK_SECRET`, an env var — a distinct credential class from the keyring-only
+Anthropic key), and an unverified auth path on a public-facing surface is exactly the sort of thing
+that is fine until the day it is catastrophic. It stays on this list until it is run.
+
+**Sequence it with:** anything that gives the project a routable host — the same hosting question
+that Sprint 36's daemon-bearing session raises. If that host ends up reachable, fold §6 in
+opportunistically rather than standing the whole thing up twice.
+
+**Notes / where to look:** `sprints/DEFERRED_VERIFICATION.md` §6 (the full protocol),
+`src/loop_engine/trigger/` (`app.py`, `dispatch.py`), `tests/trigger/`.
