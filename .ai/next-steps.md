@@ -5,76 +5,80 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 copy them. Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Sprint `36_live_factory_verification` — `planned`, Task 1 DONE, code not started.**
-Plan: [`sprints/36_live_factory_verification/sprint_plan.md`](../sprints/36_live_factory_verification/sprint_plan.md) — **FD1–FD11 locked; do not re-open them.**
-**Next session: Sonnet/Coder, Tasks 2–3.**
+**Sprint `36_live_factory_verification` — `implementing` (review rework). Tasks 1–3 done, PR #73
+reviewed. `architect-review` is GREEN — but the review recommends *against* merging as-is.**
+[`sprints/36_live_factory_verification/sprint_plan.md`](../sprints/36_live_factory_verification/sprint_plan.md) —
+**FD1–FD11 locked; do not re-open them.**
 
-## Just done (Opus/Architect planning session, 2026-07-14)
-- **Wrote the sprint 36 plan.** Fix **BL-21** first, *then* verify the factory live —
-  `DEFERRED_VERIFICATION.md` **§5** (github verbs) → **§8** (bootstrap) → **§7** (maintenance),
-  chaining **one disposable public scratch repo**: §8 births it, §7 maintains it.
-- **Task 1 (the PAT grant) is DONE and verified.** `administration=write` is live —
-  `POST orgs/glunk-works/repos` and `POST repos/{o}/{r}/rulesets` now return **422** (body rejected)
-  instead of **403** (permission rejected). **Nothing is blocked.**
-- **Filed BL-25, BL-26, BL-27; scheduled BL-2** (PR #71).
+> **A green `architect-review` means the review *happened*, not that it *approved*.** Do not
+> merge PR #73 until R1–R3 below land. That distinction is the whole point of the gate.
 
-## Next
-1. **Merge PR #70** (this plan — 8/8 checks green) and **PR #71** (backlog). Both docs-only.
-2. **Fresh Sonnet session → Tasks 2–3** — the sprint's *only* code:
-   `repo_io.create_ruleset` (a fifth **`repo_io`** verb, **NOT** a fifth MCP verb — FD6), wired into
-   `flows/bootstrap` as its **last** step (FD7), and `BootstrapRequest.private` flipped to **`False`** (FD3).
-   That PR touches `src/` ⇒ it needs a **fresh-session** `architect-review` (so: a third session after Sonnet's).
-3. **Then Opus** for Tasks 4–7 — the live protocols and teardown. **Real side effects on GitHub, real
-   LLM spend ($5.00 budget).** This is the payload.
+## Just done (Opus/Architect session, 2026-07-14)
+- **Posted the fresh-session HITL review on PR #73** against head `684e03d`
+  (`gh pr review --comment`, never `--approve`). The gate flipped green on the
+  `pull_request_review: submitted` trigger.
+- **Verdict: the design is sound.** `create_ruleset` is in the right module, orchestrator-only is
+  the right posture (it follows `resolve_repo_slug`'s precedent instead of becoming a fifth MCP
+  verb), running it strictly last is correctly reasoned *and* tested, FD4's `required_status_checks`
+  trap is avoided **and** named in its own test, and `private=True` → skip-outright is the right
+  call on BL-16 grounds. No design objection.
+- **8 findings at `high` effort. Three of them fire on Task 4's first live call** — see below.
+- Ruleset preflight: healthy (4 rule types, all 8 required checks on `main`).
 
-## The four things that will bite the next session
-> **FD3 — bootstrap must ship PUBLIC repos.** Repo-level rulesets are free on **public** repos only;
-> under the org's Free plan a **private** repo needs GitHub Team — *the same 403 that killed the
-> org-level fix*. `BootstrapRequest.private` defaults to `True` today, so the BL-21 fix **cannot work**
-> until it flips. **Protection is the invariant; privacy is the opt-in that knowingly forfeits it.**
+## Next — fix R1–R3 on `sprint/36-bl21-ruleset` (**Sonnet/Coder**)
+1. **R1 — the `pull_request` rule body is probably incomplete** (`tools/repo_io/github.py:210`). It
+   ships only `required_approving_review_count`; GitHub's schema also wants
+   `dismiss_stale_reviews_on_push`, `require_code_owner_review`, `require_last_push_approval`,
+   `required_review_thread_resolution`. loop-engine's *own* live ruleset round-trips all seven. A
+   partial body likely **422s** — and it would do so *after* the repo is created and pushed.
+2. **R2 — a failed `create_ruleset` loses the `RepoRef`** (`flows/bootstrap/flow.py:141`).
+   `run_bootstrap` propagates and never returns a `BootstrapResult`, so the caller is left with a
+   real, public, already-pushed repo and **no slug to tear it down by** — FD11's teardown discipline
+   has nothing to consume. Catch it and return `ruleset_installed=False` with a distinct status, or
+   attach the `RepoRef` to the raised error.
+3. **R3 — the new `input=input_data` plumbing is never exercised** (`tools/repo_io/github.py:52`).
+   Every test patches `_run_gh` *itself*, so a dropped/misspelled `input=` would ship **green**. Add
+   one test that patches `subprocess.run` and asserts `kwargs["input"]` carries the body. R1 and R3
+   compound: an unverified body sent through an unverified channel.
 
-> **FD4 — the shipped ruleset requires ZERO status checks.** `tools/scaffold/templates/` contains **no
-> `.github/workflows/` at all**. Any required check would be permanently pending and the repo could
-> **never merge anything**. **Do not template loop-engine's eight checks.** (Adding CI to the scaffold
-> is deliberately out of scope — it is **[BL-26]**.)
+**Optional, same pass or filed:** **R4** — FD3's public-and-protected invariant lives *only* in
+`flows/bootstrap`; `repo_io.create_repository` **and** the MCP `github_server.create_repository`
+verb still default `private=True` and silently make an unprotected repo. **R5** — `CLAUDE.md:99`
+(four-verb `repo_io`), `CLAUDE.md:107` (chain still ends at `create_branch`), and
+`.ai/context/modules.md:65` (`private=True`, pre-ruleset chain/result) are **stale**. **R6** —
+`test_flow.py:105`'s `len(calls) - 2` is brittle positional coupling; `test_flow.py:34`'s fakes drop
+the `name` arg, so nothing pins the ruleset name.
 
-> **FD9 — a ruleset that EXISTS is not a ruleset that BLOCKS.** Task 5's deliverable is an **observed
-> rejection** of a deliberate direct push to `main`, not the ruleset's presence in an API response.
-> BL-11 / BL-16 / BL-18 / BL-20 are all *a check that verified the wrong property while reporting
-> success*. Do not add a fifth.
-
-> **FD11 — the teardown is the dangerous call, and we have ALREADY made this mistake.** Sprint 36 is
-> **not** the factory's first live GitHub run — **V3 was**, and its finding **R8** was escalation issues
-> filed on **`loop-engine` itself** because `gh` inherited its destination from the ambient CWD. Every
-> `repo_io` verb takes an explicit target now — **but `gh repo delete` does not, and Task 7 uses it.**
-> The token carries `administration=write` across the org. **Explicit `owner/repo` on every destructive
-> call, asserted against the scratch name immediately before firing. Never `cd` and delete.**
-
-## Open, outside the sprint
-- **[BL-27] needs one lookup**: `var.github_organization` in `global-bootstrap` has **no default**, so
-  its applied value is unreadable from source — and the two candidates give opposite answers (`Seuss27`
-  ⇒ no dangling roles but **no org repo can deploy**; `glunk-works` ⇒ **three IAM roles trust repos that
-  do not exist**). Cheap to settle against the live tofu backend; easy to forget once 36 gets busy.
-- **At Task 7, decide deliberately whether to REVOKE `administration=write`.** The sprint needs it for
-  one window; it can delete any repo in the org.
-- **[BL-2] (Slack bot control plane) gets its planning pass immediately after sprint 36** (owner's call).
+## Then
+4. **Pushing the fix turns `architect-review` RED again** — by design; it binds the review to the
+   head SHA. So: fresh **Opus** session → `/resume` → `/code-review` → post against the **new** head.
+   **Sonnet must not self-review.** Then merge #73.
+5. **Then Tasks 4–7** — the sprint's real payload. **Real, irreversible GitHub side effects** and
+   **real LLM spend** ($5.00 budget for Task 6). Re-read FD1–FD11 first, especially **FD11**
+   (explicit `owner/repo` on every destructive call) and **FD9** (prove the ruleset *rejects* a
+   push — observed, not inferred from its existence).
 
 ## Gotchas worth remembering
+- **A check rollup can show a stale `FAILURE` *and* a fresh `SUCCESS` for the same check.** Seen
+  twice this sprint (`pr-title`, `architect-review`). **The latest run is what counts.**
 - **`gh pr view` serves a stale `mergeStateStatus`.** `BLOCKED`/`UNKNOWN` with *nothing failing* is
   GitHub lag — **the checks are the truth.** Do not close+reopen to "fix" it.
-- **A green on a Dependabot PR means nothing unless the run's actor is `dependabot[bot]`** (BL-20).
-  Refresh with **`gh run rerun`**.
-- **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** Cursor owns the same agent socket.
-  A signing **`Timeout` means answer the host pinentry prompt** and retry the commit.
+- **PR title regex has no room for commas in the scope** — `[a-z0-9._/-]+` only. Pick **one**
+  boundary-derived scope.
+- **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** A signing **`Timeout` means
+  answer the host pinentry prompt** and retry the commit.
 - **Rebase a stale branch by merging `main` INTO it** — force-pushing a pushed branch is forbidden.
-  Two branches appending to `docs/backlog.md` is **two additions, not a disagreement**: keep **both**.
-- Dead refs on the remote (squash-merged, never push): `sprint/34-bl14-dependabot-gap`,
-  `sprint/35-tasks-3-4`, `sprint/36-archive-35`.
-- **`.ai/state.json` is gitignored** — the machine cursor is local-only. **`next-steps.md` is what
-  travels.** If you pick this up on another host, this file is all you get.
+- **`.ai/state.json` is gitignored** — **`next-steps.md` is what travels.**
+
+## Open, outside the sprint
+- **[BL-27] needs one lookup**: `var.github_organization` in `global-bootstrap` has **no default**.
+- **At Task 7, decide deliberately whether to REVOKE `administration=write`** (it can delete *any*
+  repo in the org, loop-engine included).
+- **[BL-2] (Slack bot control plane) gets its planning pass immediately after sprint 36.**
 
 ## Pointers
 - [`sprints/36_live_factory_verification/sprint_plan.md`](../sprints/36_live_factory_verification/sprint_plan.md) — **the plan. FD1–FD11 locked.**
-- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — **§5/§7/§8 are the protocols** and the register of record; the plan does **not** duplicate them. Task 7 retires them (**without renumbering**) and corrects the stale "daemon-bearing host / no `gh` auth" premise (**FD1** — this devcontainer *is* the host).
-- [`docs/backlog.md`](../docs/backlog.md) — open: BL-1..BL-5, BL-15, BL-16, BL-18, BL-20, **BL-21 (this sprint closes it)**, BL-22, BL-23, BL-24, **BL-25**, **BL-26**, **BL-27**. Resolved: BL-13, BL-17. Declined: BL-19.
-- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — **history, not a plan.**
+- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — **§5/§7/§8 are Tasks 4–6's protocols**, the register of record. Task 7 retires them (**without renumbering**).
+- [`docs/backlog.md`](../docs/backlog.md) — open: BL-1..BL-5, BL-15, BL-16, BL-18, BL-20, **BL-21 (Task 7 closes it)**, BL-22..BL-27. Resolved: BL-13, BL-17. Declined: BL-19.
+- **PR #73** (`sprint/36-bl21-ruleset` → `main`, head `684e03d`) — reviewed, green, **hold the merge**.
+- **PR #74** (`sprint/36-tasks2-3-handoff` → `main`) — docs-only, carries this cursor.
