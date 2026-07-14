@@ -698,6 +698,63 @@ the mode *default*. Builtin `open(p)` defaults to text `'r'`, but `gzip.open(p)`
 open, and the fix the guard demands would crash at runtime. Only `codecs` and `io` genuinely share
 the builtin's text default.
 
+---
+
+### BL-16 — Every CI gate is verified to be *required*, never to be *functional* — a gate can fail open and all four alarms stay green
+*(added 2026-07-14, found while driving PR #58 (the migration merge) to green, sprint 35. The
+specific bug is FIXED — PRs #59/#60 — but the reason it went undetected is not, and that is
+what this item is for.)*
+
+**Why:** `architect-review` — a **required** check on `main`, and the gate this repo built
+precisely because a rule living only in prose gets skipped — spent an unknown number of sprints
+**exempting itself on large PRs**, and nothing in the repo could have told us.
+
+The mechanism was a shell pipeline (`gh api --paginate | grep -q '^src/'`): `grep -q` exits at
+its first match, closing the pipe; the still-paginating `gh` dies of SIGPIPE (141); `set -o
+pipefail` promotes 141 to the pipeline's status; and `if !` reads that failure as *"no `src/`
+changes"* and takes the exemption branch. Exit 0. Green check. On PR #58 it reported "No src/
+changes in this PR" over **66 changed files under `src/`**.
+
+**Three properties made this invisible, and all three generalize beyond this one bug:**
+
+1. **It failed *green*, not `skipped`.** BL-10 taught us `skipped` reads as satisfied; this is
+   worse. A green `architect-review` is *affirmative evidence* that a review happened. It
+   satisfies the `protected-integration-branches` required-check rule. There is no artifact
+   anywhere that distinguishes "the gate ran and found a review" from "the gate ran and excused
+   itself" — both are `exit 0`.
+2. **Severity was inverted with diff size.** On a small PR, `gh` finishes writing before `grep`
+   quits, so no SIGPIPE, and the gate works correctly — that is every sprint PR to date,
+   including #57. It only misfires once the file list is long enough to keep `gh` paginating. So
+   the gate **silently weakened as the diff grew** and was least trustworthy on the largest,
+   least-reviewable PRs. Testing it on ordinary PRs would never have found it.
+3. **`ruleset-drift.yml` watches the wrong thing.** It verifies the check is *required* — the
+   BL-11 concern. It cannot verify the check *works*. A gate that is required, always-green, and
+   structurally inert passes the drift check forever, and passes it *because* it is inert.
+
+**The pattern is the finding.** BL-11 asked "is this gate required?" and answered it. Nobody
+asked "does this gate fail closed?" The `architect-review` exemption branch is the sharpest case
+because its whole job is to decide whether enforcement applies — a malfunction of its guard
+condition is indistinguishable from a legitimate pass.
+
+**Shape (for a planning pass — do not fix piecemeal):**
+- **Negative fixtures.** Each gate should be exercised against an input it *must* reject. The
+  `src/`-detection deserves a test that feeds it a synthetic 200-file list and asserts it demands
+  a review — the structural test added in #59 pins the *shape* of the fix (no pipe into `grep -q`)
+  but still cannot observe the gate's runtime behavior.
+- **Fail closed, and make the exemption loud.** An early `exit 0` should have to *prove* its
+  precondition, not merely fail to disprove it: assert the file list is non-empty (a real PR
+  always changes ≥1 file), and echo the count and the branch taken, so an exemption is an
+  auditable statement rather than a silent default. (The #59 fix already gets part of this for
+  free: `changed=$(gh api …)` under `set -e` now aborts the step if `gh` fails, rather than
+  reinterpreting the failure as an answer.)
+- **Audit the other three workflows for the same construct** — the class, not the instance. This
+  is the F30→F35→F41 lesson from [BL-15] restated at the CI layer: fixing the instance and leaving
+  the assumption is how a defect comes back wearing a different hat.
+
+**Related:** [BL-11] (required-ness — necessary, and now demonstrably not sufficient), [BL-10]
+(`skipped` reads as satisfied), [BL-6] (a gate cannot tell *who* reviewed; this one could not
+tell *whether* it reviewed).
+
 Fails **loud** (a red test), not silent, which is the safe direction for a boundary guard — hence
 non-blocking. One-line fix: for `_INDEX1_MODE_RECEIVERS` minus `{codecs, io}`, treat a *missing*
 mode argument as binary rather than as the implicit text `"r"`.
