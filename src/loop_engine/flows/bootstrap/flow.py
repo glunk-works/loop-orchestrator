@@ -1,5 +1,5 @@
 """The bootstrap flow: create -> clone -> scaffold -> commit -> push `main`
--> create `develop`.
+-> create `develop` -> protect (`main` + `develop`).
 
 The second top-level orchestrator-level flow (sibling of
 `flows/maintenance`, Phase 5 piece 4): the factory verb that brings a new,
@@ -9,9 +9,23 @@ runs **no inner loop** (`run_in_tree`), has **no green gate**, and opens
 `create_repository` -> `clone_repo` (empty tree) -> `checkout_branch(main)`
 (names the unborn default branch deterministically) -> `scaffold.
 write_skeleton` (the templates + injected conventions `CLAUDE.md`) ->
-`commit_all` -> `push_branch(main)` -> `create_branch(develop, base=main)`.
-Ordering is load-bearing: `create_branch` reads the base ref's SHA over the
-API, so it must come *after* `main` is pushed remotely.
+`commit_all` -> `push_branch(main)` -> `create_branch(develop, base=main)`
+-> `create_ruleset(main, develop)` (sprint 36, BL-21). Ordering is
+load-bearing twice over: `create_branch` reads the base ref's SHA over the
+API, so it must come *after* `main` is pushed remotely; `create_ruleset`
+runs **last** because a `pull_request` rule on `main` would reject the
+scaffold's own initial direct push if installed any earlier (FD7,
+sprint 36 plan).
+
+BL-21: a repository ruleset is only installable on a **public** repo under
+the org's Free plan (private repos need GitHub Team) — so `private`
+defaults to `False`: protection is the invariant the factory guarantees,
+and privacy is an opt-in that knowingly forfeits it. When `private=True`,
+`create_ruleset` is not attempted at all — attempting a call already known
+to 403 and swallowing the failure into a log line is exactly BL-16's shape
+(a check reporting success on a property it never verified), so this flow
+refuses to pretend: it skips the call outright and reports
+`ruleset_installed=False` on the result, never a silent `CREATED`.
 
 Collaborators (`repo_io`, `git_io`, `scaffold`) are injectable, mirroring
 `flows/maintenance`, so tests fake every external effect: no real create,
@@ -22,7 +36,7 @@ clone, or push runs in CI. See `tests/flows/bootstrap/test_flow.py` /
 import logging
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from loop_engine.tools import git_io as _git_io_module
 from loop_engine.tools import repo_io as _repo_io_module
@@ -39,7 +53,19 @@ class BootstrapRequest(BaseModel):
     name: str
     org: str = "glunk-works"
     kind: str = "python"
-    private: bool = True
+    private: bool = Field(
+        default=False,
+        description=(
+            "Defaults to False: repository rulesets (BL-21's protection fix) "
+            "are only installable on a PUBLIC repo under the org's Free plan "
+            "-- a private repo needs GitHub Team, the same 403 that blocked "
+            "the org-level fix (FD3, sprint 36). Set True only as an "
+            "explicit, deliberate opt-in that KNOWINGLY FORFEITS branch "
+            "protection: run_bootstrap will not even attempt create_ruleset "
+            "in that case, and the returned BootstrapResult.ruleset_installed "
+            "will be False."
+        ),
+    )
     default_branch: str = "main"
     integration_branch: str = "develop"
     clone_dest: str | None = None
@@ -70,6 +96,13 @@ class BootstrapResult(BaseModel):
     repo: RepoRef
     default_branch: str
     integration_branch: str
+    ruleset_installed: bool
+    """Whether `create_ruleset` actually ran. `True` only when the repo was
+    created public and the ruleset call was made; `False` for a `private=True`
+    request, where it is never attempted (see `BootstrapRequest.private`).
+    Always inspect this rather than inferring protection from `status`
+    alone -- `status` is `CREATED` either way (BL-16: a status that reports
+    success must not double as a claim about a property it didn't check)."""
 
 
 def run_bootstrap(
@@ -80,7 +113,7 @@ def run_bootstrap(
     scaffold=_scaffold_module,
 ) -> BootstrapResult:
     """Chain create -> clone -> scaffold -> commit -> push `main` -> create
-    `develop` for `request`. No inner loop, no green gate, no PR."""
+    `develop` -> protect for `request`. No inner loop, no green gate, no PR."""
     logger.info("creating repository %s/%s", request.org, request.name)
     repo = repo_io.create_repository(request.name, org=request.org, private=request.private)
 
@@ -105,9 +138,32 @@ def run_bootstrap(
     logger.info("creating integration branch %s", request.integration_branch)
     repo_io.create_branch(owner, repo_name, request.integration_branch, base=request.default_branch)
 
+    if request.private:
+        logger.warning(
+            "skipping ruleset installation on %s/%s: private=True forfeits "
+            "branch protection -- repository rulesets require GitHub Team on "
+            "private repos under the org's Free plan (BL-21/FD3)",
+            owner,
+            repo_name,
+        )
+        ruleset_installed = False
+    else:
+        logger.info(
+            "installing branch-protection ruleset on %s/%s (%s, %s)",
+            owner,
+            repo_name,
+            request.default_branch,
+            request.integration_branch,
+        )
+        repo_io.create_ruleset(
+            owner, repo_name, branches=[request.default_branch, request.integration_branch]
+        )
+        ruleset_installed = True
+
     return BootstrapResult(
         status=BootstrapStatus.CREATED,
         repo=repo,
         default_branch=request.default_branch,
         integration_branch=request.integration_branch,
+        ruleset_installed=ruleset_installed,
     )

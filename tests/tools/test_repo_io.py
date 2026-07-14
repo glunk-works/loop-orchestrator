@@ -1,3 +1,4 @@
+import json
 import subprocess
 from unittest.mock import patch
 
@@ -10,6 +11,7 @@ from loop_engine.tools.repo_io import (
     clone_repo,
     create_branch,
     create_repository,
+    create_ruleset,
     open_pr,
     resolve_repo_slug,
 )
@@ -160,6 +162,62 @@ def test_open_pr_builds_argv_and_parses_number() -> None:
             "does x",
         ]
     )
+
+
+def test_create_ruleset_posts_to_the_rulesets_endpoint_via_stdin_input() -> None:
+    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+        run_gh.return_value = json.dumps({"id": 18847726})
+        ruleset_id = create_ruleset("glunk-works", "widget", branches=["main", "develop"])
+
+    assert ruleset_id == 18847726
+    args, kwargs = run_gh.call_args
+    assert args[0] == [
+        "api",
+        "--method",
+        "POST",
+        "repos/glunk-works/widget/rulesets",
+        "--input",
+        "-",
+    ]
+    body = json.loads(kwargs["input_data"])
+    assert body["target"] == "branch"
+    assert body["enforcement"] == "active"
+    assert body["bypass_actors"] == []
+
+
+def test_create_ruleset_targets_both_main_and_develop() -> None:
+    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+        run_gh.return_value = json.dumps({"id": 1})
+        create_ruleset("glunk-works", "widget", branches=["main", "develop"])
+
+    body = json.loads(run_gh.call_args.kwargs["input_data"])
+    assert body["conditions"]["ref_name"]["include"] == [
+        "refs/heads/main",
+        "refs/heads/develop",
+    ]
+
+
+def test_create_ruleset_declares_exactly_three_rule_types() -> None:
+    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+        run_gh.return_value = json.dumps({"id": 1})
+        create_ruleset("glunk-works", "widget", branches=["main", "develop"])
+
+    body = json.loads(run_gh.call_args.kwargs["input_data"])
+    rule_types = {rule["type"] for rule in body["rules"]}
+    assert rule_types == {"deletion", "non_fast_forward", "pull_request"}
+
+
+def test_create_ruleset_declares_no_required_status_checks() -> None:
+    """FD4's trap, named explicitly: a generated repo ships no CI, so a
+    required status check in the shipped ruleset would be a permanent merge
+    deadlock. This must never be reintroduced, even incidentally."""
+    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+        run_gh.return_value = json.dumps({"id": 1})
+        create_ruleset("glunk-works", "widget", branches=["main", "develop"])
+
+    body = json.loads(run_gh.call_args.kwargs["input_data"])
+    rule_types = {rule["type"] for rule in body["rules"]}
+    assert "required_status_checks" not in rule_types
 
 
 def test_resolve_repo_slug_shells_gh_repo_view() -> None:

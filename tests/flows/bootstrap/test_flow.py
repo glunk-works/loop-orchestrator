@@ -31,6 +31,10 @@ class _FakeRepoIO:
         self.calls.append(("create_branch", owner, repo, branch, base))
         return f"refs/heads/{branch}"
 
+    def create_ruleset(self, owner, repo, *, branches, name="protect-integration-branches"):
+        self.calls.append(("create_ruleset", owner, repo, tuple(branches)))
+        return 1
+
 
 class _FakeGitIO:
     def __init__(self) -> None:
@@ -72,8 +76,9 @@ def test_run_bootstrap_drives_full_chain_in_order_and_returns_created() -> None:
     assert result.repo == repo_io.repo
     assert result.default_branch == "main"
     assert result.integration_branch == "develop"
+    assert result.ruleset_installed is True
 
-    assert repo_io.calls[0] == ("create_repository", "demo", "glunk-works", True)
+    assert repo_io.calls[0] == ("create_repository", "demo", "glunk-works", False)
     assert repo_io.calls[1] == ("clone_repo", "glunk-works/demo", "demo")
     assert git_io.calls[0] == ("checkout_branch", "demo", "main")
     assert scaffold.calls[0] == ("write_skeleton", "demo", "python", "demo", "demo")
@@ -81,6 +86,7 @@ def test_run_bootstrap_drives_full_chain_in_order_and_returns_created() -> None:
     assert git_io.calls[1][1] == "demo"
     assert git_io.calls[2] == ("push_branch", "demo", "main", "origin")
     assert repo_io.calls[2] == ("create_branch", "glunk-works", "demo", "develop", "main")
+    assert repo_io.calls[3] == ("create_ruleset", "glunk-works", "demo", ("main", "develop"))
 
 
 def test_create_branch_fires_after_push_with_base_equal_to_default_branch() -> None:
@@ -96,7 +102,43 @@ def test_create_branch_fires_after_push_with_base_equal_to_default_branch() -> N
     # Ordering is load-bearing: create_branch reads the base ref's SHA over
     # the API, so the push (which puts `main` on the remote) must come first.
     assert push_index < len(git_io.calls)
-    assert create_branch_index == len(repo_io.calls) - 1
+    assert create_branch_index == len(repo_io.calls) - 2
+
+
+def test_create_ruleset_fires_last_strictly_after_create_branch() -> None:
+    """FD7: create_ruleset must run last -- a pull_request rule on `main`
+    installed any earlier would reject the scaffold's own initial direct
+    push, and installing it before create_branch raises a live question
+    about whether the rule blocks API branch creation. Both are sidestepped
+    by running it strictly last."""
+    repo_io = _FakeRepoIO()
+    git_io = _FakeGitIO()
+    scaffold = _FakeScaffold()
+
+    run_bootstrap(_request(), repo_io=repo_io, git_io=git_io, scaffold=scaffold)
+
+    create_branch_call = ("create_branch", "glunk-works", "demo", "develop", "main")
+    create_ruleset_call = ("create_ruleset", "glunk-works", "demo", ("main", "develop"))
+    assert repo_io.calls[-1] == create_ruleset_call
+    assert repo_io.calls.index(create_branch_call) < repo_io.calls.index(create_ruleset_call)
+
+
+def test_private_repo_skips_ruleset_installation_and_reports_it() -> None:
+    """The private=True path is an explicit, deliberate opt-in that forfeits
+    protection -- it must not attempt a call already known to 403 and it
+    must not silently return CREATED as if the repo were protected."""
+    repo_io = _FakeRepoIO()
+    git_io = _FakeGitIO()
+    scaffold = _FakeScaffold()
+
+    result = run_bootstrap(
+        _request(private=True), repo_io=repo_io, git_io=git_io, scaffold=scaffold
+    )
+
+    assert result.status == BootstrapStatus.CREATED
+    assert result.ruleset_installed is False
+    assert repo_io.calls[0] == ("create_repository", "demo", "glunk-works", True)
+    assert not any(call[0] == "create_ruleset" for call in repo_io.calls)
 
 
 def test_no_open_pr_or_merge_verb_is_ever_reachable() -> None:
@@ -123,7 +165,7 @@ def test_bootstrap_request_defaults() -> None:
     assert request.kind == "python"
     assert request.default_branch == "main"
     assert request.integration_branch == "develop"
-    assert request.private is True
+    assert request.private is False
 
 
 def test_bootstrap_request_dest_defaults_to_name() -> None:

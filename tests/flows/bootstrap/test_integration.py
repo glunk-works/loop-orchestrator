@@ -50,6 +50,7 @@ class _FakeRepoIO:
         self.repo = RepoRef(slug="glunk-works/demo", url="https://github.com/glunk-works/demo")
         self.create_repository_calls: list[tuple] = []
         self.create_branch_calls: list[tuple] = []
+        self.create_ruleset_calls: list[tuple] = []
 
     def create_repository(self, name, *, org=None, private=True):
         self.create_repository_calls.append((name, org, private))
@@ -61,6 +62,10 @@ class _FakeRepoIO:
     def create_branch(self, owner, repo, branch, *, base=None):
         self.create_branch_calls.append((owner, repo, branch, base))
         return f"refs/heads/{branch}"
+
+    def create_ruleset(self, owner, repo, *, branches, name="protect-integration-branches"):
+        self.create_ruleset_calls.append((owner, repo, tuple(branches)))
+        return 1
 
 
 def _bare_remote_heads(remote: Path) -> str:
@@ -84,6 +89,7 @@ def test_bootstrap_writes_skeleton_pushes_main_and_creates_develop_after_push(
     assert result.repo == repo_io.repo
     assert result.default_branch == "main"
     assert result.integration_branch == "develop"
+    assert result.ruleset_installed is True
 
     tree = empty_clone / "demo"
     for rel in (
@@ -100,6 +106,7 @@ def test_bootstrap_writes_skeleton_pushes_main_and_creates_develop_after_push(
     assert "refs/heads/main" in remote_heads
 
     assert repo_io.create_branch_calls == [("glunk-works", "demo", "develop", "main")]
+    assert repo_io.create_ruleset_calls == [("glunk-works", "demo", ("main", "develop"))]
 
 
 def test_no_open_pr_or_merge_verb_reachable_end_to_end() -> None:
