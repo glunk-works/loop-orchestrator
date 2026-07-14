@@ -68,6 +68,61 @@ def test_dependabot_config_defines_pip_and_github_actions_updates() -> None:
     assert updates["github-actions"]["schedule"]["interval"] == "weekly"
 
 
+def _pr_title_pattern() -> re.Pattern[str]:
+    """The Conventional Commits regex `pr-title.yml` actually enforces, read from
+    the workflow rather than restated here — a copy would let the two drift, which
+    is the whole failure this guards."""
+    workflow = (REPO_ROOT / ".github" / "workflows" / "pr-title.yml").read_text()
+    match = re.search(r"pattern='(?P<pattern>[^']+)'", workflow)
+    assert match is not None, "pr-title.yml no longer declares a `pattern='...'`"
+    return re.compile(match.group("pattern"))
+
+
+def test_dependabot_titles_would_satisfy_the_required_pr_title_check() -> None:
+    """`pr-title` is a REQUIRED check, and Dependabot's default subject
+    ("Bump X from A to B" — capital B, no type) does not match its Conventional
+    Commits regex. So without a `commit-message.prefix`, every Dependabot PR is
+    born failing a required check and can never merge: the update mechanism runs,
+    opens PRs, and none of them can land. That is not hypothetical — it is how
+    #50-53 sat blocked, and it is BL-14's shape (a control present and inert).
+
+    Asserting the prefix keys exist would be too weak: it would pass on a prefix
+    like `build`, which is a perfectly ordinary Conventional Commits type but is
+    NOT in this repo's allowed set, so the title would still be rejected. So this
+    reconstructs the subject Dependabot will actually emit and runs it through
+    pr-title.yml's own regex."""
+    data = yaml.safe_load((REPO_ROOT / ".github" / "dependabot.yml").read_text())
+    updates = {entry["package-ecosystem"]: entry for entry in data["updates"]}
+    pattern = _pr_title_pattern()
+
+    for ecosystem, entry in updates.items():
+        commit_message = entry.get("commit-message")
+        assert commit_message is not None, (
+            f"{ecosystem}: no commit-message.prefix, so Dependabot emits "
+            f"'Bump X from A to B', which fails the required pr-title check"
+        )
+        # `include: "scope"` is what supplies the "(deps)" / "(deps-dev)" scope.
+        assert commit_message.get("include") == "scope"
+
+        # The subject Dependabot generates: "<prefix>(<scope>): bump X from A to B".
+        # The lower-case "bump" is Dependabot's own behaviour once a prefix is set.
+        for prefix_key, scope in (
+            ("prefix", "deps"),
+            ("prefix-development", "deps-dev"),
+        ):
+            prefix = commit_message.get(prefix_key)
+            if prefix is None:
+                continue  # prefix-development is optional (github-actions has no dev deps)
+            title = f"{prefix}({scope}): bump some-dependency from 1.2.3 to 4.5.6"
+            assert pattern.match(title), (
+                f"{ecosystem}: Dependabot would emit {title!r}, which pr-title.yml rejects"
+            )
+
+    # The negative: the default (prefix-less) subject must genuinely fail, or this
+    # test proves nothing about why the prefix is needed.
+    assert not pattern.match("Bump actions/checkout from 4.3.1 to 7.0.0")
+
+
 def test_all_workflow_actions_are_pinned_to_commit_shas() -> None:
     """A tag is a mutable pointer: whoever controls the upstream repo can
     repoint it at arbitrary code that then runs in this repo's CI. Walks every
