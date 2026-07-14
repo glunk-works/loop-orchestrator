@@ -29,6 +29,22 @@ copy them. Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh 
 >
 > ⚠️ This grant can **delete any repo in the org, loop-engine included.** Never point sprint 36's flows
 > at `loop-engine`; hard-code the scratch repo's name.
+>
+> **STATUS: Task 1 is DONE (verified 2026-07-14).** Both endpoints now return **422** (body rejected)
+> instead of 403 (permission rejected) — `administration=write` is live.
+
+> ## 🔪 FD11 — the teardown is the dangerous call, and we have ALREADY made this mistake
+> Sprint 36 is **not** the factory's first live GitHub run — **V3 (2026-07-12) was**, and its headline
+> finding **R8** was that escalation issues got **filed on `loop-engine` itself**, because `gh` inherited
+> its destination from the **ambient CWD**. *A live run already pointed a real write verb at the wrong repo.*
+>
+> Every `repo_io` verb takes an explicit target now. **`gh repo delete` does not — and Task 7 uses it.**
+> With no slug it resolves from the working directory, and the token now carries `administration=write`.
+> That is R8 with an **irreversible** verb on the other end.
+>
+> **Explicit `owner/repo` on every destructive call, asserted against the scratch name immediately before
+> firing. Never `cd` and delete.** What is new this sprint is not "real GitHub" — it is **repo-lifecycle
+> verbs and an irreversible one**.
 
 ## Just done
 **Sprint 35 is COMPLETE and archived**; the migration is landed on `main` (merge commit `d2135e7`) and
