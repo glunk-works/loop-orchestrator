@@ -1,10 +1,36 @@
 version: 2
 updates:
+  # `commit-message.prefix` is load-bearing, not cosmetic. Dependabot's default
+  # subject is "Bump X from A to B" — capital "Bump", no Conventional Commits
+  # type — which pr-title.yml rejects outright. `pr-title` is a REQUIRED check,
+  # so without a prefix every Dependabot PR is born with a red required check and
+  # can never merge, however correct the bump is. That is how #50-53 sat blocked:
+  # the update mechanism was running and dutifully opening PRs that were
+  # structurally unmergeable — BL-14's shape again (a control that is present,
+  # and inert).
+  #
+  # With a prefix set, Dependabot emits "<prefix>(<scope>): bump X from A to B"
+  # — note the lower-case "bump", which is what makes the subject match. The
+  # scope ("deps" / "deps-dev") comes from `include: "scope"`.
+  #
+  # The types below must stay inside pr-title.yml's allowed set
+  # (feat|fix|docs|test|refactor|perf|chore|ci|revert). `build` is NOT in it,
+  # despite being the conventional choice for dependency bumps elsewhere — hence
+  # `chore` for pip. tests/test_ci_config.py pins this agreement by reading
+  # pr-title.yml's own regex, so the two configs cannot drift apart in silence.
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "daily"
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
