@@ -978,7 +978,7 @@ misleading `#51` run (actor `Seuss27`, green, proving nothing).
 
 ---
 
-### BL-21 — `DEFERRED_VERIFICATION.md` §6: the trigger surface has never received a real webhook
+### BL-24 — `DEFERRED_VERIFICATION.md` §6: the trigger surface has never received a real webhook
 *(added 2026-07-14, sprint 35 Task 6 — the home agreed with the repo owner for §6; **lowest
 priority of the five**, and deliberately so)*
 

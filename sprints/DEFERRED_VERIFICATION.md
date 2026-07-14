@@ -42,7 +42,7 @@ Sections still open: **§1, §5, §6, §7, §8.**
 > | **§7** maintenance flow live | **Sprint 36** | ⬑ |
 > | **§8** bootstrap flow live | **Sprint 36** | ⬑ |
 > | **§1** caching + USD smoke | **Folded into [BL-3]** (prompt-caching review) | §1 needs a real Anthropic key and real spend; BL-3 needs *the same session*. BL-3 cannot assess caching without live `Cache R` data — and §1 **is** that data. Running them apart means paying for two key-bearing sessions to learn one thing. §1 is now BL-3's evidence-gathering step, not a standalone check. |
-> | **§6** live webhook | **[BL-21]** — lowest priority | Needs a tunnel and a publicly reachable address (neither host nor devcontainer has one), and it validates a surface nothing currently depends on. Real, but not urgent. |
+> | **§6** live webhook | **[BL-24]** — lowest priority | Needs a tunnel and a publicly reachable address (neither host nor devcontainer has one), and it validates a surface nothing currently depends on. Real, but not urgent. |
 >
 > **Why §5/§7/§8 are together, and why they matter most.** They are the only checks in this
 > file with *real side effects on GitHub*, and together they are the checks that decide

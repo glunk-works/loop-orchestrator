@@ -61,7 +61,7 @@ must say `dependabot[bot]`; a human close+reopen reads the *other* secret store 
 | --- | --- |
 | **§5** `github_server` verbs, **§7** maintenance flow, **§8** bootstrap flow | **Sprint 36 — live factory verification** (one daemon-bearing host, authenticated `gh`, one scratch-repo lifecycle) |
 | **§1** caching + USD smoke | **folded into BL-3** — it *is* BL-3's evidence-gathering step |
-| **§6** live webhook | **BL-21** — lowest priority (needs a tunnel; nothing depends on the surface) |
+| **§6** live webhook | **BL-24** — lowest priority (needs a tunnel; nothing depends on the surface) |
 
 **§8's org blocker is closed:** `glunk-works` exists (verified live) — no substitute org needed.
 
