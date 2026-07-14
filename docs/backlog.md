@@ -829,3 +829,77 @@ same pass.
 **Blocked on:** nothing. It is a human settings action (ruleset edit + branch delete). Claude was
 deliberately not asked to perform it — see sprint 35's Task 5, which reserves the settings sequence
 for the repo owner.
+
+---
+
+### BL-18 — "No `if:`, so nothing can be `skipped`" is the wrong invariant: a failed `needs:` skips too
+*(added 2026-07-14, observed live while unblocking Dependabot PRs #50–53 in sprint 35)*
+
+**Why:** `CLAUDE.md` claimed — and `tests/test_ci_config.py` was read as pinning — that because no
+job in `ci.yml` carries an `if:`, **no job can ever report `skipped`**. That is false, and it was
+watched being false: with `secrets-scan` red on the Dependabot PRs, `sbom` (which `needs:
+secrets-scan`) reported **`skipped`**, and flipped to `success` the instant `secrets-scan` passed.
+No `if:` was involved. **A job whose `needs:` dependency fails is skipped by GitHub, full stop.**
+
+The claim and the mechanism don't line up. Removing every `if:` prevents a job being skipped **by a
+condition** — which is genuinely what BL-10 was about (a gate keyed on the wrong event reported
+`skipped`, satisfied `needs:`, and let an all-green checks page hide a suite that never ran). It
+does not, and cannot, prevent a skip caused by an upstream failure.
+
+**Why it isn't currently exploitable — and why that's not a reason to leave it:** a `needs:`-skip
+only happens *because* an upstream job failed, and that failure blocks the merge by itself. So the
+safety today comes from **the failing job**, not from the absence of `skipped`. The stated
+invariant is doing no work; the thing actually protecting `main` is something else. That is exactly
+the configuration in which a later, reasonable-looking change — reordering the chain, making a job
+non-required, adding `continue-on-error`, or splitting a job out from under `needs:` — quietly
+removes the real protection while the documented one still reads as intact. **BL-16's lesson
+verbatim:** the alarm is green because it is measuring the wrong thing.
+
+**Shape (not designed yet):**
+- Correct the claim wherever it is stated (done for `CLAUDE.md` in this sprint — say what the
+  absence of `if:` actually buys, and that a `needs:`-failure skip is possible and safe *because
+  the upstream failure blocks*).
+- Decide whether `tests/test_ci_config.py` should assert the real invariant rather than the proxy.
+  The honest property is closer to *"every required check either succeeds, or something red blocks
+  the merge"* — which a static test over `ci.yml` cannot fully express. Worth being explicit that
+  this is a limit of the static test, not something to fake.
+- Consider whether `skipped` satisfying a *required* check is a live risk for any job **not** behind
+  a `needs:` that would independently fail. Today every job in the chain is; a future job added
+  outside the chain would not be, and that is the case to watch for.
+
+**Related:** [BL-10] (the original — `skipped` reads as satisfied), [BL-16] (a gate verified
+*required*, never *functional*), [BL-11] (required-ness is necessary, not sufficient).
+
+**Notes / where to look:** `.github/workflows/ci.yml` (the `needs:` chain), `CLAUDE.md` (the
+corrected sentence), `tests/test_ci_config.py`. Live evidence: PRs #50–53 before the org Dependabot
+`GITLEAKS_LICENSE` secret was added — `sbom` = `skipped`, `secrets-scan` = `failure`.
+
+---
+
+### BL-19 — Option: drop `gitleaks-action` for the free gitleaks CLI binary
+*(added 2026-07-14, sprint 35 — an option, not a defect; nothing is broken)*
+
+**Not a finding.** `secrets-scan` works. The org **Dependabot** `GITLEAKS_LICENSE` secret has been
+added and all four Dependabot PRs pass. This item exists only so the trade-off is written down
+rather than rediscovered.
+
+**The trade-off:** `gitleaks/gitleaks-action` requires a **paid licence** for repositories under an
+organization (`[glunk-works] is an organization. License key is required.`). The gitleaks **CLI
+binary is free and MIT-licensed** and performs the same scan. Running the binary directly would:
+- remove a paid dependency from CI;
+- remove a third-party **action** from the supply chain (one fewer `uses:` to SHA-pin and trust —
+  note sprint 34 pinned every action precisely because a tag is a mutable pointer);
+- delete the two-secret-store trap entirely (GitHub keeps org **Actions** secrets and org
+  **Dependabot** secrets in separate stores, and Dependabot-triggered runs can read only the
+  latter — the cause of #50–53's red `secrets-scan`, and a trap that will otherwise recur for any
+  future secret CI depends on);
+- make **PR #50** (`gitleaks-action` 2→3, a major bump) moot by deletion rather than by changelog
+  review.
+
+**The case against (do not skip this):** it works today, it is SHA-pinned, the licence is already
+paid for and now correctly wired. Swapping it means writing and testing a new `secrets-scan` step —
+real work, including pinning the binary's version/checksum, which re-introduces a supply-chain
+decision of its own. `secrets-scan` is a **required** check on `main`, so a botched swap breaks
+every PR until fixed.
+
+**Blocked on:** a human decision. Sequence it with PR #50, which it would retire.
