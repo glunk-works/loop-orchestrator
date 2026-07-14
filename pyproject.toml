@@ -24,9 +24,22 @@ dependencies = [
   "anthropic==0.116.0",
   "keyring==25.7.0",
   "typer==0.26.8",
+  # Orchestration substrate: the engine runs as a LangGraph StateGraph (behind
+  # the LOOP_ENGINE_ENGINE=langgraph flag during the migration).
+  "langgraph==1.2.8",
+  # Model Context Protocol: coder tools are re-fronted as stdio MCP servers
+  # (mcp_servers/) and discovered/dispatched by the LLM client behind the
+  # LOOP_ENGINE_TOOLS=mcp flag during the migration.
+  "mcp==1.28.1",
   # Runtime (not just dev) dependency: the agentic Coder's run_tests tool and
   # the Coder stage's evidence gate execute pytest via subprocess.
   "pytest==9.1.1",
+  # Declarative persona config format (GeneratorNode, behind the
+  # LOOP_ENGINE_PERSONAS=declarative flag). Loaded with yaml.safe_load only —
+  # never yaml.load — so an in-repo config can never instantiate code.
+  "PyYAML==6.0.3",
+  # Trigger surface — GitHub webhook ASGI app; uvicorn/hosting deferred.
+  "fastapi==0.139.0",
 ]
 
 [project.scripts]
@@ -39,6 +52,10 @@ Source = "https://github.com/glunk-works/loop-engine"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/loop_engine"]
+# No force-include needed: hatchling's default `packages` file selection
+# already ships non-`.py` files under the package tree (verified by building
+# a wheel and inspecting it — `tools/scaffold/templates/` lands intact,
+# including `.tmpl` files and `CLAUDE.md`).
 
 [tool.hatch.envs.default]
 dependencies = [
@@ -47,6 +64,9 @@ dependencies = [
   "cyclonedx-bom==7.3.0",
   "cryptography==49.0.0",
   "pip-audit==2.10.1",
+  # Trigger surface tests only: Starlette's TestClient needs httpx. Dev/test
+  # dependency, not a runtime one — the app itself never imports it.
+  "httpx==0.28.1",
 ]
 
 [tool.hatch.envs.default.scripts]
@@ -68,6 +88,10 @@ select = ["E", "F", "I", "B", "S"]
 
 [tool.ruff.lint.per-file-ignores]
 # S101: pytest's assert-based idiom is expected in test files.
-"tests/**" = ["S101"]
+# S603/S607: tests legitimately shell out to `git` (worktree isolation) with a
+# fixed argv and no shell — the same posture the runtime code documents inline.
+# S105: the trigger tests' webhook secret is an obviously-fake literal
+# ("test-webhook-secret-not-a-real-credential"), not a real credential.
+"tests/**" = ["S101", "S603", "S607", "S105"]
 # S106/S107: fixture passphrases in tests, not real secrets.
 "containers/keyring_backend/test_cryptfile_backend.py" = ["S101", "S106", "S107"]

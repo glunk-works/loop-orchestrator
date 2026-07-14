@@ -3,7 +3,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 4
+
+
+def default_artifact_path(run_id: str, key: str) -> str:
+    """Where an artifact body is mirrored on disk. Stays under the `docs/`
+    artifact root (see tools/state_io) and is unique per run + key."""
+    return f"docs/artifacts/{run_id}/{key}"
 
 
 class RunStatus(StrEnum):
@@ -59,24 +65,37 @@ class State(BaseModel):
     status: RunStatus = RunStatus.RUNNING
     questions: list[Question] = Field(default_factory=list)
     pending_issue: IssueRef | None = None
-    # Escalation/re-plan counters keyed by edge name (e.g. "escalations:CoderIacPersona",
+    # Escalation/re-plan counters keyed by edge name (e.g. "escalations:RalphCoderPersona",
     # "replans"); the engine enforces hard caps against these so feedback edges
     # cannot cycle unboundedly.
     counters: dict[str, int] = Field(default_factory=dict)
     stage_history: list[StageRecord]
+    # Inline artifact bodies — the single source of truth for artifact
+    # content. Fed directly into the prompt-cache prefix (declarative/node.py),
+    # so it is never externalized to disk on the read side; `artifact_store`
+    # publishes it to `docs/artifacts/<run_id>/` as a side effect, not a
+    # migration.
     artifacts: dict[str, str]
+
+
+_RETIRED_V3_KEY = "artifact_refs"
 
 
 def migrate_state_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Upgrade a persisted snapshot payload to CURRENT_SCHEMA_VERSION.
 
-    schema_version 1 predates status/questions/pending_issue/counters; every
-    v2 addition has a default, so migration is just a version bump. Raises
-    ValueError for versions this build doesn't know how to read.
+    v1 predates status/questions/pending_issue/counters; v2 predates a
+    since-retired disk-ref field carried by v3 only; under `extra="forbid"`
+    that field must be popped, not merely versioned past, or a v3 payload
+    fails validation. Raises ValueError for versions this build can't read.
     """
     version = payload.get("schema_version")
     if version == CURRENT_SCHEMA_VERSION:
         return payload
-    if version == 1:
-        return {**payload, "schema_version": CURRENT_SCHEMA_VERSION}
+    if version in (1, 2, 3):
+        # An unconditional pop covers all three prior versions (v1/v2 never
+        # had the key) — the inline `artifacts` bodies carry forward untouched.
+        upgraded = {**payload, "schema_version": CURRENT_SCHEMA_VERSION}
+        upgraded.pop(_RETIRED_V3_KEY, None)
+        return upgraded
     raise ValueError(f"Unsupported State schema_version: {version!r}")

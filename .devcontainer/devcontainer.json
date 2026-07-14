@@ -5,6 +5,19 @@
     "context": "..",
     "target": "dev"
   },
+  "features": {
+	"ghcr.io/devcontainers/features/docker-in-docker:2": {
+    "moby": false,
+    "dockerDashComposeVersion": "v2"
+	}
+  },
+  // LOCAL VERIFICATION HOST ONLY. --privileged is required for DinD (WSL2 blocks
+  // rootless userns) and widens the outer container's host-escape path. Do NOT
+  // reuse on a shared/CI/exposed host. Untrusted model code runs only in the
+  // inner isolation container (cap-drop ALL, no-new-privileges, no network,
+  // read-only, single bind) — see tests/tools/test_sandbox_params.py.
+  "runArgs": ["--privileged"],
+  "containerUser": "root",
   "workspaceFolder": "/workspace",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
   "mounts": [

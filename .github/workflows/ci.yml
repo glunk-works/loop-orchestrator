@@ -2,10 +2,34 @@ name: CI
 
 on:
   pull_request:
+    # No `edited` here (BL-10 / sprint 33): this is the heavy code chain, and a
+    # prose-only edit must never wake, cancel, or skip it. The title check that
+    # *does* need `edited` lives in its own workflow, pr-title.yml, precisely so
+    # the two concerns don't have to share a trigger list — or this concurrency
+    # group (see below).
+    types: [opened, synchronize, reopened]
   push:
-    branches: [main]
+    # Integration branches only. Sprint branches (`sprint/**`) are covered by their
+    # PR, so listing them here would double every run for no extra signal. `feat/**`
+    # is the backstop: it guarantees CI on anything that reaches an integration
+    # branch even if a commit is pushed directly, bypassing the PR gate — the exact
+    # gap that left sprints 26-31 with no CI at all.
+    branches: [main, 'feat/**']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  # `lint` (and everything chained after it via `needs:`) is unconditional by
+  # design: no `if:` on any job in this file means no job can ever report
+  # `skipped`, which is what closes BL-10 — a PR used to be able to reach an
+  # all-green checks page having never run lint or the test suite, because a
+  # gate keyed on `pr-title` would itself report `skipped` on the wrong event
+  # and satisfy `needs:` without anything downstream having run. The PR title
+  # check now lives in its own workflow, pr-title.yml, and gates nothing here;
+  # a bad title costs runner minutes instead of stopping the chain, which is
+  # the accepted trade (see sprint 33 / BL-10).
   lint:
     runs-on: ubuntu-latest
     steps:

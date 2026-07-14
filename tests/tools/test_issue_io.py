@@ -7,9 +7,11 @@ from loop_engine.core.state import Question, State
 from loop_engine.tools.issue_io import (
     IssueClosedWithoutAnswersError,
     apply_answers_to_questions,
-    file_question_issue,
+    create_issue,
+    parse_issue_answers,
     parse_snapshot_path,
-    read_issue_answers,
+    read_issue,
+    render_question_issue,
 )
 
 
@@ -24,22 +26,7 @@ def _questions() -> list[Question]:
     ]
 
 
-def test_file_question_issue_shells_out_to_gh_and_parses_number() -> None:
-    with patch("loop_engine.tools.issue_io.github._run_gh") as run_gh:
-        run_gh.return_value = "https://github.com/acme/repo/issues/17\n"
-
-        ref = file_question_issue(_state(), _questions(), "state/run-1/01_awaiting_issue.json")
-
-    assert ref.number == 17
-    args = run_gh.call_args.args[0]
-    assert args[:2] == ["issue", "create"]
-    body = args[args.index("--body") + 1]
-    assert "1. **[ArchitecturePersona]** Which region?" in body
-    assert "2. **[CoderIacPersona]** OIDC or API keys?" in body
-    assert "Snapshot: `state/run-1/01_awaiting_issue.json`" in body
-
-
-def test_read_issue_answers_parses_latest_answers_block() -> None:
+def test_parse_issue_answers_parses_latest_answers_block() -> None:
     issue_data = {
         "state": "OPEN",
         "comments": [
@@ -47,22 +34,43 @@ def test_read_issue_answers_parses_latest_answers_block() -> None:
             {"body": "corrected:\n```answers\n1: eu-west-1\n2: OIDC\n```"},
         ],
     }
-    answers = read_issue_answers(17, issue_data)
+    answers = parse_issue_answers(issue_data)
     assert answers == {1: "eu-west-1", 2: "OIDC"}
 
 
-def test_read_issue_answers_closed_without_answers_raises() -> None:
+def test_parse_issue_answers_closed_without_answers_raises_bare() -> None:
     issue_data = {"state": "CLOSED", "comments": [{"body": "won't fix"}]}
     with pytest.raises(IssueClosedWithoutAnswersError):
-        read_issue_answers(17, issue_data)
+        parse_issue_answers(issue_data)
+
+
+def test_closed_without_answers_error_includes_issue_number() -> None:
+    """R5: the issue number is folded back into the abort message."""
+    issue_data = {"state": "CLOSED", "comments": []}
+    with pytest.raises(IssueClosedWithoutAnswersError, match="#42"):
+        parse_issue_answers(issue_data, 42)
+
+
+def test_answers_block_quoted_in_a_reply_does_not_shadow_the_real_one() -> None:
+    """R6: a human "Quote reply" that echoes the bot's own example block (a
+    second ```answers block in the *same* comment) must not hide the real
+    answers that follow it — `finditer`, not first-match `search`."""
+    issue_data = {
+        "state": "OPEN",
+        "comments": [
+            {
+                "body": (
+                    "> ```answers\n> 1: your answer\n> 2: your answer\n> ```\n\n"
+                    "```answers\n1: eu-west-1\n2: OIDC\n```"
+                )
+            }
+        ],
+    }
+    assert parse_issue_answers(issue_data) == {1: "eu-west-1", 2: "OIDC"}
 
 
 def test_parse_snapshot_path_round_trips_from_filed_body() -> None:
-    with patch("loop_engine.tools.issue_io.github._run_gh") as run_gh:
-        run_gh.return_value = "https://github.com/acme/repo/issues/17\n"
-        file_question_issue(_state(), _questions(), "state/run-1/01_awaiting_issue.json")
-        body = run_gh.call_args.args[0][run_gh.call_args.args[0].index("--body") + 1]
-
+    _, body, _ = render_question_issue(_state(), _questions(), "state/run-1/01_awaiting_issue.json")
     assert parse_snapshot_path({"body": body}) == "state/run-1/01_awaiting_issue.json"
 
 
@@ -85,3 +93,54 @@ def test_gh_output_with_json_body_parses() -> None:
     # Sanity-check the gh JSON shape contract used by read_issue.
     payload = json.dumps({"state": "OPEN", "body": "b", "comments": []})
     assert json.loads(payload)["state"] == "OPEN"
+
+
+def test_render_question_issue_matches_filed_issue_body_byte_for_byte() -> None:
+    state, questions = _state(), _questions()
+
+    title, body, label = render_question_issue(
+        state, questions, "state/run-1/01_awaiting_issue.json"
+    )
+
+    with patch("loop_engine.tools.issue_io.github._run_gh") as run_gh:
+        run_gh.return_value = "https://github.com/acme/repo/issues/17\n"
+        create_issue(title, body, label)
+        args = run_gh.call_args.args[0]
+
+    assert title == args[args.index("--title") + 1]
+    assert body == args[args.index("--body") + 1]
+    assert label == args[args.index("--label") + 1]
+
+
+def test_create_issue_shells_expected_argv_and_parses_ref() -> None:
+    with patch("loop_engine.tools.issue_io.github._run_gh") as run_gh:
+        run_gh.return_value = "https://github.com/acme/repo/issues/42\n"
+        ref = create_issue("t", "b", "l")
+
+    run_gh.assert_called_once_with(
+        ["issue", "create", "--title", "t", "--body", "b", "--label", "l"]
+    )
+    assert ref.number == 42
+    assert ref.url == "https://github.com/acme/repo/issues/42"
+
+
+def test_create_issue_forwards_explicit_repo_as_flag() -> None:
+    """R8: an explicit `repo` becomes `--repo`, not left to gh's implicit
+    cwd-derived resolution."""
+    with patch("loop_engine.tools.issue_io.github._run_gh") as run_gh:
+        run_gh.return_value = "https://github.com/acme/repo/issues/42\n"
+        create_issue("t", "b", "l", repo="acme/repo")
+
+    run_gh.assert_called_once_with(
+        ["issue", "create", "--title", "t", "--body", "b", "--label", "l", "--repo", "acme/repo"]
+    )
+
+
+def test_read_issue_forwards_explicit_repo_as_flag() -> None:
+    with patch("loop_engine.tools.issue_io.github._run_gh") as run_gh:
+        run_gh.return_value = json.dumps({"state": "OPEN", "body": "b", "comments": []})
+        read_issue(42, repo="acme/repo")
+
+    run_gh.assert_called_once_with(
+        ["issue", "view", "42", "--json", "state,body,comments,url", "--repo", "acme/repo"]
+    )

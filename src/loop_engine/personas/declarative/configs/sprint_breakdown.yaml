@@ -1,0 +1,19 @@
+# Declarative Sprint Breakdown persona (parity port of
+# AgileSprintBreakdownPersona), including the additive task_manifest emission.
+name: sprint_breakdown
+prompt_file: prompts/03_agile_sprint_breakdown_prompt.md
+model: claude-sonnet-5
+max_tokens: 64000
+consumes: [architecture_definition]
+produces: sprint_plans
+initial_prompt: "Begin your breakdown now; produce the complete output described above."
+input_context:
+  - artifact: architecture_definition
+    label: "Architecture Definition Document"
+    wrap: none
+output_adapter: sprint_blocks
+revision_style: section_merge
+# The Sprint-Breakdown gate sees only the parsed-blocks JSON, so the persona
+# (adapter) must lift Open Questions from the raw response — matching classic.
+extract_open_questions: true
+prompt_style: cached

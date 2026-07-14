@@ -4,7 +4,18 @@ from pathlib import Path
 import pytest
 
 from loop_engine.tools.coder_tools import grep, list_files, read_file
-from loop_engine.tools.coder_tools.run_tests import run_pytest, run_tests
+from loop_engine.tools.coder_tools.run_lint import (
+    format_run_lint_result,
+    parse_run_lint_result,
+    run_lint,
+    run_ruff,
+)
+from loop_engine.tools.coder_tools.run_tests import (
+    format_run_tests_result,
+    parse_run_tests_result,
+    run_pytest,
+    run_tests,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -52,6 +63,11 @@ def test_read_file_rejects_symlink_escape(tmp_path) -> None:
 def test_run_tests_rejects_escaping_paths() -> None:
     with pytest.raises(ValueError):
         run_tests("../somewhere")
+
+
+def test_run_lint_rejects_escaping_paths() -> None:
+    with pytest.raises(ValueError):
+        run_lint("../somewhere")
 
 
 # --- happy paths -------------------------------------------------------------
@@ -139,3 +155,108 @@ def test_run_pytest_truncates_oversized_output(monkeypatch) -> None:
 
     assert len(output) < 100_000
     assert output.endswith("[truncated]")
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "output"),
+    [
+        (0, "1 passed in 0.01s"),
+        (5, "no tests ran in 0.00s"),
+        (1, "line one\n\nline two\n\npytest exit code: 0 (embedded, not a real header)"),
+        (1, ""),
+        (1, "\nleading blank line"),
+    ],
+)
+def test_format_parse_run_tests_result_round_trips(exit_code: int, output: str) -> None:
+    text = format_run_tests_result(exit_code, output)
+
+    assert parse_run_tests_result(text) == (exit_code, output)
+
+
+def test_run_tests_emits_exact_legacy_string(monkeypatch) -> None:
+    import loop_engine.tools.coder_tools.run_tests as run_tests_module
+
+    monkeypatch.setattr(run_tests_module, "run_pytest", lambda path: (0, "1 passed in 0.01s"))
+
+    result = run_tests("src")
+
+    assert result == "pytest exit code: 0\n\n1 passed in 0.01s"
+
+
+# --- run_lint -------------------------------------------------------------
+
+
+def test_run_ruff_passes_on_clean_file() -> None:
+    Path("src/clean.py").write_text("def clean() -> int:\n    return 1\n")
+
+    exit_code, output = run_ruff("src/clean.py")
+
+    assert exit_code == 0
+    assert "ruff check:" in output
+    assert "ruff format --check:" in output
+
+
+def test_run_ruff_fails_on_dirty_file_with_output_captured() -> None:
+    Path("src/dirty.py").write_text("import os\ndef f():\n  x=1\n")
+
+    exit_code, output = run_ruff("src/dirty.py")
+
+    assert exit_code != 0
+    assert "dirty.py" in output
+
+
+def test_run_lint_tool_output_names_the_exit_code() -> None:
+    Path("src/clean2.py").write_text("def clean() -> int:\n    return 1\n")
+
+    result = run_lint("src/clean2.py")
+
+    assert result.startswith("ruff exit code: 0")
+
+
+def test_run_ruff_enforces_timeout(monkeypatch) -> None:
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=args[0], timeout=kwargs["timeout"])
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_ruff("src")
+
+
+def test_run_ruff_truncates_oversized_output(monkeypatch) -> None:
+    class FakeCompleted:
+        returncode = 1
+        stdout = "x" * 100_000
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: FakeCompleted())
+
+    _exit_code, output = run_ruff("src")
+
+    assert len(output) < 100_000
+    assert output.endswith("[truncated]")
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "output"),
+    [
+        (0, "All checks passed!"),
+        (1, "line one\n\nline two\n\nruff exit code: 0 (embedded, not a real header)"),
+        (1, ""),
+        (1, "\nleading blank line"),
+    ],
+)
+def test_format_parse_run_lint_result_round_trips(exit_code: int, output: str) -> None:
+    text = format_run_lint_result(exit_code, output)
+
+    assert parse_run_lint_result(text) == (exit_code, output)
+
+
+def test_run_lint_emits_exact_legacy_string(monkeypatch) -> None:
+    import loop_engine.tools.coder_tools.run_lint as run_lint_module
+
+    monkeypatch.setattr(run_lint_module, "run_ruff", lambda path: (0, "All checks passed!"))
+
+    result = run_lint("src")
+
+    assert result == "ruff exit code: 0\n\nAll checks passed!"

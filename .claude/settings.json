@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(gh pr merge:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git push -f:*)"
+    ],
+    "allow": [
+      "Bash(hatch run:*)",
+      "Bash(gitleaks detect:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git diff:*)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git remote:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git ls-remote:*)",
+      "Bash(git verify-commit:*)",
+      "Bash(git stash:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh issue:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh label:*)",
+      "Bash(gh run:*)",
+      "Bash(gh api:*)",
+      "Bash(docker info:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(jq:*)"
+    ]
+  }
+}

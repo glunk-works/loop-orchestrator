@@ -11,9 +11,19 @@ runner = CliRunner()
 
 FAKE_API_KEY = "sk-ant-test-SUPER-SECRET-FAKE-KEY-9f3a7c21"
 
+# One sprint carrying exactly one manifest task: the Ralph Coder does one task
+# per invocation, so a single-task manifest converges in a single increment (and
+# therefore a single LLM call, which is what the canned transport below scripts).
 SPRINT_BLOCKS_RESPONSE = """### FILEPATH: /sprints/01_foo/sprint_plan.md
 
-Sprint one content.
+**Sprint Goal:** Habit tracking.
+
+**Tasks:**
+
+- **Task 1: Add the habit placeholder test**
+  - **Description:** Create the placeholder test module.
+  - **Target Files:** `src/test_habit.py`
+  - **Acceptance Criteria:** pytest is green.
 """
 
 

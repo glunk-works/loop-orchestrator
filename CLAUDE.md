@@ -1,10 +1,72 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Lean routing layer for this repo — kept small and stable so it stays prompt-cached.
+Day-to-day guardrails (commands, module boundaries, model routing) live here; the
+heavy reference (module walkthrough, conventions, container setup) is in `.ai/context/`,
+loaded on demand. **Where we are right now** lives in `.ai/next-steps.md`.
 
 ## What this is
 
 loop-engine runs a named sequence of decoupled AI "persona" stages against a single, explicit, versioned `State` object. The default loop is a **PM → Architecture → Agile Sprint Breakdown → Coder/IaC** pipeline, but it is not a one-way conveyor: every stage's output passes a content **gate** (accept / revise / escalate), questions escalate up a resolver ladder (Coder → Architect → PM → human via GitHub issue), and resolved questions route rework back down by blast radius ("task" re-runs the asker, "plan" re-enters Sprint Breakdown, "architecture" re-enters the Architect). A snapshot is persisted after every accepted stage AND on every exit path (completed / failed / budget-exceeded / awaiting-issue).
+
+> **Migration in progress — but the flag era is over.** The engine has migrated to
+> MCP tooling + LangGraph + an isolated multi-repo factory. **Status, decisions, and
+> the remaining work live in [`docs/migration_roadmap.md`](docs/migration_roadmap.md)** —
+> read it before extending this. Phase 6 (sprint 27) **deleted** the four migration
+> flags and the classic paths they selected, rather than keeping live break-glass
+> branches (decision FD2 — a break-glass kept live is a path kept untested). There is
+> now **one** path: the LangGraph engine, MCP tool dispatch, the declarative
+> `GeneratorNode` personas + PM `CriticGate`, and the Ralph-loop Coder. The classic
+> engine/tools/personas/Coder are recoverable in history at the **`pre-phase6-classic`**
+> tag. **`LOOP_ENGINE_ISOLATION` survives** — it is genuine runtime config
+> (`none` for local dev, `container` for the factory host), never old-vs-new.
+> The issue-path flip onto MCP has landed (Phase 6 Task 8/10). The `State.artifacts`
+> strip is also resolved — sprint 32 inverted it (roadmap FD1): `artifact_refs` (never
+> read back off disk) was deleted; `State.artifacts` stays as the permanent source of
+> truth and the prompt-cache prefix.
+
+## Working here: personas & model routing
+
+Development on this repo is split by model to keep each session lean and single-model
+(the token/session-limit fix). The workflow is externalized into `.ai/` and driven by
+three skills — **`/resume`** (rehydrate from `.ai/` at the start of a session),
+**`/handoff`** (serialize state before switching model/session), **`/archive-sprint`**
+(retire a completed, HITL-approved sprint). See `.ai/context/workflow.md` for the protocol.
+
+- **Architect (Opus).** Architecture, design, sprint/phase **planning** (planning pass, one question at a time, HITL gates), **HITL review** of a coding session's diff, module-boundary decisions, non-trivial debugging, and roadmap/memory updates. This is the default model for planning and review sessions.
+- **Coder (Sonnet).** Implementing an already-**defined** sprint task, writing/adjusting tests, mechanical refactors, running the green gate, fixing lint. Sonnet runs the implementation sessions (or is dispatched as the `coder` subagent for a small in-session task).
+
+Rule of thumb: if the task requires deciding *what* to build or *whether* a diff is
+correct → **Opus**; if the task is executing a spec that already exists → **Sonnet**.
+Switch at sprint boundaries via `/handoff` → fresh session → `/resume`.
+
+**Every sprint lands via a pull request — a merged PR is the human approval.** Work on a
+`sprint/NN-slug` branch cut from `main`; commit and push freely there, then open a PR whose
+**base is `main`**. Post the Opus HITL review on it with `gh pr review --comment` (**never
+`--approve`** — the human's merge is the approval, and `gh` authenticates as the PR author
+anyway). **Never merge, and never force-push a pushed branch.** Full protocol in
+`.ai/context/workflow.md` (including a historical note on the one-time `feat/mcp-langgraph-migration`
+merge commit that landed the migration on `main` in sprint 35).
+
+> **Window note (sprint 35, until Task 5 executes):** "cut from `main`" / "base is `main`"
+> describe the state *after* the migration merge. Until Task 5 runs that merge, sprint
+> branches are still cut from — and PRs still based on — `feat/mcp-langgraph-migration`
+> (see PR #57, `sprint/35-tasks-1-2`). Remove this note once Task 5 completes.
+
+> **The Opus review is a CI gate, not a courtesy — and it runs in a FRESH session.**
+> Any PR touching `src/` fails the `architect-review` check until a review headed
+> `**Opus/Architect HITL review (automated)**`, carrying the fresh-session attestation, is
+> posted against its **current head commit** (`.github/workflows/hitl-review.yml`). That check
+> is **enforced**: the `protected-integration-branches` ruleset makes it a required check on
+> `main` and `feat/**`, so an unreviewed `src/` PR cannot be merged (see **BL-11** — until
+> sprint 33 the repo had *no* protection at all and every check here was advisory).
+> **`/model opus` mid-session is not a review session** — switching model does not clear
+> context, so the reviewer proofreads its own reasoning instead of re-deriving it. The
+> sequence is `/handoff` → **new session** → `/resume` → `/code-review` → post.
+> It is a gate because the convention failed: sprint 27's Task 8 shipped green with an R8 fix
+> that covered `cli.py` and left every fresh-run path still filing issues on the wrong repo —
+> the review that would have caught it was skipped and nothing noticed. Docs-only PRs are
+> exempt. Full protocol in `.ai/context/workflow.md`.
 
 ## Commands
 
@@ -22,73 +84,42 @@ Run the loop itself:
 
 ```bash
 hatch run loop-engine run --input path/to/requirements.md --budget 5.00
-hatch run loop-engine run --resume-from state/<run_id>/01_ArchitecturePersona.json
+hatch run loop-engine run --resume-from state/<run_id>/01_ArchitectureGenerator.json
 hatch run loop-engine resume --from-issue <N>   # after answering a paused run's GitHub issue
 hatch run loop-engine cost-summary --run-id <run_id>
 ```
 
-Exit codes from `run`/`resume`: 0 completed, 2 awaiting a GitHub issue answer, 3 budget exceeded.
+Exit codes from `run`/`resume`: 0 completed, 2 awaiting a GitHub issue answer, 3 budget exceeded, 4 aborted by the human (the pending issue was closed without an answers comment — distinct from 1, an unexpected failure).
+(The `loop-engine resume` CLI subcommand is unrelated to the `/resume` dev-workflow skill.)
 
-CI (`.github/workflows/ci.yml`) runs, in order: `lint` → `format-check` → `test` → `secrets-scan` (gitleaks) → `sbom`. All must pass; see `sprints/GLOBAL_DEFINITION_OF_DONE.md` for the full merge bar (every new Pydantic-validated I/O boundary needs a test proving invalid input is rejected, no `# noqa` without an inline justification, no hardcoded secrets anywhere including `state/` snapshots, dependencies pinned to CVE-free versions).
-
-## API key setup
-
-The Anthropic API key is **never** a CLI flag or env var — it's retrieved exclusively from the OS keyring:
-
-```bash
-hatch run python -c "import keyring; keyring.set_password('loop-engine', 'anthropic_api_key', 'sk-ant-...')"
-```
-
-In the devcontainer this is provisioned automatically from Infisical on container start (see `.devcontainer/infisical-start.sh` / `seed-secrets.sh`); the underlying `keyring.get_password(...)` contract is unchanged either way. A double-gated env var fallback (`LOOP_ENGINE_ALLOW_ENV_CREDENTIAL=1` + `LOOP_ENGINE_CI_API_KEY`) exists solely for CI/automation contexts that can't mount an encrypted keyring file — never use it elsewhere.
-
-## Architecture
-
-```
- human ⇄ GitHub Issue (filed by the engine; answers as ```answers comments)
-              ⇅
-             PM ──────────── owns project_spec; resolver of last automated resort
-              ⇅
-          Architect ───────── owns architecture_definition; resolves Coder questions
-              ⇅
-     Sprint Breakdown ─────── re-entered on "plan"-impact rework
-              ⇅
-            Coder ─────────── per-sprint inner loop; escalates, never guesses
-
- forward path per stage: persona.run() → gate → ACCEPT (snapshot, next stage)
-                                              → REVISE (bounded, findings fed back)
-                                              → ESCALATE (resolver ladder → issue)
-```
-
-- **`core/state.py`** — `State`, a Pydantic v2 model (`schema_version` 2: `run_id`, `status`, `questions`, `pending_issue`, `counters`, `stage_history`, `artifacts`) with `extra="forbid"`. `RunStatus` makes termination explicit (`completed` / `failed_stage` / `budget_exceeded` / `awaiting_issue`) — never inferred from "no exception". `migrate_state_payload()` upgrades v1 snapshots on load.
-- **`core/engine.py`** — `run_loop(loop: Loop, ...)`: per stage, a bounded propose → gate → accept/revise/escalate cycle. Gate findings feed revision attempts against the prior artifact — the persona sends it as an assistant turn, gets back only corrected sections, and merges via `personas/sections.py` (identical findings twice = stop paying, escalate); escalated questions walk the stage's `resolvers` ladder; questions nobody answers become a GitHub issue and the run pauses (`AWAITING_ISSUE`). Resolved questions carry an `impact` that routes re-entry via `Loop.impact_reentry`. Hard caps (`MAX_ESCALATIONS_PER_STAGE`, `MAX_REPLANS_PER_RUN`) keep every feedback edge finite. Every exit path persists a snapshot.
-- **`core/gates.py`** — `ArtifactGate`: content validation (present, JSON-shaped if declared, not question-shaped) plus `## Open Questions` extraction into `Question` objects.
-- **`personas/base.py`** — `BasePersona`: abstract `run(state, llm_client, findings=None)`, `consumes`/`produces` artifact declarations (engine pre-checks inputs), and overridable `resolve_questions()` for resolver duty. Personas receive the LLM client via injection — they cannot construct their own or touch credentials directly.
-- **`personas/{pm,architecture,agile_sprint_breakdown,coder_iac}/`** — the four default personas; prompts are batch-mode (assumptions + `## Open Questions`, never "ask and wait"). `PMPersona` keeps its critic revision loop (`personas/pm/critic.py`) with no-progress detection, and additionally implements `resolve_questions` (from the spec) and `fold_answers` (folds human issue answers into the spec and classifies impact). `CoderIacPersona` runs an inner agentic loop — one `run_tool_loop` per sprint block with read/execute tools (`read_file`/`list_files`/`grep`/`run_tests` from `tools/coder_tools/`) — emits full-content or SEARCH/REPLACE edit blocks that the persona applies via `write_artifact` (failures are recorded on the report for the gate), and stops at a sprint that raises questions; on findings re-entry it re-runs only the sprint(s) targeted by resolved questions (`Question.origin_detail`) or by sprint-path-prefixed gate findings, falling back to a full re-run when findings carry no attribution. Its stage gate is `core/coder_gate.py`: content checks plus a deterministic pytest run — ACCEPT is evidence-based, and pytest exit 5 (no tests) is a REVISE. Sprint plans and implementation reports are written to `sprints/` via `write_artifact`.
-- **`loops/default/loop.py`** — `DEFAULT_LOOP`, a `Loop` of four `Stage`s wiring gates, the resolver ladder, and `impact_reentry`. No YAML/JSON loop-definition format — loops are just Python.
-- **`tools/llm/client.py`** — `LLMClient`: retrieves the API key from `keyring` exactly once per instance, prices every call from the per-model rate table in `tools/llm/pricing.py` and enforces the per-run USD budget *before* each call (`BudgetExceededError`; heuristic estimate, refined via `count_tokens` once it reaches 50% of the remaining budget), sends caller-supplied `system_blocks` as a cached system prefix (`cache_control: ephemeral` on the last block — personas keep these byte-identical across calls and put volatile content in the user prompt), drives the Coder's bounded tool loop via `run_tool_loop` (per-iteration budget debit, executor errors surfaced as `is_error` tool results, iteration cap fails the stage honestly), and raises `TruncatedResponseError` when `stop_reason == "max_tokens"` (a truncated artifact must never propagate). **This is the only module in the codebase permitted to import `keyring`** — enforced by `tests/tools/test_keyring_boundary.py`.
-- **`tools/issue_io/`** — the only module that talks to GitHub (shells out to `gh`; no token in-process). Files the escalation issue, parses the human's ```answers comment, maps numbered answers back to questions.
-- **`tools/state_io/writer.py`** — the sole writer of `State` snapshots (`state/`) and produced artifacts (`docs/`, `sprints/`, `src/`). Validates `run_id`/artifact paths against path traversal before any filesystem call.
-- **`tools/logging_config.py`** — structured per-stage cost logging.
-- **`cli.py`** — the Typer entrypoint (`run`, `resume`, `cost-summary`). A thin wrapper; all logic lives in the library layer. Resume verifies snapshot stage names against the loop before slicing (never resumes a mismatched loop).
-
-`tests/` mirrors `src/loop_engine/` layout, plus `tests/integration/` for cross-module tests (e.g. `test_budget_abort.py`, `test_no_credential_leakage.py`).
+CI (`.github/workflows/ci.yml`) runs the unconditional chain `lint` → `format-check` → `test` → `secrets-scan` (gitleaks) / `dependency-audit` → `sbom`; no job carries an `if:`, so none can ever report `skipped` (BL-10, sprint 33). A separate `pr-title.yml` workflow validates the PR title as its own required check — it gates nothing in `ci.yml` and is gated by nothing, so a bad title costs runner minutes instead of stopping the chain. A third workflow, `hitl-review.yml`, enforces the Architect review on any PR touching `src/`. A fourth, `ruleset-drift.yml`, runs on a daily cron (plus `workflow_dispatch`) and fails loudly if the ruleset below is ever weakened or removed; it gates nothing and is gated by nothing (sprint 34, BL-11/FD2 — a required check is required only *because* the ruleset says so, so making the drift check itself required would un-require it the moment the ruleset it watches disappears). Every `uses:` in every workflow is pinned to a commit SHA, not a floating tag (sprint 34 — a tag is a mutable pointer an upstream compromise can repoint), enforced structurally by `tests/test_ci_config.py`. All eight checks (`lint`, `format-check`, `test`, `secrets-scan`, `dependency-audit`, `sbom`, `pr-title`, `architect-review`) are **required** by the `protected-integration-branches` ruleset on `main` + `feat/**`, which also blocks force-pushes, blocks deletion, and requires a PR to merge; see `sprints/GLOBAL_DEFINITION_OF_DONE.md` for the full merge bar. Required checks match by **check-run name** = job id, so **never add a `name:` override to those jobs** (BL-11/FD5 — it renames the check run and strands the requirement; `tests/test_ci_config.py` pins this). The API key is **never** a CLI flag or env var — it comes only from the OS keyring (setup + fallback detail in `.ai/context/modules.md`).
 
 ## Enforced module boundaries
 
 These are checked by static tests, not just convention — don't casually violate them:
 
-- `core/` imports no concrete persona module, only `personas/base.py`.
-- `tools/state_io/` is the only module with direct file-write calls (`open`/`write_text`/`write_bytes`); everything else goes through `write_artifact`/`write_state_snapshot`.
+- `core/` imports no concrete persona module, only `personas/base.py`. It is otherwise unrestricted on `tools/*`: `core/coder_gate.py` (Sprint 28) imports `tools/mcp` — scoped to that one file, no other `core/` module — so the `RalphCoderGate`'s evidence pytest run can dispatch through `tools/mcp.run_gate_pytest` (in-process on `none`/`worktree`, the sandboxed coder-tools provider on `container`/`sandbox`) instead of refusing under sandbox modes as `_raise_if_sandboxed` (deleted) once did. (`tools/issue_io/mcp_client.py`'s imports of `tools/mcp`/`tools/repo_io`/`tools/worktree` are function-scoped, not module-scope — Task 10 finding F7 — so importing `core/engine` for the `issue_filer` write seam does not transitively pull the MCP client stack in at import time.)
+- `tools/state_io` and `tools/scaffold` are the file-write-owning modules (`open`/`write_text`/`write_bytes`); everything else goes through `write_artifact`/`write_state_snapshot`. `tools/scaffold` (Phase 5 piece 4) is the **second** such surface — it writes a bundled skeleton (Python templates + the injected Global Conventions `CLAUDE.md`) into a foreign clone tree, validated via `repo_io._validate_clone_dest`; it imports no `subprocess`/`keyring`, so the five sanctioned subprocess surfaces below are unchanged.
 - `tools/llm/client.py` is the only module that imports `keyring`.
-- `tools/issue_io/` is by convention the only module that talks to GitHub.
-- `tools/coder_tools/` is read/execute-only: paths are traversal- and symlink-validated (reusing `state_io`'s validator); its `run_tests` pytest subprocess (also used by the Coder gate) is the only subprocess surface besides `issue_io`'s `gh`. It runs model-generated code — the operating assumption is the sandboxed devcontainer.
+- `tools/issue_io` and `tools/repo_io` are the GitHub-owning modules — `issue_io` files/reads human-escalation issues, `repo_io` is the repo/branch/PR factory (`create_repository`, `clone_repo`, `create_branch`, `open_pr`; no merge verb — auto-merge is prohibited) **plus repo introspection** (`resolve_repo_slug`, Sprint 27 follow-up: the `owner/repo` a tree belongs to). `resolve_repo_slug` lives here, not in `issue_io`, because it is a repo verb — but its caller is the issue filer, which needs an **explicit** destination rather than `gh`'s implicit CWD resolution (finding R8). It is orchestrator-side and deliberately **not** an MCP verb: the github server's four-verb set stays pinned and pairwise-disjoint. Both shell out to the already-authenticated `gh`; no other module talks to GitHub.
+- `tools/coder_tools/` is read/execute-only: paths are traversal- and symlink-validated (reusing `state_io`'s validator); its `run_tests` pytest subprocess (also used by the Coder gate) is a sanctioned subprocess surface. It runs model-generated code — the operating assumption is the sandboxed devcontainer. `tools/coder_tools/run_lint.py` (Sprint 29) is a **second** subprocess surface in this module — `ruff check` + `ruff format --check` against a validated path, same containment (fixed argv, `shell=False`, hard timeout, output-capped). Unlike `run_tests`, ruff statically parses the target and never executes model-generated code, so it is strictly lower-risk; it stays in the model's Coder tool loop only, never a gate verb (gate-enforced lint is out of scope for Sprint 29).
+- `tools/git_io` (Phase 5 piece 3) owns local-git working-tree writes (`checkout_branch`, `commit_all`, `push_branch`) plus a read-only `has_changes` probe (`git status --porcelain`, so a no-op run never reaches `commit_all`'s empty-index failure) in a **foreign** cloned tree — distinct from `repo_io` (shells `gh`, the remote GitHub API) and `worktree` (the orchestrator's own per-run isolation, keyed off `run_id`). It mirrors `tools/worktree/manager.py::_git`'s posture exactly (fixed argv, `shell=False`, a hard timeout, `check`-handling) and validates every `tree` argument by reusing `tools/repo_io/github.py::_validate_clone_dest`. `git push` rides `gh`'s clone-established credential helper — no `keyring` import, no new credential path.
+- Sanctioned subprocess surfaces are exactly **five**, each fixed-argv and `shell=False`: `coder_tools`' `pytest`, `coder_tools`' `ruff` (Sprint 29, `run_lint.py` — statically parses, never executes model-generated code), `issue_io`'s **and `repo_io`'s** `gh` (two consumers of the same surface — `repo_io` adds no sixth), `tools/worktree`'s `git worktree` (args derive only from a `validate_run_id`-checked run_id), and `tools/git_io`'s local `git` (args derive only from a `_validate_clone_dest`-checked tree). Nothing else shells out (`tests/tools/test_subprocess_surfaces.py`). The Phase 3b container/sandbox launch is **not** a sixth surface: it is spawned by the MCP `stdio_client` (the same mechanism that launches the local coder-tools server — only `command`/`args` differ), and runtime detection uses `shutil.which`, not a subprocess.
+- `mcp_servers/` re-front native tools over MCP: `coder_tools_server` (read/execute-only, delegating to `tools/coder_tools` with the same path validation and no credentials), `github_server` (delegating to `tools/repo_io`, exposing exactly the four factory verbs, no credentials — `repo_io` shells to `gh`'s own auth), and — since Sprint 26 — `issue_io_server` (a **third** native server, delegating to `tools/issue_io`, exposing exactly the two human-escalation verbs `{create_issue, read_issue}`, no credentials — `issue_io` shells to `gh`'s own auth, the same already-sanctioned surface). Tool execution runs in the server subprocess, out of the orchestrator process entirely — the boundary is moved, not relaxed. Since Phase 6 (sprint 27) this is the **only** coder-tool path: `LOOP_ENGINE_TOOLS` and the in-process `CODER_TOOLS`/`_execute_tool` dispatch are deleted, so the model's tools are always sandboxable and there is no unsandboxed fallback to refuse. `tools/mcp` is the client side (discovery + dispatch) and imports no keyring/writes no files. Server discovery is config-driven and consumer-scoped: `tools/mcp/config.py` reads a repo-root **`loop_engine.mcp.json`** (distinct from Claude Code's own `.mcp.json`; committed, declaring the `github` and — since Sprint 26 — `issue` servers) into logical-name → launch-spec, and `build_provider_for(names, ...)` builds a provider for **only** the named servers, so a consumer only ever sees the tools of the server(s) it asked for. The coder-tools server exposes exactly `{read_file, list_files, grep, run_tests, run_lint}` (Sprint 29 adds `run_lint`), the github server exposes exactly `{create_repository, clone_repo, create_branch, open_pr}`, and the issue server exposes exactly `{create_issue, read_issue}` — the three sets are asserted **pairwise disjoint** (`tests/tools/test_mcp_provider.py`). The github and issue verbs are **orchestrator-invoked only**, reached solely through `build_github_provider()`/`build_issue_provider()` — they never enter the model's coder tool loop. Sprint 26 threaded an injectable `issue_filer` write seam (`core/engine.py`'s `execute_stage`/`_pause_for_issue`, forwarded by `run_graph_loop`) and an injectable reader seam (`cli.py`'s `resume --from-issue`); Sprint 27 Task 8 (gated on the host-verified V3 round-trip) **flipped both to the MCP route as the runtime default** — `tools/issue_io.default_issue_filer`/`default_issue_reader` open a fresh `issue` MCP provider per call, and the classic direct `file_question_issue`/`read_issue_answers` default wiring is deleted (the underlying `create_issue`/`read_issue` `gh` transport stays — the server delegates to it). No new feature flag governs the flip, mirroring 22b's github posture. `create_issue`/`read_issue` take an explicit `repo` (owner/repo) rather than relying on `gh`'s implicit cwd-derived resolution: inside a run's worktree that resolves to **loop-engine itself**, which is how escalation issues for managed repos came to be filed on the project repo (finding R8). `default_issue_filer` names the destination by resolving `worktree.origin_cwd()` — the orchestrator's pre-chdir CWD, recorded by `worktree_run` alongside the state root — so **every** entrypoint (`cli`, `runner.run_new`, `run_in_tree`, the trigger surface) is correct without threading a cwd; the first cut of this fix threaded it from `cli.py` alone and the fresh-run paths kept leaking. On the read side, issue numbers are per-repo, so `resume --from-issue` takes `--repo` and verifies the issue's own URL against the snapshot's `pending_issue` (see `docs/migration_roadmap.md` Phase 6, R1–R8/R10).
 - Any change touching `State` must keep `schema_version` accurate (bump it and extend `migrate_state_payload` for breaking shape changes) and keep `extra="forbid"` intact.
+- `trigger/` (Phase 5 piece 2) is a new top-level **orchestrator-level caller**, a sibling of `cli.py` — it may import `core`/the default loop/`State`/`LLMClient`/`worktree` (via the shared `runner.py`), but is not a `tools/` module and not an MCP server. Its boundary posture, asserted by `tests/trigger/test_boundaries.py`: imports no `keyring`, writes no files directly, and adds **no subprocess surface** — dispatch (`trigger/dispatch.py`'s `InProcessDispatcher`) runs the loop in-process on a worker thread. The webhook's HMAC secret comes from `LOOP_ENGINE_WEBHOOK_SECRET`, an **env var**, not the keyring — it authenticates an inbound request, not an outbound LLM call, so it is a distinct credential class from the keyring-only Anthropic key.
+- `flows/` (Phase 5 piece 3) is another new top-level **orchestrator-level caller**, a sibling of `cli.py`/`trigger/`. `flows/maintenance` chains `repo_io.clone_repo` → `git_io.checkout_branch` → `runner.run_in_tree` (the default loop, cwd pinned to the clone, **not** `worktree_run` — the clone is its own isolation boundary) → a **completion** guard (the inner run must end `COMPLETED`; a `FAILED_STAGE`/`BUDGET_EXCEEDED`/`AWAITING_ISSUE` run short-circuits to `run_incomplete` so a human-paused tree is never shipped) → a **no-change** guard (`git_io.has_changes`; a no-op run short-circuits to `no_changes`) → a green gate (`coder_tools.run_tests` on the clone) → **green-only** `git_io.commit_all`/`push_branch` + `repo_io.open_pr` (base defaults to `develop`); a non-completed run, an empty diff, or a red gate ⇒ no commit/push/PR. `open_pr` stays the terminal GitHub call — no merge verb exists, so auto-merge is impossible here too. Its boundary posture, asserted by `tests/flows/test_boundaries.py`: imports no `keyring`, writes no files directly, and adds **no subprocess surface of its own** — the one new surface, `tools/git_io`'s local `git`, is *called*, not introduced by `flows/`.
+- `flows/bootstrap` (Phase 5 piece 4) is a sibling of `flows/maintenance` — the factory verb that brings a new, conventions-conformant repo into *existence*: `repo_io.create_repository` → `repo_io.clone_repo` (empty tree) → `git_io.checkout_branch(main)` → `tools/scaffold.write_skeleton` → `git_io.commit_all`/`push_branch(main)` → `repo_io.create_branch(develop, base=main)` (ordering is load-bearing — `create_branch` reads the base ref's SHA over the API, so it runs only *after* the push). Deliberately **no** inner loop (`run_in_tree`), **no** green gate, and **no** `open_pr` — a brand-new repo has nothing to PR into; auto-merge stays impossible. Same boundary posture as `flows/maintenance`: no `keyring`, no direct file write, no subprocess surface of its own (asserted by `tests/flows/test_boundaries.py`).
 
-## Containers / devcontainer
+## Pointers (load on demand)
 
-- Root `Dockerfile` is multi-stage: `dev` (full contributor toolchain — hatch, ruff, git, gh) and `prod` (minimal runtime). Both are local-only, no registry publish.
-- `.devcontainer/` targets the `dev` stage. It bind-mounts a forwarded host GPG agent socket (`GPG_HOST_DIR`) for commit signing, and provisions `ANTHROPIC_API_KEY`, `GITHUB_PERSONAL_ACCESS_TOKEN`, and `LOOP_ENGINE_KEYRING_PASSPHRASE` from Infisical (project identified by root `.infisical.json`, machine identity via `INFISICAL_CLIENT_ID`/`INFISICAL_CLIENT_SECRET` forwarded from the host shell) on every container start via `infisical-start.sh` → `seed-secrets.sh`. `infisical run` under machine-identity auth needs `--projectId` and `--path=/loop-engine` passed explicitly — it does not read `.infisical.json`'s `workspaceId` automatically the way interactive login does. The keyring passphrase file must be written *before* anything calls `keyring.set_password`, since the container's cryptfile keyring backend reads that file on every call.
-- A bare Linux container has no OS-native keyring backend, so `containers/keyring_backend/cryptfile_backend.py` is wired in as a custom encrypted-file backend via `keyring`'s own backend-discovery config (not the PyPI `keyrings.cryptfile` package). It reads two *file paths* from env vars (`LOOP_ENGINE_KEYRING_FILE`, `LOOP_ENGINE_KEYRING_PASSPHRASE_FILE`) — never secret values directly.
-- `.mcp.json` connects Claude Code/Cursor to GitHub's hosted remote MCP server using a bearer-token `GITHUB_PERSONAL_ACCESS_TOKEN`, sourced via `gh auth token` (itself seeded by the Infisical flow above) rather than OAuth, so the devcontainer can authenticate non-interactively at container start.
+- **`.ai/next-steps.md`** — the live dev-workflow cursor: current phase/sprint, next action, which model. Read this first (or run `/resume`).
+- **`.ai/context/modules.md`** — module-by-module walkthrough, the architecture diagram, API-key setup, container/devcontainer detail.
+- **`.ai/context/conventions.md`** — the portable Global Conventions (Python / IaC / commit / Definition of Done) the personas inject into managed repos.
+- **`.ai/context/workflow.md`** — the `/resume` → `/handoff` → `/archive-sprint` handoff protocol and Opus↔Sonnet switch points.
+- **`docs/migration_roadmap.md`** — the deep, authoritative migration status + decisions log (the resume point of record).
+- **`docs/architecture_definition.md`** — the full architecture + threat-model writeup.
 
-See `docs/architecture_definition.md` for the full architecture and threat-model writeup, and the README's "Running in a container" section for command-level detail on all of the above.
+> Note: `.agent/STATE.md` + `.agent/MEMORY.md` are the loop-engine **product's** own
+> runtime Ralph state (written when the engine *runs*), NOT this dev-workflow layer.
+> Don't confuse them with `.ai/`.

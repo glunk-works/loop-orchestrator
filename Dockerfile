@@ -51,7 +51,13 @@ RUN curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEA
     && tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks \
     && rm /tmp/gitleaks.tar.gz
 
-RUN pip install --no-cache-dir hatch
+# ruff is a hatch dev-env dependency (pyproject [tool.hatch.envs.default]), so
+# the base stage's `pip install .` (runtime deps only) does not put it on the
+# container's system Python. The sandboxed Coder's `run_lint` tool shells
+# `sys.executable -m ruff`, which resolves to that system Python — so ruff must
+# be installed here for `run_lint` to work inside the sandbox. Pin matches
+# pyproject.
+RUN pip install --no-cache-dir hatch ruff==0.15.20
 
 USER app
 

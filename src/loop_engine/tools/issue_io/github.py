@@ -70,34 +70,38 @@ def _issue_body(state: State, questions: list[Question], snapshot_path: str) -> 
     return "\n".join(lines)
 
 
-def file_question_issue(state: State, questions: list[Question], snapshot_path: str) -> IssueRef:
+def render_question_issue(
+    state: State, questions: list[Question], snapshot_path: str
+) -> tuple[str, str, str]:
+    """Pure: the (title, body, label) an issue-filing call needs. No `gh`."""
     title = f"loop-engine: {len(questions)} question(s) for run {state.run_id}"
-    url = _run_gh(
-        [
-            "issue",
-            "create",
-            "--title",
-            title,
-            "--body",
-            _issue_body(state, questions, snapshot_path),
-            "--label",
-            ISSUE_LABEL,
-        ]
-    ).strip()
+    return title, _issue_body(state, questions, snapshot_path), ISSUE_LABEL
+
+
+def create_issue(title: str, body: str, label: str, *, repo: str | None = None) -> IssueRef:
+    """The one `gh`-write primitive: shells `gh issue create` and parses the
+    resulting URL into an `IssueRef`. Takes only strings, so this is the verb
+    an MCP boundary can carry without a rich domain object crossing it.
+    `repo` (owner/repo), when given, is passed as `--repo` — an explicit
+    destination instead of `gh`'s implicit cwd-derived resolution (R8)."""
+    args = ["issue", "create", "--title", title, "--body", body, "--label", label]
+    if repo is not None:
+        args += ["--repo", repo]
+    url = _run_gh(args).strip()
     number = int(url.rstrip("/").rsplit("/", 1)[-1])
     return IssueRef(number=number, url=url)
 
 
-def read_issue(issue_number: int) -> dict:
-    raw = _run_gh(
-        [
-            "issue",
-            "view",
-            str(issue_number),
-            "--json",
-            "state,body,comments",
-        ]
-    )
+def read_issue(issue_number: int, *, repo: str | None = None) -> dict:
+    """Shells `gh issue view`. `repo` (owner/repo), when given, is passed as
+    `--repo` — see `create_issue` for why an explicit destination matters."""
+    # `url` identifies which repo the issue actually came from, so a resume can
+    # verify it read the issue it meant to rather than a same-numbered issue in
+    # whatever repo the CWD happened to resolve to.
+    args = ["issue", "view", str(issue_number), "--json", "state,body,comments,url"]
+    if repo is not None:
+        args += ["--repo", repo]
+    raw = _run_gh(args)
     return json.loads(raw)
 
 
@@ -106,30 +110,54 @@ def parse_snapshot_path(issue_data: dict) -> str | None:
     return match.group(1) if match else None
 
 
-def read_issue_answers(issue_number: int, issue_data: dict | None = None) -> dict[int, str]:
-    """Return {question number: answer} from the issue's latest answers comment.
+_ISSUE_URL_RE = re.compile(r"^https://github\.com/([^/]+/[^/]+)/issues/\d+/?$")
+
+
+def repo_from_issue_url(url: str) -> str:
+    """The `owner/repo` slug a canonical GitHub issue URL
+    (`https://github.com/owner/repo/issues/N`) belongs to.
+
+    F1a: makes `resume --snapshot` unambiguous. A snapshot's own
+    `pending_issue.url` is the only first-hand record of where its escalation
+    was actually filed, recorded at pause time by the process that filed it
+    -- so deriving the read repo from it (rather than CWD or a guess) is what
+    closes the destination ambiguity CWD-based resolution cannot.
+    """
+    match = _ISSUE_URL_RE.match(url)
+    if not match:
+        raise ValueError(f"Not a recognizable GitHub issue URL: {url!r}")
+    return match.group(1)
+
+
+def parse_issue_answers(issue_data: dict, issue_number: int | None = None) -> dict[int, str]:
+    """Pure: {question number: answer} from an already-fetched issue view's
+    latest answers block. No `gh`.
+
+    Scans every ```answers block in every comment via `finditer` (not just
+    the first block per comment): a human "Quote reply" that echoes the
+    bot's own example block would otherwise shadow the real answers below it
+    (R6). Later blocks — whether later in the same comment or in a later
+    comment — supersede earlier ones.
 
     Raises IssueClosedWithoutAnswersError if the issue is closed with no
-    parseable answers — the human's signal to abort the run.
+    parseable answers — the human's signal to abort the run. `issue_number`,
+    when given, is folded into that error's message (R5).
     """
-    data = issue_data if issue_data is not None else read_issue(issue_number)
-
     answers: dict[int, str] = {}
-    for comment in data.get("comments", []):
-        block = _ANSWERS_BLOCK_RE.search(comment.get("body", ""))
-        if block is None:
-            continue
-        parsed: dict[int, str] = {}
-        for line in block.group(1).splitlines():
-            match = _ANSWER_LINE_RE.match(line)
-            if match:
-                parsed[int(match.group(1))] = match.group(2)
-        if parsed:
-            answers = parsed  # later comments supersede earlier ones
+    for comment in issue_data.get("comments", []):
+        for block in _ANSWERS_BLOCK_RE.finditer(comment.get("body", "")):
+            parsed: dict[int, str] = {}
+            for line in block.group(1).splitlines():
+                match = _ANSWER_LINE_RE.match(line)
+                if match:
+                    parsed[int(match.group(1))] = match.group(2)
+            if parsed:
+                answers = parsed  # later blocks supersede earlier ones
 
-    if not answers and data.get("state") == "CLOSED":
+    if not answers and issue_data.get("state") == "CLOSED":
+        ref = f" #{issue_number}" if issue_number is not None else ""
         raise IssueClosedWithoutAnswersError(
-            f"Issue #{issue_number} was closed without an answers comment; "
+            f"Issue{ref} was closed without an answers comment; "
             "treating the run as aborted by the human."
         )
     return answers

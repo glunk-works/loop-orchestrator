@@ -11,32 +11,55 @@ from pathlib import Path
 
 from loop_engine.core.gates import ArtifactGate, GateDecision, GateResult
 from loop_engine.core.state import State
+from loop_engine.tools.agent_state import read_scratchpad
 from loop_engine.tools.coder_tools import run_tests as run_tests_tool
+from loop_engine.tools.mcp import run_gate_pytest
 
 # The persona appends this section to a report when model-emitted edit
 # blocks failed to apply; its presence is a deterministic REVISE signal.
 EDIT_FAILURES_HEADER = "## Edit Application Failures"
 
+# Stable prefix on the finding the Ralph gate emits when EVERY manifest task is
+# checked off but the suite is red — a cross-task regression, not incomplete
+# coverage. The Ralph persona keys its repair increment off this prefix, so it
+# must never be sniffed from raw pytest output. Distinct from the
+# incomplete-coverage status line so the two "no selectable task" states
+# (repair vs escalate-blocked) are unambiguous.
+RALPH_REGRESSION_PREFIX = "Ralph regression —"
 
-def _last_reported_sprint(state: State, reports: dict[str, str]) -> str:
-    """The most recently executed sprint: sprints run in plan order, so the
-    last plan entry holding a report is where a red test run is attributed
-    (and therefore which sprint the persona re-runs)."""
+
+def _run_gate_pytest(test_path: str) -> tuple[int, str]:
+    """Isolation-aware pytest run for a Coder gate: in-process on none/worktree,
+    dispatched through the sandboxed coder-tools provider on container/sandbox
+    (no tree ⇒ 'no tests collected' in either case). The gate runs immediately
+    after the Coder stage in the same process, so Path.cwd() is the worktree —
+    passed explicitly so the sandbox provider mounts/`-w`s the same tree the
+    in-process branch would key off.
+    """
+    return run_gate_pytest(test_path, cwd=Path.cwd())
+
+
+def _manifest_task_ids(state: State, manifest_key: str) -> list[str] | None:
+    """Task ids from the `task_manifest` artifact — parsed core-safely (no persona
+    import), returning None if the artifact is missing or malformed."""
     try:
-        plan_order = [block["path"] for block in json.loads(state.artifacts["sprint_plans"])]
-    except (KeyError, json.JSONDecodeError, TypeError):
-        plan_order = []
-    for sprint_path in reversed(plan_order):
-        if sprint_path in reports:
-            return sprint_path
-    return next(reversed(reports), "unknown-sprint")
+        manifest = json.loads(state.artifacts.get(manifest_key, ""))
+        return [entry["id"] for entry in manifest]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return None
 
 
 @dataclass(frozen=True)
-class CoderGate:
-    """Content checks, then a deterministic pytest run before ACCEPT."""
+class RalphCoderGate:
+    """Coverage-aware gate for the Ralph-loop Coder: green is necessary, not
+    sufficient. ACCEPT requires **every** manifest task checked off in the
+    `.agent/STATE.md` checklist AND a green pytest run. Every REVISE returns a
+    single self-contained status finding so the accumulated-findings list stays
+    authoritative-by-latest.
+    """
 
     artifact_key: str = "implementation_reports"
+    manifest_key: str = "task_manifest"
     test_path: str = "src"
 
     def __call__(self, state: State, stage_name: str) -> GateResult:
@@ -47,10 +70,14 @@ class CoderGate:
         if content_result.decision is not GateDecision.ACCEPT:
             return content_result
 
-        reports: dict[str, str] = json.loads(state.artifacts[self.artifact_key])
+        task_ids = _manifest_task_ids(state, self.manifest_key)
+        if task_ids is None:
+            return GateResult(
+                GateDecision.REVISE,
+                findings=["task_manifest is missing or malformed; cannot gate Ralph coverage"],
+            )
 
-        # Edit blocks that failed to apply are already a known defect with
-        # exact sprint attribution — no point paying for a test run first.
+        reports: dict[str, str] = json.loads(state.artifacts[self.artifact_key])
         edit_findings = [
             f"{sprint_path}: {EDIT_FAILURES_HEADER.lstrip('# ')} recorded in the "
             "implementation report; re-emit the corrected blocks so they apply cleanly"
@@ -60,28 +87,46 @@ class CoderGate:
         if edit_findings:
             return GateResult(GateDecision.REVISE, findings=edit_findings)
 
-        blamed_sprint = _last_reported_sprint(state, reports)
+        # Coverage: every manifest task must be checked off in .agent/STATE.md.
+        done = set(read_scratchpad().completed_tasks)
+        outstanding = [tid for tid in task_ids if tid not in done]
+        if outstanding:
+            return GateResult(
+                GateDecision.REVISE,
+                findings=[_status_finding(outstanding)],
+            )
 
-        if not Path(self.test_path).exists():
-            exit_code: int = run_tests_tool.PYTEST_NO_TESTS_COLLECTED
-            output = f"no {self.test_path}/ tree was produced"
-        else:
-            exit_code, output = run_tests_tool.run_pytest(self.test_path)
-
+        exit_code, output = _run_gate_pytest(self.test_path)
         if exit_code == run_tests_tool.PYTEST_NO_TESTS_COLLECTED:
             return GateResult(
                 GateDecision.REVISE,
                 findings=[
-                    f"{blamed_sprint}: no tests were produced; the Global "
-                    f"Definition of Done requires tests.\n{output}"
+                    "Ralph status — all tasks checked off but no tests were produced; "
+                    f"the Global Definition of Done requires tests.\n{output}"
                 ],
             )
         if exit_code != 0:
+            # All tasks are checked off, yet the suite is red: a change regressed
+            # a previously-passing test. This is NOT incomplete coverage, so it
+            # carries the regression prefix that routes the persona to a repair
+            # increment instead of the escalate-when-blocked path.
             return GateResult(
                 GateDecision.REVISE,
                 findings=[
-                    f"{blamed_sprint}: the produced tests fail (pytest exit "
-                    f"code {exit_code}):\n{output}"
+                    f"{RALPH_REGRESSION_PREFIX} every manifest task is complete but the "
+                    f"suite is red; a change regressed a previously-passing test "
+                    f"(pytest exit {exit_code}):\n{output}"
                 ],
             )
         return GateResult(GateDecision.ACCEPT)
+
+
+def _status_finding(outstanding: list[str]) -> str:
+    """Incomplete-coverage status: tasks remain (possibly all dep-blocked). The
+    red-suite-with-all-tasks-done case uses `RALPH_REGRESSION_PREFIX` instead."""
+    next_task = outstanding[0] if outstanding else "none"
+    remaining = ", ".join(outstanding) if outstanding else "none"
+    return (
+        f"Ralph status — next task: {next_task}; tasks still to complete: {remaining}. "
+        "Implement the next unit."
+    )

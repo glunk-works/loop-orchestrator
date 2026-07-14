@@ -6,19 +6,39 @@ Every exit path — success or any failure — persists a snapshot whose stage
 name says what happened, so no paid work is ever lost to a traceback.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from datetime import UTC, datetime
 
 from pydantic import ValidationError
 
-from loop_engine.core.gates import ArtifactGate, GateDecision, GateResult, new_question
-from loop_engine.core.state import Question, RunStatus, StageRecord, State
+from loop_engine.core.gates import (
+    RESOLUTION_FINDING_PREFIX,
+    ArtifactGate,
+    GateDecision,
+    GateResult,
+    new_question,
+)
+from loop_engine.core.state import IssueRef, Question, RunStatus, StageRecord, State
 from loop_engine.personas.base import BasePersona
-from loop_engine.tools.issue_io import file_question_issue
-from loop_engine.tools.llm.client import BudgetExceededError, LLMClient, TruncatedResponseError
+from loop_engine.tools.artifact_store import has_artifact, publish_artifacts
+from loop_engine.tools.issue_io import default_issue_filer
+from loop_engine.tools.llm.client import (
+    BudgetExceededError,
+    LLMClient,
+    ToolLoopExceededError,
+    TruncatedResponseError,
+)
 from loop_engine.tools.logging_config import log_stage_completion
 from loop_engine.tools.state_io.writer import write_state_snapshot
+
+# The write-side seam (mirrors the `llm_client` collaborator threading):
+# `tools.issue_io.default_issue_filer` (MCP-backed, proven end to end in
+# Sprint 27's V3) is the runtime default. A caller with more context — e.g.
+# `cli.py`, which can bind an explicit destination repo (R8) before it's
+# too late to resolve one — injects its own `issue_filer` instead.
+IssueFiler = Callable[[State, list[Question], str], IssueRef]
 
 # Hard caps on feedback edges so no cycle can run unboundedly: hitting a cap
 # escalates to the human issue rather than looping again.
@@ -52,6 +72,11 @@ class Stage:
     # human as a GitHub issue.
     resolvers: list[BasePersona] = dataclass_field(default_factory=list)
     max_revisions: int = 2
+    # When True, a REVISE whose findings never stopped changing (revision
+    # budget exhausted) escalates to the resolver ladder / human instead of
+    # raising StageGateFailedError. Default False: every stage but PM has an
+    # automated resolver above it, so hard-failing stays correct there.
+    escalate_on_exhaustion: bool = False
 
 
 @dataclass
@@ -102,6 +127,7 @@ def _record_stage(
 def _finalize(state: State, stage_index: int, status: RunStatus) -> State:
     """Persist a terminal snapshot for ANY exit path and stamp the status."""
     final = state.model_copy(update={"status": status})
+    publish_artifacts(final)
     write_state_snapshot(
         final,
         run_id=final.run_id,
@@ -136,10 +162,29 @@ def _run_resolver_ladder(
 
 def _resolution_findings(questions: list[Question]) -> list[str]:
     return [
-        f"Escalated question: {q.text}\n  Resolution: {q.resolution}"
+        f"{RESOLUTION_FINDING_PREFIX} {q.text}\n  Resolution: {q.resolution}"
         for q in questions
         if q.resolution is not None
     ]
+
+
+def _exhaustion_escalation(stage_name: str, findings: list[str]) -> GateResult:
+    """A REVISE that never converged, re-expressed as an ESCALATE question.
+
+    Both no-progress paths route to the resolver ladder / human with the same
+    message: findings that repeated identically twice, and a revision budget
+    exhausted with `escalate_on_exhaustion` set.
+    """
+    return GateResult(
+        GateDecision.ESCALATE,
+        questions=[
+            new_question(
+                stage_name,
+                f"{stage_name} could not satisfy its output gate after "
+                f"repeated attempts: {'; '.join(findings)}",
+            )
+        ],
+    )
 
 
 def reentry_index(loop: Loop, stage_index: int, resolved: list[Question]) -> int:
@@ -160,31 +205,49 @@ def unresolved_questions(state: State) -> list[Question]:
     return [q for q in state.questions if q.resolution is None]
 
 
-def _pause_for_issue(state: State, stage_index: int, questions: list[Question]) -> State:
+def _pause_for_issue(
+    state: State,
+    stage_index: int,
+    questions: list[Question],
+    issue_filer: IssueFiler | None = None,
+) -> State:
     state = state.model_copy(
         update={"counters": {**state.counters, PAUSED_STAGE_COUNTER: stage_index}}
     )
+    # F4: persist before filing. A raise inside the filer (e.g. an
+    # unresolvable escalation destination) must leave a resumable
+    # AWAITING_ISSUE snapshot behind rather than discarding the run's work —
+    # the snapshot is written again below once the issue is actually filed.
+    state = _finalize(state, stage_index, RunStatus.AWAITING_ISSUE)
     snapshot_hint = f"state/{state.run_id}/{stage_index:02d}_{RunStatus.AWAITING_ISSUE.value}.json"
-    issue = file_question_issue(state, questions, snapshot_hint)
+    issue = (issue_filer or default_issue_filer)(state, questions, snapshot_hint)
     state = state.model_copy(update={"pending_issue": issue})
     return _finalize(state, stage_index, RunStatus.AWAITING_ISSUE)
 
 
-def run_loop(
-    loop: Loop,
-    initial_state: State,
-    llm_client: LLMClient,
-    start_index: int = 0,
-    initial_findings: list[str] | None = None,
-) -> State:
-    state = initial_state.model_copy(update={"status": RunStatus.RUNNING, "pending_issue": None})
-    stage_index = start_index
+@dataclass
+class StageOutcome:
+    """Result of executing one stage cycle.
 
-    # Resolutions produced by an escalation batch, delivered as findings to
-    # every stage from the re-entry point through the stage that escalated
-    # (rework stages need the answers as much as the asker does). On resume
-    # after an issue round-trip the CLI passes the human answers in via
-    # initial_findings, applied through the stage the run paused on.
+    `terminal` marks a finished run (budget/pause) whose `state` is already a
+    persisted snapshot; otherwise the driver advances/re-enters at `next_index`
+    carrying `carried_findings`/`carried_until` forward. The hard-failure paths
+    (missing artifact, truncation, revision exhaustion) raise instead of
+    returning — same as the original in-line loop.
+    """
+
+    state: State
+    next_index: int
+    carried_findings: list[str]
+    carried_until: int
+    terminal: bool = False
+
+
+def _prime_resume(
+    loop: Loop, state: State, initial_findings: list[str] | None
+) -> tuple[State, list[str], int]:
+    """Shared run/graph setup: seed carried findings for a resumed run and clear
+    the paused-stage bookkeeping counter."""
     carried_findings: list[str] = list(initial_findings or [])
     carried_until = -1
     if carried_findings:
@@ -195,123 +258,161 @@ def run_loop(
                 "counters": {k: v for k, v in state.counters.items() if k != PAUSED_STAGE_COUNTER}
             }
         )
+    return state, carried_findings, carried_until
 
-    while stage_index < len(loop.stages):
-        stage = loop.stages[stage_index]
-        stage_name = type(stage.persona).__name__
 
-        if stage_index > carried_until:
-            carried_findings = []
+def execute_stage(
+    loop: Loop,
+    stage_index: int,
+    state: State,
+    carried_findings: list[str],
+    carried_until: int,
+    llm_client: LLMClient,
+    issue_filer: IssueFiler | None = None,
+) -> StageOutcome:
+    """Run one bounded propose → gate → accept/revise/escalate cycle.
 
-        missing = [k for k in stage.persona.consumes if not state.artifacts.get(k, "").strip()]
-        if missing:
-            state = _finalize(state, stage_index, RunStatus.FAILED_STAGE)
-            raise MissingArtifactError(
-                f"Stage {stage_index} ({stage_name}) requires artifact(s) {missing} "
-                "which no prior stage produced."
+    The single unit of stage progress. The LangGraph engine's stage nodes are
+    thin wrappers over this primitive — all per-stage behavior lives here.
+    """
+    stage = loop.stages[stage_index]
+    stage_name = type(stage.persona).__name__
+
+    if stage_index > carried_until:
+        carried_findings = []
+
+    missing = [k for k in stage.persona.consumes if not has_artifact(state, k)]
+    if missing:
+        state = _finalize(state, stage_index, RunStatus.FAILED_STAGE)
+        raise MissingArtifactError(
+            f"Stage {stage_index} ({stage_name}) requires artifact(s) {missing} "
+            "which no prior stage produced."
+        )
+
+    if llm_client.remaining() <= 0:
+        return StageOutcome(
+            _finalize(state, stage_index, RunStatus.BUDGET_EXCEEDED),
+            stage_index,
+            carried_findings,
+            carried_until,
+            terminal=True,
+        )
+
+    stage_findings = list(carried_findings)
+    gate_result = GateResult(GateDecision.REVISE)
+    previous_gate_findings: list[str] | None = None
+    tokens_before = llm_client.tokens_used
+    cost_before = llm_client.cost_used
+    cache_creation_before = llm_client.cache_creation_tokens_used
+    cache_read_before = llm_client.cache_read_tokens_used
+
+    for _attempt in range(stage.max_revisions + 1):
+        try:
+            state = stage.persona.run(state, llm_client, findings=stage_findings or None)
+        except BudgetExceededError:
+            return StageOutcome(
+                _finalize(state, stage_index, RunStatus.BUDGET_EXCEEDED),
+                stage_index,
+                carried_findings,
+                carried_until,
+                terminal=True,
             )
+        except ToolLoopExceededError:
+            # A persona's inner tool loop exhausted its iteration cap without
+            # finishing. Like budget exhaustion, this is a bounded-resource
+            # failure: end the stage cleanly with a persisted FAILED_STAGE
+            # snapshot rather than letting the exception crash the run.
+            # (RalphCoderPersona degrades this internally to a no-output
+            # increment; this is the safety net for every other persona.)
+            return StageOutcome(
+                _finalize(state, stage_index, RunStatus.FAILED_STAGE),
+                stage_index,
+                carried_findings,
+                carried_until,
+                terminal=True,
+            )
+        except TruncatedResponseError as exc:
+            # Truncation is an output-sizing failure a blind retry won't
+            # fix; fail the stage honestly with the snapshot persisted.
+            state = _finalize(state, stage_index, RunStatus.FAILED_STAGE)
+            raise InvalidStateTransitionError(
+                f"{stage_name} produced a truncated response: {exc}"
+            ) from exc
 
-        if llm_client.remaining() <= 0:
-            return _finalize(state, stage_index, RunStatus.BUDGET_EXCEEDED)
+        state = _revalidate(state, stage_name)
+        gate_result = stage.gate(state, stage_name)
 
-        stage_findings = list(carried_findings)
-        gate_result = GateResult(GateDecision.REVISE)
-        previous_gate_findings: list[str] | None = None
-        tokens_before = llm_client.tokens_used
-        cost_before = llm_client.cost_used
-        cache_creation_before = llm_client.cache_creation_tokens_used
-        cache_read_before = llm_client.cache_read_tokens_used
+        if gate_result.decision is not GateDecision.REVISE:
+            break
+        if gate_result.findings == previous_gate_findings:
+            # The gate said the same thing twice: another attempt would
+            # be an identical re-roll. Escalate instead of spending it.
+            gate_result = _exhaustion_escalation(stage_name, gate_result.findings)
+            break
+        previous_gate_findings = gate_result.findings
+        stage_findings = [*stage_findings, *gate_result.findings]
 
-        for _attempt in range(stage.max_revisions + 1):
-            try:
-                state = stage.persona.run(state, llm_client, findings=stage_findings or None)
-            except BudgetExceededError:
-                return _finalize(state, stage_index, RunStatus.BUDGET_EXCEEDED)
-            except TruncatedResponseError as exc:
-                # Truncation is an output-sizing failure a blind retry won't
-                # fix; fail the stage honestly with the snapshot persisted.
-                state = _finalize(state, stage_index, RunStatus.FAILED_STAGE)
-                raise InvalidStateTransitionError(
-                    f"{stage_name} produced a truncated response: {exc}"
-                ) from exc
-
-            state = _revalidate(state, stage_name)
-            gate_result = stage.gate(state, stage_name)
-
-            if gate_result.decision is not GateDecision.REVISE:
-                break
-            if gate_result.findings == previous_gate_findings:
-                # The gate said the same thing twice: another attempt would
-                # be an identical re-roll. Escalate instead of spending it.
-                gate_result = GateResult(
-                    GateDecision.ESCALATE,
-                    questions=[
-                        new_question(
-                            stage_name,
-                            f"{stage_name} could not satisfy its output gate after "
-                            f"repeated attempts: {'; '.join(gate_result.findings)}",
-                        )
-                    ],
-                )
-                break
-            previous_gate_findings = gate_result.findings
-            stage_findings = [*stage_findings, *gate_result.findings]
-
-        if gate_result.decision is GateDecision.REVISE:
-            # Revision budget exhausted with findings still changing.
+    if gate_result.decision is GateDecision.REVISE:
+        # Revision budget exhausted with findings still changing.
+        if stage.escalate_on_exhaustion:
+            gate_result = _exhaustion_escalation(stage_name, gate_result.findings)
+        else:
             state = _finalize(state, stage_index, RunStatus.FAILED_STAGE)
             raise StageGateFailedError(
                 f"{stage_name} failed its gate after {stage.max_revisions + 1} attempts: "
                 f"{'; '.join(gate_result.findings)}"
             )
 
-        if gate_result.decision is GateDecision.ESCALATE:
-            counter_key = f"escalations:{stage_name}"
-            escalations = state.counters.get(counter_key, 0)
-            state = state.model_copy(
-                update={"counters": {**state.counters, counter_key: escalations + 1}}
-            )
+    if gate_result.decision is GateDecision.ESCALATE:
+        counter_key = f"escalations:{stage_name}"
+        escalations = state.counters.get(counter_key, 0)
+        state = state.model_copy(
+            update={"counters": {**state.counters, counter_key: escalations + 1}}
+        )
 
-            if escalations >= MAX_ESCALATIONS_PER_STAGE:
-                state = _merge_questions(state, gate_result.questions)
-                return _pause_for_issue(state, stage_index, unresolved_questions(state))
+        if escalations >= MAX_ESCALATIONS_PER_STAGE:
+            state = _merge_questions(state, gate_result.questions)
+            paused = _pause_for_issue(state, stage_index, unresolved_questions(state), issue_filer)
+            return StageOutcome(paused, stage_index, carried_findings, carried_until, terminal=True)
 
-            resolved = _run_resolver_ladder(stage, gate_result.questions, state, llm_client)
-            state = _merge_questions(state, resolved)
+        resolved = _run_resolver_ladder(stage, gate_result.questions, state, llm_client)
+        state = _merge_questions(state, resolved)
 
-            if unresolved_questions(state):
-                return _pause_for_issue(state, stage_index, unresolved_questions(state))
+        if unresolved_questions(state):
+            paused = _pause_for_issue(state, stage_index, unresolved_questions(state), issue_filer)
+            return StageOutcome(paused, stage_index, carried_findings, carried_until, terminal=True)
 
-            # Everything was resolved within the ladder: deliver resolutions
-            # as findings and route rework by blast radius.
-            carried_findings = _resolution_findings(resolved)
-            carried_until = stage_index
-            reentry = reentry_index(loop, stage_index, resolved)
-            if reentry < stage_index:
-                replans = state.counters.get("replans", 0)
-                if replans >= MAX_REPLANS_PER_RUN:
-                    return _pause_for_issue(state, stage_index, resolved)
-                state = state.model_copy(
-                    update={"counters": {**state.counters, "replans": replans + 1}}
+        # Everything was resolved within the ladder: deliver resolutions
+        # as findings and route rework by blast radius.
+        carried_findings = _resolution_findings(resolved)
+        carried_until = stage_index
+        reentry = reentry_index(loop, stage_index, resolved)
+        if reentry < stage_index:
+            replans = state.counters.get("replans", 0)
+            if replans >= MAX_REPLANS_PER_RUN:
+                paused = _pause_for_issue(state, stage_index, resolved, issue_filer)
+                return StageOutcome(
+                    paused, stage_index, carried_findings, carried_until, terminal=True
                 )
-            stage_index = reentry
-            continue
+            state = state.model_copy(
+                update={"counters": {**state.counters, "replans": replans + 1}}
+            )
+        return StageOutcome(state, reentry, carried_findings, carried_until)
 
-        # ACCEPT
-        state = _record_stage(
-            state,
-            stage_name,
-            llm_client.tokens_used - tokens_before,
-            llm_client.cost_used - cost_before,
-            llm_client.cache_creation_tokens_used - cache_creation_before,
-            llm_client.cache_read_tokens_used - cache_read_before,
-        )
-        write_state_snapshot(
-            state,
-            run_id=state.run_id,
-            stage_index=stage_index,
-            stage_name=stage_name,
-        )
-        stage_index += 1
-
-    return _finalize(state, len(loop.stages), RunStatus.COMPLETED)
+    # ACCEPT
+    state = _record_stage(
+        state,
+        stage_name,
+        llm_client.tokens_used - tokens_before,
+        llm_client.cost_used - cost_before,
+        llm_client.cache_creation_tokens_used - cache_creation_before,
+        llm_client.cache_read_tokens_used - cache_read_before,
+    )
+    publish_artifacts(state)
+    write_state_snapshot(
+        state,
+        run_id=state.run_id,
+        stage_index=stage_index,
+        stage_name=stage_name,
+    )
+    return StageOutcome(state, stage_index + 1, carried_findings, carried_until)

@@ -1,0 +1,28 @@
+# Declarative Architecture persona (parity port of ArchitecturePersona).
+# The prompt file is byte-identical to the persona's embedded PROMPT_TEMPLATE,
+# so the declarative node's system_blocks equal the classic persona's.
+name: architecture
+prompt_file: prompts/02_architecture_definition_prompt.md
+model: claude-sonnet-5
+max_tokens: 64000
+consumes: [project_spec]
+produces: architecture_definition
+initial_prompt: "Begin your analysis now; produce the complete output described above."
+input_context:
+  - artifact: project_spec
+    label: "Project Specification Document"
+    wrap: none
+output_adapter: markdown
+revision_style: section_merge
+# The stage gate (a plain ArtifactGate over the markdown artifact) extracts
+# Open Questions itself, exactly as classic — the node must NOT also add them,
+# or the produced State would diverge. So this stays false for parity.
+extract_open_questions: false
+prompt_style: cached
+resolver:
+  kind: resolve_via_document
+  document: architecture_definition
+  document_var: architecture
+  prompt_file: prompts/02_architecture_resolution_prompt.md
+  resolved_by: architect
+  max_tokens: 2048

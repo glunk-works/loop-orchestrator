@@ -1,0 +1,33 @@
+# Declarative PM persona (parity port of PMPersona on the clean-extraction
+# path). The internal critic *loop* is retired: this node does ONE extraction;
+# the CriticGate + the engine's revise loop (key_merge) provide the cycle.
+name: pm
+prompt_file: prompts/00_pm_extraction_prompt.md
+model: claude-sonnet-5
+max_tokens: 4096
+consumes: [human_input]
+produces: project_spec
+# inline prompt_style: everything in one user turn, no system_blocks — the
+# classic PM call shape, byte-for-byte. initial_prompt is unused inline.
+initial_prompt: ""
+input_context:
+  - artifact: human_input
+    label: ""
+    wrap: untrusted
+output_adapter: json_object
+revision_style: key_merge
+extract_open_questions: false
+prompt_style: inline
+# Baseline key so the produced project_spec is byte-identical to classic PM's
+# clean-path output ({...extracted, "revision_history": []}). The declarative
+# multi-cycle path does not accumulate a trail (documented behavior change).
+static_fields:
+  revision_history: []
+revision_feedback_prompt_file: prompts/00_pm_followup_prompt.md
+resolver:
+  kind: resolve_via_document
+  document: project_spec
+  document_var: project_spec
+  prompt_file: prompts/00_pm_resolution_prompt.md
+  resolved_by: pm
+  max_tokens: 2048

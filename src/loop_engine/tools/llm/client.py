@@ -47,9 +47,14 @@ class ToolLoopExceededError(Exception):
     a half-finished result propagate."""
 
 
-# Hard cap on tool-loop iterations: every feedback edge in this system is
-# finite, including the model's own inner loop.
-DEFAULT_MAX_TOOL_ITERATIONS = 12
+# Finite backstop on tool-loop iterations. The *primary* bound is the USD
+# budget: every iteration makes a metered API call and re-checks the ledger
+# (see run_tool_loop), so BudgetExceededError already stops a runaway loop.
+# This cap only guards the degenerate case of many near-zero-cost iterations;
+# it is set generously so it never guillotines an increment that is genuinely
+# making progress (read → edit → run_tests → fix cycles legitimately need more
+# than a handful of turns) — that is a job for the budget, not this backstop.
+DEFAULT_MAX_TOOL_ITERATIONS = 40
 
 
 class LLMResponse(BaseModel):
