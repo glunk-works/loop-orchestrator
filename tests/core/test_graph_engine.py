@@ -26,11 +26,13 @@ from loop_engine.core.gates import GateDecision, GateResult
 from loop_engine.core.graph_engine import run_graph_loop
 from loop_engine.core.state import RunStatus
 from loop_engine.personas.base import BasePersona
+from tests.core.conftest import absolutize_mutmut_source_paths
 from tests.core.test_engine import _initial_state, _stub_llm_client
 
 
 @pytest.fixture(autouse=True)
 def _isolated_cwd(tmp_path, monkeypatch):
+    absolutize_mutmut_source_paths(monkeypatch)
     monkeypatch.chdir(tmp_path)
 
 

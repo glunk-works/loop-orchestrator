@@ -7,6 +7,7 @@ from loop_engine.core.coder_gate import RALPH_REGRESSION_PREFIX, RalphCoderGate
 from loop_engine.core.gates import GateDecision
 from loop_engine.core.state import State
 from loop_engine.tools.agent_state import ScratchpadState, write_scratchpad
+from tests.core.conftest import absolutize_mutmut_source_paths
 
 SPRINT_PLANS = json.dumps(
     [
@@ -18,6 +19,7 @@ SPRINT_PLANS = json.dumps(
 
 @pytest.fixture(autouse=True)
 def _isolated_cwd(tmp_path, monkeypatch):
+    absolutize_mutmut_source_paths(monkeypatch)
     monkeypatch.chdir(tmp_path)
 
 
