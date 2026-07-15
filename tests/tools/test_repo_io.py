@@ -8,6 +8,7 @@ from loop_engine.tools.repo_io import (
     PullRef,
     RepoNotResolvableError,
     RepoRef,
+    RulesetInstallError,
     clone_repo,
     create_branch,
     create_repository,
@@ -226,6 +227,40 @@ def test_create_ruleset_pull_request_rule_declares_full_parameters() -> None:
         "require_last_push_approval": False,
         "required_review_thread_resolution": False,
     }
+
+
+def test_create_ruleset_rejects_empty_branches_before_any_gh_call() -> None:
+    """S7: `branches=[]` would build an `include=[]` -- a ruleset gating ZERO
+    refs -- and still return an id, silently reporting installed protection.
+    Guard it, and guard it BEFORE shelling out."""
+    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+        with pytest.raises(ValueError):
+            create_ruleset("glunk-works", "widget", branches=[])
+    run_gh.assert_not_called()
+
+
+def test_create_ruleset_wraps_a_failed_gh_call_in_ruleset_install_error() -> None:
+    """S5: a `subprocess.SubprocessError` out of the underlying `gh` call
+    (the transport itself failed) is wrapped in the typed
+    `RulesetInstallError` -- so callers (`flows/bootstrap.run_bootstrap`) can
+    catch it without importing `subprocess` themselves."""
+    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+        run_gh.side_effect = subprocess.CalledProcessError(
+            1, ["gh", "api"], stderr="422 Unprocessable Entity"
+        )
+        with pytest.raises(RulesetInstallError, match="gh"):
+            create_ruleset("glunk-works", "widget", branches=["main", "develop"])
+
+
+def test_create_ruleset_does_not_wrap_an_unparseable_success_body() -> None:
+    """S5: a *successful* `gh` call (no `SubprocessError`) that returns an
+    unparseable body must NOT be wrapped in `RulesetInstallError` -- the POST
+    likely succeeded, so the raw parse error (here `KeyError` on a missing
+    `id`) must propagate unwrapped."""
+    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+        run_gh.return_value = json.dumps({"not_id": 1})
+        with pytest.raises(KeyError):
+            create_ruleset("glunk-works", "widget", branches=["main", "develop"])
 
 
 def test_create_ruleset_body_carries_the_required_name_field() -> None:

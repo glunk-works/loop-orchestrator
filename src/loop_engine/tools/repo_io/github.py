@@ -35,6 +35,21 @@ class RepoNotResolvableError(Exception):
     of that surface."""
 
 
+class RulesetInstallError(Exception):
+    """`create_ruleset`'s underlying `gh` call itself failed to complete --
+    i.e. `_run_gh` raised `subprocess.SubprocessError`
+    (`CalledProcessError`/`TimeoutExpired`) -- so the ruleset genuinely was
+    NOT created (S5, sprint 36 review). Raised instead of letting the raw
+    subprocess error cross this module's boundary, mirroring
+    `RepoNotResolvableError`'s precedent: `flows/bootstrap.run_bootstrap`
+    catches this without itself importing `subprocess` (`flows/` adds no
+    subprocess surface of its own -- `tests/flows/test_boundaries.py`).
+    Deliberately NOT raised for a *successful* POST that returns an
+    unparseable body (`json.loads(...)["id"]` raising `JSONDecodeError`/
+    `KeyError`) -- that failure mode means the ruleset likely WAS created,
+    so it propagates unwrapped rather than being folded into this type."""
+
+
 class RepoRef(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -198,6 +213,9 @@ def create_ruleset(
     explicitly and piped through `gh api --input -` rather than hand-spliced
     as `-f` flags (which cannot express nested arrays/objects).
     """
+    if not branches:
+        raise ValueError("create_ruleset requires at least one branch in `branches`")
+
     body = {
         "name": name,
         "target": "branch",
@@ -224,8 +242,19 @@ def create_ruleset(
             },
         ],
     }
-    output = _run_gh(
-        ["api", "--method", "POST", f"repos/{owner}/{repo}/rulesets", "--input", "-"],
-        input_data=json.dumps(body),
-    )
+    try:
+        output = _run_gh(
+            ["api", "--method", "POST", f"repos/{owner}/{repo}/rulesets", "--input", "-"],
+            input_data=json.dumps(body),
+        )
+    except subprocess.SubprocessError as exc:
+        # S5, sprint 36 review: the `gh` call itself failed to complete, so
+        # the ruleset genuinely was not created. Wrapped so a caller (e.g.
+        # `flows/bootstrap.run_bootstrap`) can catch it without itself
+        # importing `subprocess` -- mirrors `RepoNotResolvableError`.
+        raise RulesetInstallError(str(exc)) from exc
+    # Deliberately NOT wrapped in the same try/except: a successful POST that
+    # returns an unparseable body means the ruleset likely WAS created, so
+    # `json.JSONDecodeError`/`KeyError` here must propagate unwrapped rather
+    # than being mislabeled as a `RulesetInstallError` (S5).
     return json.loads(output)["id"]

@@ -18,9 +18,13 @@ scaffold's own initial direct push if installed any earlier (FD7,
 sprint 36 plan).
 
 BL-21: a repository ruleset is only installable on a **public** repo under
-the org's Free plan (private repos need GitHub Team) — so `private`
-defaults to `False`: protection is the invariant the factory guarantees,
-and privacy is an opt-in that knowingly forfeits it. When `private=True`,
+the org's Free plan (private repos need GitHub Team) — so `BootstrapRequest.
+private` defaults to `False`: protection is the invariant `run_bootstrap`
+guarantees for its own default request shape, not a claim about
+`repo_io.create_repository`/the MCP `github_server.create_repository` verb
+in general -- both of those keep their own, separate `private=True` default
+(S8, sprint 36 review), unaffected by this flow. Privacy on a bootstrap
+request is an opt-in that knowingly forfeits it. When `request.private=True`,
 `create_ruleset` is not attempted at all — attempting a call already known
 to 403 and swallowing the failure into a log line is exactly BL-16's shape
 (a check reporting success on a property it never verified), so this flow
@@ -47,7 +51,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from loop_engine.tools import git_io as _git_io_module
 from loop_engine.tools import repo_io as _repo_io_module
 from loop_engine.tools import scaffold as _scaffold_module
-from loop_engine.tools.repo_io import RepoRef
+from loop_engine.tools.repo_io import RepoRef, RulesetInstallError
 from loop_engine.tools.scaffold.writer import _sanitize_pkg_name
 
 logger = logging.getLogger(__name__)
@@ -94,12 +98,25 @@ class BootstrapRequest(BaseModel):
 class BootstrapStatus(str, Enum):
     CREATED = "created"
     RULESET_FAILED = "ruleset_failed"
-    """`create_ruleset` was attempted (repo is public) and raised. The repo
-    exists and `main` is already pushed, so the `RepoRef` is still returned --
-    a caller doing FD11 teardown needs the slug, not an exception with no
-    result. Distinct from a `private=True` request (which reports `CREATED`
-    with `ruleset_installed=False` because the call was never attempted at
-    all -- see `BootstrapRequest.private`)."""
+    """`create_ruleset` was attempted (repo is public) and raised
+    `repo_io.RulesetInstallError` (S5, sprint 36 review) -- `create_ruleset`
+    itself raises this only when the underlying `gh` call failed to complete
+    (a wrapped `subprocess.SubprocessError`: `CalledProcessError`/
+    `TimeoutExpired`), meaning the POST was genuinely rejected or never
+    completed, so the repo is genuinely NOT protected. This flow catches only
+    `RulesetInstallError`, not a bare `Exception` -- `flows/` imports no
+    `subprocess` of its own (`tests/flows/test_boundaries.py`), so
+    `create_ruleset` wraps the transport failure into this typed exception,
+    mirroring `RepoNotResolvableError`'s precedent. A successful POST that
+    returns an unparseable body is a *different* failure mode (the ruleset
+    likely WAS created) and is not wrapped -- it propagates unwrapped rather
+    than being mislabeled RULESET_FAILED, which would tell an operator the
+    repo is safe to tear down when it may already be protected. The repo
+    exists and `main` is already pushed, so the
+    `RepoRef` is still returned -- a caller doing FD11 teardown needs the
+    slug, not an exception with no result. Distinct from a `private=True`
+    request (which reports `CREATED` with `ruleset_installed=False` because
+    the call was never attempted at all -- see `BootstrapRequest.private`)."""
 
 
 class BootstrapResult(BaseModel):
@@ -116,6 +133,18 @@ class BootstrapResult(BaseModel):
     Always inspect this rather than inferring protection from `status`
     alone -- `status` is `CREATED` either way (BL-16: a status that reports
     success must not double as a claim about a property it didn't check)."""
+    ruleset_id: int | None = None
+    """The ruleset `id` returned by a successful `create_ruleset` call (S4,
+    sprint 36 review) -- carried explicitly rather than inferred from "no
+    exception was raised". `None` for a `private=True` request (never
+    attempted) and for the `RULESET_FAILED` path (the call did not
+    succeed)."""
+    ruleset_error: str | None = None
+    """`str(exc)` of the `RulesetInstallError` that produced `RULESET_FAILED`
+    (S6, sprint 36 review) -- the 403-vs-422 distinction is the primary
+    diagnostic signal for an operator (permission/plan problem vs. a
+    rejected request body), and `RULESET_FAILED` alone carries neither.
+    `None` on every other path."""
 
 
 def run_bootstrap(
@@ -151,6 +180,7 @@ def run_bootstrap(
     logger.info("creating integration branch %s", request.integration_branch)
     repo_io.create_branch(owner, repo_name, request.integration_branch, base=request.default_branch)
 
+    ruleset_id: int | None = None
     if request.private:
         logger.warning(
             "skipping ruleset installation on %s/%s: private=True forfeits "
@@ -169,10 +199,22 @@ def run_bootstrap(
             request.integration_branch,
         )
         try:
-            repo_io.create_ruleset(
+            ruleset_id = repo_io.create_ruleset(
                 owner, repo_name, branches=[request.default_branch, request.integration_branch]
             )
-        except Exception:
+        except RulesetInstallError as exc:
+            # S5, sprint 36 review: `create_ruleset` raises this typed error
+            # only when the underlying `gh` call itself failed to complete
+            # (a wrapped subprocess.SubprocessError -- CalledProcessError/
+            # TimeoutExpired), meaning the ruleset genuinely was not created.
+            # A successful POST that returns an unparseable body
+            # (json.JSONDecodeError/KeyError out of `create_ruleset`) is NOT
+            # wrapped in this type -- it means the call likely SUCCEEDED, so
+            # it propagates here rather than being mislabeled RULESET_FAILED,
+            # which would tell an operator the repo is unprotected and safe
+            # to tear down. `flows/` imports no `subprocess` of its own
+            # (`tests/flows/test_boundaries.py`) -- this typed exception is
+            # how that transport failure crosses the boundary.
             logger.exception(
                 "create_ruleset failed on %s/%s -- the repo exists and %s is already "
                 "pushed, but is NOT protected; returning the RepoRef so the caller can "
@@ -187,6 +229,8 @@ def run_bootstrap(
                 default_branch=request.default_branch,
                 integration_branch=request.integration_branch,
                 ruleset_installed=False,
+                ruleset_id=None,
+                ruleset_error=str(exc),
             )
         ruleset_installed = True
 
@@ -196,4 +240,6 @@ def run_bootstrap(
         default_branch=request.default_branch,
         integration_branch=request.integration_branch,
         ruleset_installed=ruleset_installed,
+        ruleset_id=ruleset_id,
+        ruleset_error=None,
     )
