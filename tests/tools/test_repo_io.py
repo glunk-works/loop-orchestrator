@@ -239,21 +239,37 @@ def test_create_ruleset_rejects_empty_branches_before_any_gh_call() -> None:
     run_gh.assert_not_called()
 
 
-def test_create_ruleset_wraps_a_failed_gh_call_in_ruleset_install_error() -> None:
-    """S5: a `subprocess.SubprocessError` out of the underlying `gh` call
-    (the transport itself failed) is wrapped in the typed
-    `RulesetInstallError` -- so callers (`flows/bootstrap.run_bootstrap`) can
-    catch it without importing `subprocess` themselves."""
+def test_create_ruleset_wraps_a_rejected_gh_call_and_carries_its_stderr() -> None:
+    """S5 + round-4 finding 1: a `CalledProcessError` out of the underlying
+    `gh` call (the API rejected the POST with a non-zero exit) is wrapped in
+    the typed `RulesetInstallError` -- so callers (`flows/bootstrap`) can catch
+    it without importing `subprocess`. The wrapped message must carry `gh`'s
+    stderr (the 403/422 body), the diagnostic `str(CalledProcessError)` alone
+    drops -- otherwise `BootstrapResult.ruleset_error` cannot report *why* the
+    install failed."""
     with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
         run_gh.side_effect = subprocess.CalledProcessError(
-            1, ["gh", "api"], stderr="422 Unprocessable Entity"
+            1, ["gh", "api"], stderr="HTTP 422: Unprocessable Entity"
         )
-        with pytest.raises(RulesetInstallError, match="gh"):
+        with pytest.raises(RulesetInstallError, match="422"):
+            create_ruleset("glunk-works", "widget", branches=["main", "develop"])
+
+
+def test_create_ruleset_does_not_wrap_a_gh_timeout() -> None:
+    """Round-4 finding 2: a `gh` `TimeoutExpired` is ambiguous -- the POST may
+    have applied server-side and the client just never saw the response -- so
+    it must NOT be wrapped as `RulesetInstallError` (which `flows/bootstrap`
+    maps to RULESET_FAILED = 'not created, safe to tear down'). It propagates
+    unwrapped, exactly like the unparseable-success-body case below. Hence
+    `create_ruleset` catches only `CalledProcessError`, not `SubprocessError`."""
+    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+        run_gh.side_effect = subprocess.TimeoutExpired(["gh", "api"], 60)
+        with pytest.raises(subprocess.TimeoutExpired):
             create_ruleset("glunk-works", "widget", branches=["main", "develop"])
 
 
 def test_create_ruleset_does_not_wrap_an_unparseable_success_body() -> None:
-    """S5: a *successful* `gh` call (no `SubprocessError`) that returns an
+    """S5: a *successful* `gh` call (no error raised) that returns an
     unparseable body must NOT be wrapped in `RulesetInstallError` -- the POST
     likely succeeded, so the raw parse error (here `KeyError` on a missing
     `id`) must propagate unwrapped."""

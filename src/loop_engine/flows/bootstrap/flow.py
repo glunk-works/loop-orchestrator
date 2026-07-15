@@ -100,23 +100,22 @@ class BootstrapStatus(str, Enum):
     RULESET_FAILED = "ruleset_failed"
     """`create_ruleset` was attempted (repo is public) and raised
     `repo_io.RulesetInstallError` (S5, sprint 36 review) -- `create_ruleset`
-    itself raises this only when the underlying `gh` call failed to complete
-    (a wrapped `subprocess.SubprocessError`: `CalledProcessError`/
-    `TimeoutExpired`), meaning the POST was genuinely rejected or never
-    completed, so the repo is genuinely NOT protected. This flow catches only
+    raises this only when the underlying `gh` call exited non-zero (a wrapped
+    `subprocess.CalledProcessError`), meaning the API DEFINITIVELY rejected the
+    POST, so the repo is genuinely NOT protected. This flow catches only
     `RulesetInstallError`, not a bare `Exception` -- `flows/` imports no
     `subprocess` of its own (`tests/flows/test_boundaries.py`), so
-    `create_ruleset` wraps the transport failure into this typed exception,
-    mirroring `RepoNotResolvableError`'s precedent. A successful POST that
-    returns an unparseable body is a *different* failure mode (the ruleset
-    likely WAS created) and is not wrapped -- it propagates unwrapped rather
-    than being mislabeled RULESET_FAILED, which would tell an operator the
-    repo is safe to tear down when it may already be protected. The repo
-    exists and `main` is already pushed, so the
-    `RepoRef` is still returned -- a caller doing FD11 teardown needs the
-    slug, not an exception with no result. Distinct from a `private=True`
-    request (which reports `CREATED` with `ruleset_installed=False` because
-    the call was never attempted at all -- see `BootstrapRequest.private`)."""
+    `create_ruleset` wraps that rejection into this typed exception, mirroring
+    `RepoNotResolvableError`'s precedent. The two *ambiguous* failure modes --
+    a `gh` timeout, or a successful POST with an unparseable body -- are NOT
+    wrapped (the ruleset may already exist); they propagate unwrapped rather
+    than being mislabeled RULESET_FAILED, which would tell an operator the repo
+    is safe to tear down when it may already be protected. The repo exists and
+    `main` is already pushed, so the `RepoRef` is still returned -- a caller
+    doing FD11 teardown needs the slug, not an exception with no result.
+    Distinct from a `private=True` request (which reports `CREATED` with
+    `ruleset_installed=False` because the call was never attempted at all --
+    see `BootstrapRequest.private`)."""
 
 
 class BootstrapResult(BaseModel):
@@ -203,18 +202,18 @@ def run_bootstrap(
                 owner, repo_name, branches=[request.default_branch, request.integration_branch]
             )
         except RulesetInstallError as exc:
-            # S5, sprint 36 review: `create_ruleset` raises this typed error
-            # only when the underlying `gh` call itself failed to complete
-            # (a wrapped subprocess.SubprocessError -- CalledProcessError/
-            # TimeoutExpired), meaning the ruleset genuinely was not created.
-            # A successful POST that returns an unparseable body
-            # (json.JSONDecodeError/KeyError out of `create_ruleset`) is NOT
-            # wrapped in this type -- it means the call likely SUCCEEDED, so
-            # it propagates here rather than being mislabeled RULESET_FAILED,
-            # which would tell an operator the repo is unprotected and safe
-            # to tear down. `flows/` imports no `subprocess` of its own
-            # (`tests/flows/test_boundaries.py`) -- this typed exception is
-            # how that transport failure crosses the boundary.
+            # S5, sprint 36 review (narrowed round 4): `create_ruleset` raises
+            # this typed error only when the underlying `gh` call exited
+            # non-zero (a wrapped subprocess.CalledProcessError), meaning the
+            # API definitively rejected the POST and the ruleset was not
+            # created. The two ambiguous modes -- a `gh` TimeoutExpired, or a
+            # successful POST with an unparseable body
+            # (json.JSONDecodeError/KeyError) -- are NOT wrapped in this type;
+            # the ruleset may already exist, so they propagate rather than
+            # being mislabeled RULESET_FAILED (which would tell an operator the
+            # repo is unprotected and safe to tear down). `flows/` imports no
+            # `subprocess` of its own (`tests/flows/test_boundaries.py`) --
+            # this typed exception is how that rejection crosses the boundary.
             logger.exception(
                 "create_ruleset failed on %s/%s -- the repo exists and %s is already "
                 "pushed, but is NOT protected; returning the RepoRef so the caller can "
