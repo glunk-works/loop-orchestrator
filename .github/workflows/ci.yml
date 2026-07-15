@@ -108,7 +108,12 @@ jobs:
           fi
       - name: Run tests
         if: steps.docs_only.outputs.skip != 'true'
-        run: hatch run test
+        # Sprint 37 Task 4: `test-parallel` (pytest-xdist, `-n auto
+        # --dist=loadscope`) measured a repeatable ~1.7-1.8x wall-clock
+        # speedup with no flake; `loadscope` keeps each test module on one
+        # worker so the module-scoped MCP-provider fixtures (Task 2) aren't
+        # redundantly re-spawned across workers.
+        run: hatch run test-parallel
 
   secrets-scan:
     runs-on: ubuntu-latest
