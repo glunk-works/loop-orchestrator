@@ -1493,3 +1493,26 @@ colocate tests under `src/` — decide which is the intended layout and make the
 in-loop Coder gate (`core/coder_gate.py`) keys off the same `src` assumption, so check both.
 
 **Related:** [BL-28] (the other generated-repo-can't-pass-its-own-gate finding), [BL-21].
+
+### BL-31 — MCP server cold-start is a fixed ~5s import penalty, paid per spawn — in tests AND every real coder session
+*(added 2026-07-15, from sprint 37 BL-22 planning measurements)*
+
+**Why:** measured in isolation this planning pass: `build_coder_tool_provider().__enter__()` costs
+**~5.0s** (spawn the stdio subprocess + `session.initialize()` + `list_tools()`); teardown is a
+cheap ~0.25s. The 5s is **import-bound** — a fresh server subprocess re-imports `loop_engine` plus
+the MCP/pydantic/anthropic stack before it can answer `list_tools`. In the test suite this shows up
+as ~20 tests paying the penalty (~40% of a 278s local run), which **sprint 37 addresses by reducing
+the number of spawns** (Tasks 1-2). This item is the *other* half: reduce the per-spawn **cost**,
+which sprint 37 explicitly left out of scope because it touches `src/` runtime and — unlike the test
+work — **speeds every real coder session in production**, where each `_CoderToolBackend` open pays
+the same 5s before the model can use a single tool.
+
+**Shape (not decided):** profile what the server subprocess imports at startup; the likely lever is
+**lazy-importing** the heavy stack in the server entry module (`mcp_servers/*_server`) so the
+`list_tools` handshake doesn't drag in anthropic/langgraph/etc. that a read-only tool call never
+needs. Measure spawn 5s → ?s. Watch for: the import cost may be structural to `loop_engine/__init__`
+(a package-level import chain), in which case the fix is decoupling the server's import graph from
+the orchestrator's, not just deferring within one module. `src/` change → own sprint/PR +
+fresh-session review.
+
+**Related:** [BL-22] (the sprint-37 parent — reduces spawn *count*; this reduces spawn *cost*).
