@@ -27,7 +27,20 @@ Phase 6 artifact and does not close with it.
 > cites §1, and several archived sprint plans cite §3/§6/§9; renumbering would
 > silently redirect every one of those. The gaps are the point.
 
-Sections still open: **§1, §5, §6, §7, §8.**
+Sections still open: **§1, §6.** (**§5, §7 and §8 were PERFORMED live in sprint 36**
+against a real disposable scratch repo in `glunk-works`; their observed results are
+recorded in place below, and they are retired rather than deleted because the findings
+they surfaced — [BL-28], [BL-29], [BL-30] — are not yet fixed.)
+
+> **Sprint 36 corrected FD1's stale premise.** §5/§8 below used to assert "this
+> devcontainer has no `gh` auth and no network" and all three demanded "a
+> daemon-bearing host". **Measured false, 2026-07-14/15:** `gh auth status` is green
+> here (`Seuss27`, fine-grained PAT with `administration=write`), the network resolves,
+> and the Anthropic key is in the keyring. What §5/§7/§8 actually needed was
+> *authenticated `gh` + network + a disposable scratch repo* — **none of which is a
+> daemon**. "Daemon-bearing" was inherited from §6, the only section that must bind a
+> port GitHub can reach; §6 stays open. That stale premise is what deferred these three
+> for 25 sprints.
 
 > ## Every open section now has a scheduled owner (sprint 35, Task 6 — agreed with the repo owner, 2026-07-14)
 >
@@ -38,9 +51,9 @@ Sections still open: **§1, §5, §6, §7, §8.**
 >
 > | Section | Destination | Why there |
 > | --- | --- | --- |
-> | **§5** `github_server` live verbs | **Sprint 36 — live factory verification** | All three need the *same* thing: a daemon-bearing host, authenticated `gh`, network, and a disposable scratch repo they create and destroy. They share the setup and one scratch-repo lifecycle. |
-> | **§7** maintenance flow live | **Sprint 36** | ⬑ |
-> | **§8** bootstrap flow live | **Sprint 36** | ⬑ |
+> | **§5** `github_server` live verbs | **Sprint 36 — ✅ PERFORMED 2026-07-15** | All three needed the *same* thing: authenticated `gh`, network, and a disposable scratch repo they create and destroy (not a daemon — FD1). They shared the setup and one scratch-repo lifecycle. |
+> | **§7** maintenance flow live | **Sprint 36 — ✅ PERFORMED 2026-07-15** | ⬑ |
+> | **§8** bootstrap flow live | **Sprint 36 — ✅ PERFORMED 2026-07-15** | ⬑ |
 > | **§1** caching + USD smoke | **Folded into [BL-3]** (prompt-caching review) | §1 needs a real Anthropic key and real spend; BL-3 needs *the same session*. BL-3 cannot assess caching without live `Cache R` data — and §1 **is** that data. Running them apart means paying for two key-bearing sessions to learn one thing. §1 is now BL-3's evidence-gathering step, not a standalone check. |
 > | **§6** live webhook | **[BL-24]** — lowest priority | Needs a tunnel and a publicly reachable address (neither host nor devcontainer has one), and it validates a surface nothing currently depends on. Real, but not urgent. |
 >
@@ -72,38 +85,29 @@ Expected observations:
   overstates the bill until then (see `tools/llm/pricing.py`).
 
 
-## 5. `github_server` live launch + factory verbs (validates Sprint 22b)
+## 5. `github_server` live launch + factory verbs (validates Sprint 22b) — ✅ PERFORMED (sprint 36, 2026-07-15)
 
-The `mcp_servers/github_server` re-front is verified hermetically: real-server
-discovery (`list_tools`, offline — no `gh`/network) asserts exactly
-`{create_repository, clone_repo, create_branch, open_pr}`; the `tools/repo_io`
-delegate's argv-building and stdout parsing are verified with `_run_gh` mocked;
-and the bidirectional coder⟂github consumer-scope guard
-(`tests/tools/test_mcp_provider.py`) is proven with the real committed
-`loop_engine.mcp.json`. What none of that exercises is a **real, authenticated
-`gh`** round-trip — this devcontainer has no `gh` auth and no network. Run on a
-daemon-bearing host with `gh auth status` green:
+**Result: PASS.** The first authenticated MCP-fronted `gh` round-trip ever ran, via
+`build_github_provider()` (the real `github` stdio server subprocess), against a
+disposable private scratch repo `glunk-works/factory-scratch-s5-20260715` (since
+deleted, Task 7). Observed:
 
-```bash
-python -m loop_engine.mcp_servers.github_server &  # or launch via build_github_provider()
-```
-
-Exercise each of the four verbs against a disposable scratch repo/org:
-
-- `create_repository` — creates a real (private) repo; confirm the returned
-  `RepoRef.url` resolves.
-- `clone_repo` — clones it to a validated `dest`; confirm the working tree lands
-  and a traversal/symlink-escaping `dest` is still rejected pre-`gh`-call.
-- `create_branch` — creates a remote ref off the repo's default branch (no
-  `base` given) and off an explicit `base`; confirm both via `gh api
-  repos/{owner}/{repo}/branches`.
-- `open_pr` — push a commit to the new branch (out of scope for `repo_io` itself
-  — do this with plain `git`/`gh` in the test harness), then `open_pr` and
-  confirm the returned `PullRef.url` resolves and **no merge verb exists** to
+- **FD6 at runtime:** the provider exposed exactly `{create_repository, clone_repo,
+  create_branch, open_pr}` — `create_ruleset` **absent**, no merge verb present.
+- **`create_repository`** — created a real private repo; `gh repo view` confirmed
+  `visibility=PRIVATE` and the returned `RepoRef.url` resolved.
+- **`clone_repo`** — the working tree landed; **both** a `../`-traversal `dest` and a
+  symlink-escaping `dest` were rejected **before** any `gh` call (`Invalid clone
+  destination … must not contain '..' segments` / `… escapes the run tree`), with no
+  directory created.
+- **`create_branch`** — created a remote ref off the default branch (no `base`) **and**
+  off an explicit `base=main`; both confirmed via `gh api repos/{o}/{r}/branches`.
+- **`open_pr`** — after pushing a commit to the feature branch with plain `git`, opened
+  PR #1; the returned `PullRef.url` resolved (`state=OPEN`). No merge verb exists to
   auto-merge it.
 
-Clean up the scratch repo afterward — this check has real side effects on
-GitHub, unlike every other check in this file.
+No findings. (An initial seed commit on `main` was pushed with plain `git` first, since
+a repo created by `gh repo create` is empty and `create_branch` needs a base ref.)
 
 ## 6. Trigger surface live webhook → real run (validates Sprint 23)
 
@@ -140,91 +144,86 @@ a port reachable from GitHub):
   not valid JSON) but still correctly signed should observe a `400` response
   in GitHub's webhook UI, not a `500`.
 
-## 7. Maintenance flow live clone → run → gate → push → PR (validates Sprint 24)
+## 7. Maintenance flow live clone → run → gate → push → PR (validates Sprint 24) — ✅ PERFORMED (sprint 36, 2026-07-15)
 
-Sprint 24's coverage is entirely hermetic: `tests/flows/maintenance/test_flow.py`
-fakes every collaborator to prove call order/gating, and
-`test_integration.py` exercises real `tools/git_io` against a `tmp_path` repo
-+ a local bare remote — but `repo_io.clone_repo`/`open_pr` and the loop run
-are always faked; no real `gh repo clone`, no real default-loop run with
-`gh` auth + network, and no real push/PR happen in CI. Run on a daemon-bearing
-host with `gh` authenticated and network access:
+**Result: PASS, with the red path qualified.** Run via `flows.maintenance.run_maintenance`
+with all collaborators at their real defaults against the bootstrapped scratch repo
+`glunk-works/factory-scratch-boot-20260715` (§8's output — FD8; since deleted, Task 7).
 
-- **Clone a real disposable scratch repo** via
-  `flows.maintenance.run_maintenance` with all collaborators at their real
-  defaults (`repo_io`, `git_io`, `runner.run_in_tree`, `coder_tools.run_pytest`)
-  — confirm the clone lands at the request's `dest` and `git_io.checkout_branch`
-  actually cuts the branch in that real tree.
-- **Confirm the inner run absorbs the target's own `CLAUDE.md` +
-  `.agent/STATE.md`** — seed the scratch repo with both before the run and
-  confirm the default loop's personas see them (cwd is the clone, per
-  `run_in_tree`).
-- **Green path:** seed the scratch repo so its `src/` test suite passes,
-  confirm the flow pushes the branch to the real remote (`git ls-remote
-  --heads` against the real GitHub remote) and opens a real PR against
-  `develop` (confirm `PullRef.url` resolves) — and that no merge verb is ever
-  reachable (`repo_io` exposes none).
-- **Red path:** seed the scratch repo so its test suite fails, confirm
-  **nothing** is pushed and no PR is opened.
-- **Confirm `run_in_tree` never opens `worktree_run`** even with
-  `LOOP_ENGINE_ISOLATION=worktree` set on the host — the loop's artifacts
-  should land in the clone, not `.worktrees/<run_id>`.
-- Clean up the scratch repo (and any opened PR/branch) afterward — this check
-  has real side effects on GitHub, unlike every other check in this file.
+- **Clone + branch (real):** `repo_io.clone_repo` landed the tree at the request's
+  `dest` and `git_io.checkout_branch` cut the feature branch in it.
+- **Absorption (confirmed):** with `.agent/STATE.md` seeded onto `main`, the loop's own
+  reader (`read_scratchpad`, cwd-relative) saw `active_task="§7 absorption probe: seeded
+  by Task 6 setup"` inside the clone; `CLAUDE.md` (scaffolded) and `.agent/STATE.md` were
+  both present in the tree the loop ran in — cwd was the clone, per `run_in_tree`.
+- **Green path (PASS):** a real default-loop run (`run_id d881ad80…`, terminal
+  `COMPLETED`, 4 stages, **$1.4645 / $5.00**) produced changes; the real green gate
+  (`pytest src`) passed; the flow committed, pushed `maint-green` to the real remote, and
+  opened **PR #2** against `develop` (`state=OPEN`, `base=develop`, `PullRef.url`
+  resolved). **Left unmerged** (no merge verb exists — `repo_io` exposes none).
+- **`run_in_tree` never opened `worktree_run`** even with `LOOP_ENGINE_ISOLATION=worktree`
+  set: no `.worktrees/` appeared under the clone or the run tree; artifacts landed in the
+  clone.
+- **Red path (gate PASS, loop qualified):** with a deliberately failing `src/` test
+  merged onto `main`, the flow's gate behavior was verified — real `pytest src` red →
+  `GATE_FAILED` → **no commit, no push, no PR** (no `maint-red` branch on the remote).
+  The *real-loop* red attempt could not run: the Anthropic account hit **credit
+  exhaustion** mid-sprint (`BadRequestError 400 "credit balance is too low"`), which also
+  produces no PR but proves nothing about the gate — so the gate's red behavior was
+  proven deterministically instead (real clone/branch/gate/push-suppression; only the
+  credit-blocked LLM loop stubbed as "completed + changed the tree").
 
-## 8. Bootstrap flow live create → clone → scaffold → push `main` → create `develop` (validates Sprint 25)
+**Findings (open):**
+- **[BL-29] — escalation against a factory-born repo crashes.** Two real-loop green
+  attempts (a task needing a repo-root `CONTRIBUTING.md`, and a docs task the Coder
+  over-implemented with a broken `src/` test) each *escalated* legitimately, but
+  `default_issue_filer`'s `gh issue create --label loop-engine/needs-human` **failed**
+  because bootstrap never provisions that label on a managed repo — the run **raised**
+  (`MCPToolError`) instead of pausing, *after* the `AWAITING_ISSUE` snapshot had already
+  persisted. The green PASS above was obtained only after manually creating the label and
+  giving the loop a crisp, self-contained coding task.
+- **[BL-30] — the green gate targets `src`, but the scaffold puts tests in `tests/`.** A
+  freshly-scaffolded repo, unchanged, would have `pytest src` collect **0 tests → exit 5
+  → GATE_FAILED**; the green PASS only worked because the seeded/loop-written tests lived
+  under `src/`.
 
-Sprint 25's coverage is entirely hermetic: `tests/tools/scaffold/test_writer.py`
-proves `write_skeleton` against a `tmp_path` tree (incl. the `pkg_name`
-sanitization/traversal negative tests and the `CLAUDE.md` byte-identity guard),
-`tests/flows/bootstrap/test_flow.py` fakes every collaborator to prove the
-chain's call order, and `tests/flows/bootstrap/test_integration.py` exercises
-real `tools/scaffold` + real `tools/git_io` against a `tmp_path` repo + a local
-bare remote — but `repo_io.create_repository`/`clone_repo`/`create_branch` are
-always faked; no real `gh repo create`, no real clone, no real push, and no
-real `develop` branch creation happen in CI. Run on a daemon-bearing host with
-`gh` authenticated and network access.
+## 8. Bootstrap flow live create → clone → scaffold → push `main` → create `develop` → protect (validates Sprint 25 + BL-21) — ✅ PERFORMED (sprint 36, 2026-07-15)
 
-> **The org question is CLOSED (sprint 35, Task 6).** This section used to warn that
-> `glunk-works` "may not exist yet" and to confirm access or substitute a scratch org.
-> It exists, and is the org this repo itself lives in — verified live via
-> `gh api orgs/glunk-works`. No substitute org is needed. **Still create and destroy a
-> disposable scratch *repo* inside it** — that part was never about the org.
+**Result: PASS, and BL-21's gate proven functional (FD9).** `flows.bootstrap.run_bootstrap`
+ran with all collaborators at their real defaults against the disposable public scratch
+repo `glunk-works/factory-scratch-boot-20260715` (since deleted, Task 7). The
+`BootstrapResult` was `status=created`, `ruleset_installed=true`, `ruleset_id=18965237`.
 
-- **Run `flows.bootstrap.run_bootstrap`** with all collaborators at their real
-  defaults (`repo_io`, `git_io`, `tools/scaffold`) against a disposable scratch
-  repo name — confirm `create_repository` actually creates a private repo,
-  `clone_repo` lands a real empty working tree, and the returned `RepoRef.url`
-  resolves.
-- **Confirm the skeleton is really there.** In the real clone, confirm
-  `pyproject.toml`, `src/<pkg_name>/__init__.py`, `tests/test_smoke.py`,
-  `README.md`, `.gitignore`, and `CLAUDE.md` all exist with the repo/package
-  name substituted, and that a real `pytest`/`ruff check`/`ruff format --check`
-  pass against the scaffolded skeleton on its own (proving the bundled
-  templates are actually coherent, not just individually unit-tested).
-- **Confirm the empty-clone branch mechanics.** Verify the fresh clone's
-  initial branch name (whatever the host's `init.defaultBranch` is) and that
-  `checkout_branch(tree, "main")` still succeeds and produces a `main` branch
-  regardless of that starting name.
-- **Confirm the push + `develop` ordering against the real remote.** After the
-  run, confirm (via `gh api repos/{owner}/{repo}/branches`) that both `main`
-  (with the scaffold as its first commit, and set as the repo's default
-  branch) and `develop` (based on `main`'s pushed SHA) exist, and that
-  `develop` could only have been created after the push (confirm by timestamp
-  or by re-running against a repo where the push is deliberately blocked and
-  observing `create_branch` fails against a nonexistent base ref).
-- **Confirm no PR is opened and no merge verb is reachable** — `repo_io`
-  exposes none, and bootstrap never calls `open_pr`.
-- ~~Confirm the wheel actually ships the templates~~ — already verified in the
-  25 implementation session (no `gh`/network needed for this one): `hatch
-  build -t wheel` + inspecting the archive confirms
-  `loop_engine/tools/scaffold/templates/` (including the non-`.py` `CLAUDE.md`
-  and `.tmpl` files) ships via hatchling's **default** `packages` file
-  selection — no `force-include` needed (an explicit `force-include` entry
-  was tried first and **conflicts** with the default inclusion, raising
-  hatchling's duplicate-path build error; removed).
-- Clean up the scratch repo afterward — this check has real side effects on
-  GitHub, unlike every other check in this file.
+- **Create → clone → scaffold → commit → push → `develop`:** `create_repository` made a
+  real **public** repo (default flipped per FD3) whose `RepoRef.url` resolved; the skeleton
+  (`pyproject.toml`, `src/<pkg>/__init__.py`, `tests/test_smoke.py`, `README.md`,
+  `.gitignore`, `CLAUDE.md`) landed with names substituted; `gh api …/branches` confirmed
+  `main` (scaffold as first commit, repo default) and `develop` **based on `main`'s exact
+  pushed SHA** (equal SHAs — `develop` could only be created after the push, FD7). No PR
+  opened; no merge verb reachable.
+- **Ruleset (BL-21):** `gh api …/rulesets/18965237` showed `enforcement=active`, empty
+  `bypass_actors`, rules exactly `deletion` + `non_fast_forward` + `pull_request`,
+  targeting **both** `refs/heads/main` and `refs/heads/develop`, and **zero**
+  `required_status_checks` (FD4 — a scaffolded repo ships no CI; a required check that
+  never reports would deadlock merges).
+- **FD9 — the gate REJECTS (observed, not inferred):** deliberate writes were attempted
+  and observed to fail:
+  - direct push to `main` **and** `develop` → `GH013 … Changes must be made through a pull request`;
+  - force-push `main` → `GH013` (pull_request rule);
+  - delete `develop` → `GH013 … Cannot delete this branch` (the `deletion` rule);
+  - delete `main` → refused as the repo's default branch.
+  Notably the `administration=write` admin token with empty `bypass_actors` was **itself**
+  blocked — repository rulesets do not auto-exempt admins.
+- **Not deadlocked (FD4 from the other side):** the repo **can** still merge a PR — the
+  §7 fixture seeds and PR #2 merged/opened normally through `develop`/`main`.
+
+**Finding (open):** **[BL-28] — a factory-scaffolded repo fails its own `ruff check`.** The
+scaffold's `pyproject.toml` selects the `S` (bandit) rule set but ships no
+`per-file-ignores` for `tests/`, so its own `tests/test_smoke.py` (`assert True`) trips
+`S101`. `pytest` and `ruff format --check` pass; only lint fails.
+
+(The org question was already closed in sprint 35; the wheel-ships-templates check was
+already done in the Sprint 25 session — neither needed re-doing here.)
 
 
 ---
