@@ -1516,3 +1516,48 @@ the orchestrator's, not just deferring within one module. `src/` change → own 
 fresh-session review.
 
 **Related:** [BL-22] (the sprint-37 parent — reduces spawn *count*; this reduces spawn *cost*).
+
+### BL-32 — The static structural guards need an adversarial invariant-injection audit, not mutation testing
+
+*(added 2026-07-15, filed from sprint 38 (BL-23 pass 1, `core/` mutation) FD1 — the natural next
+BL-23 beat)*
+
+**Why:** sprint 38 mutation-tested `core/`'s **behavioral** tests with `mutmut` (production: 61
+keep, 86 fix, landed — see `sprints/38_test_validity_audit/`). That instrument is deliberately the
+wrong tool for the repo's **static structural guards** — `tests/tools/test_subprocess_surfaces.py`,
+`tests/tools/test_encoding_boundary.py` / `test_ast_open.py`, the `core/`↔`personas/` import-boundary
+tests, `tests/tools/test_mcp_provider.py`'s verb-disjointness assertions — because those guards
+assert on the **shape of the source tree** (AST scans, set algebra) rather than on runtime behavior.
+No mutation operator in mutmut's catalog (arithmetic/boundary/keyword swaps, string-literal
+wrapping, argument substitution) can generate the constructs these guards exist to catch: a sixth
+`subprocess.run` call, a back-channel `core/`↔`personas/` import, an overlapping MCP verb set. A
+green mutation run against them would report them well-covered while leaving their real weakness
+completely unprobed — reproducing the exact BL-23 defect (a check that verifies the wrong property
+while reporting success) **inside** the BL-23 audit itself. **BL-15 is the proof this isn't
+hypothetical**: the write/encoding guards, advertised by `CLAUDE.md` as "checked by static tests, not
+just convention", classify `open()` receivers **by name** — so `import gzip as gz` walks straight
+through them, and nothing said so until BL-15 found it by deliberately trying to defeat the guard.
+
+**What to actually do:** **adversarial invariant-injection** — a different instrument from mutation
+testing. For each guard, deliberately construct the exact violating shape it exists to catch and
+assert the guard goes **red**, not green:
+- A **sixth** subprocess surface (a new `subprocess.run`/`Popen` call outside the five sanctioned
+  ones) — does `test_subprocess_surfaces.py` catch it?
+- An **aliased** file-write receiver (`import gzip as gz`, `from pathlib import Path as P`, or an
+  `open()` called through an indirection) — does the encoding/write-owner guard catch it, or does it
+  repeat BL-15's exact name-based blind spot elsewhere?
+- A **back-channel import** from `core/` to a concrete persona module (bypassing `personas/base.py`)
+  — does the module-boundary test catch it?
+- An **overlapping MCP verb** across the `coder_tools`/`github`/`issue` server sets (breaking the
+  pairwise-disjointness the servers currently guarantee) — does `test_mcp_provider.py` catch it?
+
+Each of these should be tried as a **temporary, reverted-after-the-fact** injection against a
+throwaway branch/worktree (never landed), confirming the guard fires — mirroring how BL-15 itself
+was found. A guard that stays green under its own violating construct is the finding, exactly as
+BL-15 was.
+
+**Explicitly NOT the goal:** re-running mutmut against these files (FD1, sprint 38) — that would
+just repeat the wrong-instrument mistake this item exists to avoid.
+
+**Related:** [BL-23] (this item's parent — the `core/` behavioral pass that scoped these guards
+*out* and filed this as the next beat), [BL-15] (the proven instance this audit generalizes).
