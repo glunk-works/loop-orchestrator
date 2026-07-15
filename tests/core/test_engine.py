@@ -18,10 +18,12 @@ from loop_engine.core.graph_engine import run_graph_loop
 from loop_engine.core.state import IssueRef, Question, RunStatus, StageRecord, State
 from loop_engine.personas.base import BasePersona
 from loop_engine.tools.llm.client import ToolLoopExceededError
+from tests.core.conftest import absolutize_mutmut_source_paths
 
 
 @pytest.fixture(autouse=True)
 def _isolated_cwd(tmp_path, monkeypatch):
+    absolutize_mutmut_source_paths(monkeypatch)
     monkeypatch.chdir(tmp_path)
 
 

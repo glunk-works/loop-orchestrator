@@ -72,6 +72,15 @@ dependencies = [
   # single-test fast path (`hatch run test tests/x.py::test_name`) exactly as
   # fast as before, since worker-spinup overhead would dominate a 1-test run.
   "pytest-xdist==3.8.0",
+  # Sprint 38 Task 1 (BL-23): mutation testing, scoped to core/ (see
+  # [tool.mutmut] below). Dev/test-only -- src/loop_engine/ never imports it.
+  # 3.x's coverage-tracking trampoline re-resolves `source_paths` against the
+  # live process cwd on its one-time stats-collection pass, which collides
+  # with several tests/core/ files' `_isolated_cwd` fixtures (a real chdir --
+  # needed because those tests write real files into an isolated tmp dir).
+  # Worked around via a shared helper in tests/core/conftest.py, not by
+  # pinning an older mutmut; see the comment there.
+  "mutmut==3.6.0",
 ]
 
 [tool.hatch.envs.default.scripts]
@@ -92,6 +101,31 @@ sbom = "cyclonedx-py environment -o sbom.json"
 # that isn't on PyPI and can't be audited); every third-party dependency is
 # still checked against the OSV/PyPI advisory databases.
 audit = "pip-audit --skip-editable {args}"
+# Sprint 38 Task 1 (BL-23): mutation-test core/ against tests/core/ only (FD3
+# -- fast per-mutant loop; T2 cross-checks survivors against the full suite
+# before a fix/delete verdict). `mutmut run` reads scope from [tool.mutmut]
+# below; conftest.py is picked up the normal pytest way since mutmut invokes
+# pytest.main() itself (--rootdir=.) against a copied "mutants/" tree that
+# includes tests/ and pyproject.toml (see mutmut's also_copy default).
+mutate = "mutmut run {args}"
+mutate-results = "mutmut results {args}"
+mutate-show = "mutmut show {args}"
+
+[tool.mutmut]
+# source_paths must cover the whole src/ tree (mutmut copies exactly this set
+# into mutants/ and nothing else is importable there) so that core/'s imports
+# of sibling packages (e.g. loop_engine.tools) still resolve. only_mutate is
+# what actually scopes mutation to core/ -- everything else under src/ is
+# copied into mutants/ unmodified.
+source_paths = ["src"]
+only_mutate = ["src/loop_engine/core/*.py"]
+pytest_add_cli_args_test_selection = ["tests/core"]
+# loop_engine/__init__.py eagerly builds DEFAULT_LOOP at import time, which
+# constructs every persona and validates its prompt files exist via a
+# repo-root marker walk (nearest pyproject.toml -- which lands on mutants/
+# once mutmut copies that marker file in). Without this, every tests/core/
+# mutant run fails at collection, not at the mutation under test.
+also_copy = ["prompts"]
 
 [tool.ruff]
 line-length = 100
