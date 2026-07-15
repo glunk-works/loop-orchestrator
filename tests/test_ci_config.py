@@ -252,6 +252,41 @@ def test_hitl_review_gate_is_not_inside_the_cancel_in_progress_ci_workflow() -> 
     assert "pull_request_review" not in ci
 
 
+def test_test_job_docs_only_short_circuit_is_step_level_not_job_level() -> None:
+    """Task 3 (Sprint 37): the docs-only skip must be a STEP-level `if:` on the
+    pytest invocation, never a job-level `if:` on `test` itself -- a job-level
+    `if:` is exactly what test_no_job_in_ci_workflow_can_report_skipped
+    (BL-10/BL-12) forbids, and a `skipped` `test` job would satisfy every
+    downstream `needs:` without the suite ever having run."""
+    cfg = _load_workflow("ci.yml")
+    test_job = cfg["jobs"]["test"]
+    assert "if" not in test_job  # unconditional job (BL-10 guard, unchanged)
+    run_test_steps = [s for s in test_job["steps"] if s.get("run") == "hatch run test"]
+    assert len(run_test_steps) == 1, "expected exactly one `hatch run test` step"
+    assert "if" in run_test_steps[0]  # the short-circuit lives here instead
+
+
+def test_ci_docs_only_detection_does_not_pipe_into_grep() -> None:
+    """Same SIGPIPE trap as hitl-review.yml (see
+    test_hitl_review_src_detection_does_not_pipe_into_grep_q): capture the
+    changed-file list into a variable, then match -- never pipe a paginating
+    `gh api` straight into `grep`, or a large diff dies of SIGPIPE (141) under
+    `pipefail` and the short-circuit silently mis-skips a real code PR."""
+    text = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    flat = " ".join(text.split())
+    assert "| grep" not in flat
+    assert 'changed=$(gh api "repos/$REPO/pulls/$PR/files"' in text
+
+
+def test_ci_docs_only_short_circuit_fails_safe_on_detection_error_or_empty() -> None:
+    """FD4: a changed-file-detection error or an empty result MUST run pytest,
+    never silently skip it -- the opposite polarity is the whole risk."""
+    text = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    marker = '[ "$status" -ne 0 ] || [ -z "$changed" ]'
+    idx = text.index(marker)
+    assert "skip=false" in text[idx : idx + 200]
+
+
 def test_hitl_review_src_detection_does_not_pipe_into_grep_q() -> None:
     """The src/-detection must not pipe a paginating `gh` into `grep -q`.
 
