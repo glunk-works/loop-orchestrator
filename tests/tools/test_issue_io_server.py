@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from mcp import StdioServerParameters
 
 from loop_engine.core.state import IssueRef
@@ -19,22 +20,25 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SERVER_MODULE = "loop_engine.mcp_servers.issue_io_server"
 
 
-def _provider() -> MCPToolProvider:
+# Module-scoped: every test here is discovery-only (schema checks against an
+# offline, no-`gh`-call server), so one real launch is amortized across the
+# whole file instead of paid per test (Sprint 37 Task 2).
+@pytest.fixture(scope="module")
+def _provider():
     params = StdioServerParameters(
         command=sys.executable, args=["-m", _SERVER_MODULE], cwd=str(_REPO_ROOT)
     )
-    return MCPToolProvider([params])
+    with MCPToolProvider([params]) as provider:
+        yield provider
 
 
-def test_issue_io_server_discovers_exactly_the_two_issue_verbs() -> None:
-    with _provider() as provider:
-        names = {t["name"] for t in provider.tools}
+def test_issue_io_server_discovers_exactly_the_two_issue_verbs(_provider) -> None:
+    names = {t["name"] for t in _provider.tools}
     assert names == {"create_issue", "read_issue"}
 
 
-def test_create_issue_schema_has_expected_string_params() -> None:
-    with _provider() as provider:
-        schema = next(t for t in provider.tools if t["name"] == "create_issue")
+def test_create_issue_schema_has_expected_string_params(_provider) -> None:
+    schema = next(t for t in _provider.tools if t["name"] == "create_issue")
     props = schema["input_schema"]["properties"]
     assert props["title"]["type"] == "string"
     assert props["body"]["type"] == "string"
@@ -44,9 +48,8 @@ def test_create_issue_schema_has_expected_string_params() -> None:
     assert required == {"title", "body", "label"}
 
 
-def test_read_issue_schema_has_expected_int_param() -> None:
-    with _provider() as provider:
-        schema = next(t for t in provider.tools if t["name"] == "read_issue")
+def test_read_issue_schema_has_expected_int_param(_provider) -> None:
+    schema = next(t for t in _provider.tools if t["name"] == "read_issue")
     props = schema["input_schema"]["properties"]
     assert props["issue_number"]["type"] == "integer"
     assert "repo" in props

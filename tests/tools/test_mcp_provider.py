@@ -21,26 +21,48 @@ from loop_engine.tools.mcp import (
 from loop_engine.tools.mcp import config as mcp_config
 
 
-@pytest.fixture(autouse=True)
-def _isolated_cwd(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-
-
-@pytest.fixture
-def _seeded_tree(tmp_path):
-    (tmp_path / "docs").mkdir()
-    (tmp_path / "docs" / "foo.md").write_text("hello from docs\nsecond line\n")
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "mod.py").write_text("def add(a, b):\n    return a + b\n")
-    (tmp_path / "src" / "test_mod.py").write_text(
+# Module-scoped (not per-test): these tests are read-only/discovery against a
+# shared tree, so amortizing the ~5s-per-spawn MCP server cost across the whole
+# file is safe (FD1/Sprint 37 Task 2) -- nothing here mutates the seeded tree
+# or depends on a fresh one. `_isolated_cwd` chdirs once for the module instead
+# of once per test; every relative-path assertion below is unaffected since it
+# only ever cares about the *current* cwd, not a test-unique one.
+@pytest.fixture(scope="module")
+def _seeded_tree(tmp_path_factory):
+    tree = tmp_path_factory.mktemp("mcp_provider_shared")
+    (tree / "docs").mkdir()
+    (tree / "docs" / "foo.md").write_text("hello from docs\nsecond line\n")
+    (tree / "src").mkdir()
+    (tree / "src" / "mod.py").write_text("def add(a, b):\n    return a + b\n")
+    (tree / "src" / "test_mod.py").write_text(
         "from mod import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n"
     )
-    return tmp_path
+    return tree
 
 
-@pytest.fixture
+@pytest.fixture(scope="module", autouse=True)
+def _isolated_cwd(_seeded_tree):
+    original = os.getcwd()
+    os.chdir(_seeded_tree)
+    yield
+    os.chdir(original)
+
+
+@pytest.fixture(scope="module")
 def _provider(_seeded_tree):
     with build_coder_tool_provider(cwd=_seeded_tree) as provider:
+        yield provider
+
+
+@pytest.fixture(scope="module")
+def _github_provider():
+    with build_github_provider() as provider:
+        yield provider
+
+
+@pytest.fixture(scope="module")
+def _issue_provider():
+    with build_issue_provider() as provider:
         yield provider
 
 
@@ -129,28 +151,26 @@ def test_committed_github_stanza_does_not_change_coder_provider_tool_set(_provid
     assert names == {"read_file", "list_files", "grep", "run_tests", "run_lint"}
 
 
-def test_build_github_provider_discovers_exactly_four_github_verbs() -> None:
-    with build_github_provider() as provider:
-        names = {t["name"] for t in provider.tools}
+def test_build_github_provider_discovers_exactly_four_github_verbs(_github_provider) -> None:
+    names = {t["name"] for t in _github_provider.tools}
     assert names == {"create_repository", "clone_repo", "create_branch", "open_pr"}
 
 
-def test_build_issue_provider_discovers_exactly_two_issue_verbs() -> None:
-    with build_issue_provider() as provider:
-        names = {t["name"] for t in provider.tools}
+def test_build_issue_provider_discovers_exactly_two_issue_verbs(_issue_provider) -> None:
+    names = {t["name"] for t in _issue_provider.tools}
     assert names == {"create_issue", "read_issue"}
 
 
-def test_coder_github_and_issue_providers_are_pairwise_disjoint(_provider) -> None:
+def test_coder_github_and_issue_providers_are_pairwise_disjoint(
+    _provider, _github_provider, _issue_provider
+) -> None:
     """Cross-cutting #2, extended two-way -> three-way (26 Task 5): with the
     committed `loop_engine.mcp.json` in effect, the model's coder-tool
     provider and the orchestrator's github/issue providers expose exactly
     their own tools each, and no pair of sets intersects."""
     coder_names = {t["name"] for t in _provider.tools}
-    with build_github_provider() as github_provider:
-        github_names = {t["name"] for t in github_provider.tools}
-    with build_issue_provider() as issue_provider:
-        issue_names = {t["name"] for t in issue_provider.tools}
+    github_names = {t["name"] for t in _github_provider.tools}
+    issue_names = {t["name"] for t in _issue_provider.tools}
 
     assert coder_names == {"read_file", "list_files", "grep", "run_tests", "run_lint"}
     assert github_names == {"create_repository", "clone_repo", "create_branch", "open_pr"}
