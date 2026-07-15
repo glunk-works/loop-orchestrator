@@ -9,21 +9,15 @@ loaded on demand. **Where we are right now** lives in `.ai/next-steps.md`.
 
 loop-engine runs a named sequence of decoupled AI "persona" stages against a single, explicit, versioned `State` object. The default loop is a **PM → Architecture → Agile Sprint Breakdown → Coder/IaC** pipeline, but it is not a one-way conveyor: every stage's output passes a content **gate** (accept / revise / escalate), questions escalate up a resolver ladder (Coder → Architect → PM → human via GitHub issue), and resolved questions route rework back down by blast radius ("task" re-runs the asker, "plan" re-enters Sprint Breakdown, "architecture" re-enters the Architect). A snapshot is persisted after every accepted stage AND on every exit path (completed / failed / budget-exceeded / awaiting-issue).
 
-> **Migration in progress — but the flag era is over.** The engine has migrated to
-> MCP tooling + LangGraph + an isolated multi-repo factory. **Status, decisions, and
-> the remaining work live in [`docs/migration_roadmap.md`](docs/migration_roadmap.md)** —
-> read it before extending this. Phase 6 (sprint 27) **deleted** the four migration
-> flags and the classic paths they selected, rather than keeping live break-glass
-> branches (decision FD2 — a break-glass kept live is a path kept untested). There is
-> now **one** path: the LangGraph engine, MCP tool dispatch, the declarative
-> `GeneratorNode` personas + PM `CriticGate`, and the Ralph-loop Coder. The classic
-> engine/tools/personas/Coder are recoverable in history at the **`pre-phase6-classic`**
-> tag. **`LOOP_ENGINE_ISOLATION` survives** — it is genuine runtime config
-> (`none` for local dev, `container` for the factory host), never old-vs-new.
-> The issue-path flip onto MCP has landed (Phase 6 Task 8/10). The `State.artifacts`
-> strip is also resolved — sprint 32 inverted it (roadmap FD1): `artifact_refs` (never
-> read back off disk) was deleted; `State.artifacts` stays as the permanent source of
-> truth and the prompt-cache prefix.
+> **Migrated — one path only.** The engine now runs on MCP tooling + LangGraph + an
+> isolated multi-repo factory: the LangGraph engine, MCP tool dispatch, declarative
+> `GeneratorNode` personas + PM `CriticGate`, and the Ralph-loop Coder. **Status,
+> decisions, and remaining work live in [`docs/migration_roadmap.md`](docs/migration_roadmap.md)
+> — read it before extending this** (the flag era, the Phase 6 flag deletion, the
+> issue-path MCP flip, and the `State.artifacts` decision are all recorded there); the
+> classic engine/tools/personas/Coder are recoverable at the **`pre-phase6-classic`** tag.
+> One gotcha survives the cleanup: **`LOOP_ENGINE_ISOLATION`** is genuine runtime config
+> (`none` for local dev, `container` for the factory host), never an old-vs-new switch.
 
 ## Working here: personas & model routing
 
