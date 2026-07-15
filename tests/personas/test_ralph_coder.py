@@ -58,6 +58,33 @@ def _isolated_cwd(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
 
+class _FakeProvider:
+    """Stand-in for the real MCP provider: these are persona unit tests driven
+    by a MagicMock LLM whose `run_tool_loop` is fully stubbed, so the tool
+    schemas handed to it are never dispatched. Spawning a real ~5s coder-tools
+    server here proves nothing about persona logic (FD2/FD5) — real-server
+    coverage lives in tests/tools/test_mcp_provider.py."""
+
+    tools = [{"name": "read_file", "description": "", "input_schema": {}}]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        pass
+
+    def execute(self, name, arguments):
+        return "mcp-result"
+
+
+@pytest.fixture(autouse=True)
+def _stub_coder_tool_provider(monkeypatch):
+    monkeypatch.setattr(
+        "loop_engine.personas.coder_iac.shared.build_coder_tool_provider",
+        lambda cwd=None: _FakeProvider(),
+    )
+
+
 def _state(completed: list[str] | None = None, reports: dict[str, str] | None = None) -> State:
     manifest = build_task_manifest([_SPRINT_A, _SPRINT_B])
     artifacts = {
