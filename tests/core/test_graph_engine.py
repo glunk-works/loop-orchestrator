@@ -24,7 +24,7 @@ import pytest
 from loop_engine.core.engine import Loop, Stage
 from loop_engine.core.gates import GateDecision, GateResult
 from loop_engine.core.graph_engine import run_graph_loop
-from loop_engine.core.state import RunStatus
+from loop_engine.core.state import IssueRef, RunStatus
 from loop_engine.personas.base import BasePersona
 from tests.core.conftest import absolutize_mutmut_source_paths
 from tests.core.test_engine import _initial_state, _stub_llm_client
@@ -87,3 +87,42 @@ def test_stage_node_self_reentry_survives_a_long_self_loop() -> None:
 
     assert len(json.loads(final.artifacts["items"])) == 20
     assert final.status is RunStatus.COMPLETED
+
+
+def test_run_graph_loop_resets_stale_status_and_pending_issue_from_input_state() -> None:
+    # Real gap (Sprint 38 T3, BL-23): every current test starts run_graph_loop
+    # from a fresh State whose defaults (RUNNING, pending_issue=None) already
+    # match what `run_graph_loop` forces, so the reset line is a no-op for
+    # every existing test. Pass in a State shaped like a real resume (stale
+    # AWAITING_ISSUE status + a leftover pending_issue) and assert the run
+    # actually clears both.
+    #
+    # A `status`-key typo (e.g. `"XXstatusXX"`) in the reset's `update={...}`
+    # dict is NOT caught by asserting only the run's FINAL status: the
+    # completion node unconditionally stamps `status=COMPLETED` at the end
+    # regardless of what happened at the start, masking the bug. Observe the
+    # status a persona actually SEES mid-run instead.
+    from loop_engine.core.gates import ArtifactGate
+
+    seen_status: list[RunStatus] = []
+
+    class RecordingPersona(BasePersona):
+        produces = ("doc",)
+
+        def run(self, state, llm_client, findings=None):
+            seen_status.append(state.status)
+            return state.model_copy(update={"artifacts": {**state.artifacts, "doc": "done"}})
+
+    stale = _initial_state("rg-stale").model_copy(
+        update={
+            "status": RunStatus.AWAITING_ISSUE,
+            "pending_issue": IssueRef(number=7, url="https://github.com/example/repo/issues/7"),
+        }
+    )
+    loop = Loop(stages=[Stage(persona=RecordingPersona(), gate=ArtifactGate("doc"))])
+
+    final = run_graph_loop(loop, stale, _stub_llm_client())
+
+    assert seen_status == [RunStatus.RUNNING]
+    assert final.status is RunStatus.COMPLETED
+    assert final.pending_issue is None
