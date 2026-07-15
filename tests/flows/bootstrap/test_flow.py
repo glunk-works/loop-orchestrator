@@ -12,7 +12,7 @@ from loop_engine.flows.bootstrap import (
     BootstrapStatus,
     run_bootstrap,
 )
-from loop_engine.tools.repo_io import RepoRef
+from loop_engine.tools.repo_io import RepoRef, RulesetInstallError
 
 
 class _FakeRepoIO:
@@ -38,9 +38,26 @@ class _FakeRepoIO:
 
 
 class _FailingRulesetRepoIO(_FakeRepoIO):
+    """`create_ruleset` raises `RulesetInstallError` -- the real
+    `create_ruleset` raises exactly this when the underlying `gh` call
+    itself fails (S5: a genuine, live rejection), so this is the
+    RULESET_FAILED case."""
+
     def create_ruleset(self, owner, repo, *, branches, name="protect-integration-branches"):
         self.calls.append(("create_ruleset", owner, repo, tuple(branches), name))
-        raise RuntimeError("422 Unprocessable Entity")
+        raise RulesetInstallError("422 Unprocessable Entity")
+
+
+class _UnparseableRulesetRepoIO(_FakeRepoIO):
+    """`create_ruleset` raises a non-`RulesetInstallError` -- standing in for
+    the live `create_ruleset`'s own `json.loads(...)["id"]` raising
+    `KeyError`/`json.JSONDecodeError` when the POST actually succeeded but
+    returned an unparseable body (S5). This must PROPAGATE out of
+    `run_bootstrap`, not be mislabeled RULESET_FAILED."""
+
+    def create_ruleset(self, owner, repo, *, branches, name="protect-integration-branches"):
+        self.calls.append(("create_ruleset", owner, repo, tuple(branches), name))
+        raise KeyError("id")
 
 
 class _FakeGitIO:
@@ -84,6 +101,8 @@ def test_run_bootstrap_drives_full_chain_in_order_and_returns_created() -> None:
     assert result.default_branch == "main"
     assert result.integration_branch == "develop"
     assert result.ruleset_installed is True
+    assert result.ruleset_id == 1  # S4: carried from the faked create_ruleset's return value
+    assert result.ruleset_error is None
 
     assert repo_io.calls[0] == ("create_repository", "demo", "glunk-works", False)
     assert repo_io.calls[1] == ("clone_repo", "glunk-works/demo", "demo")
@@ -111,11 +130,13 @@ def test_create_branch_fires_after_push_with_base_equal_to_default_branch() -> N
 
     push_index = git_io.calls.index(("push_branch", "demo", "main", "origin"))
     create_branch_call = ("create_branch", "glunk-works", "demo", "develop", "main")
-    create_branch_index = repo_io.calls.index(create_branch_call)
     # Ordering is load-bearing: create_branch reads the base ref's SHA over
     # the API, so the push (which puts `main` on the remote) must come first.
     assert push_index < len(git_io.calls)
-    assert create_branch_index == len(repo_io.calls) - 2
+    assert create_branch_call in repo_io.calls
+    # S9: create_ruleset's own strict position relative to create_branch is
+    # covered by test_create_ruleset_fires_last_strictly_after_create_branch
+    # -- no need to pin it here too via a `len(calls) - 2` positional assert.
 
 
 def test_create_ruleset_fires_last_strictly_after_create_branch() -> None:
@@ -156,6 +177,8 @@ def test_private_repo_skips_ruleset_installation_and_reports_it() -> None:
 
     assert result.status == BootstrapStatus.CREATED
     assert result.ruleset_installed is False
+    assert result.ruleset_id is None
+    assert result.ruleset_error is None
     assert repo_io.calls[0] == ("create_repository", "demo", "glunk-works", True)
     assert not any(call[0] == "create_ruleset" for call in repo_io.calls)
 
@@ -163,7 +186,8 @@ def test_private_repo_skips_ruleset_installation_and_reports_it() -> None:
 def test_ruleset_failure_returns_repo_ref_instead_of_propagating() -> None:
     """R2: a live create_ruleset failure must not lose the RepoRef -- the repo
     is already created and main is already pushed by the time this call runs,
-    so FD11 teardown needs the slug back, not a bare exception."""
+    so FD11 teardown needs the slug back, not a bare exception. S5: this is
+    the `RulesetInstallError` case -- the `gh` call itself failed."""
     repo_io = _FailingRulesetRepoIO()
     git_io = _FakeGitIO()
     scaffold = _FakeScaffold()
@@ -174,7 +198,25 @@ def test_ruleset_failure_returns_repo_ref_instead_of_propagating() -> None:
     assert result.status == BootstrapStatus.RULESET_FAILED
     assert result.repo == repo_io.repo
     assert result.ruleset_installed is False
+    assert result.ruleset_id is None  # S4: never populated on the failure path
+    assert result.ruleset_error  # S6: non-empty -- the str() of the raised exception
+    assert "422 Unprocessable Entity" in result.ruleset_error
     assert any(call[0] == "create_ruleset" for call in repo_io.calls)
+
+
+def test_non_ruleset_install_error_propagates_instead_of_ruleset_failed() -> None:
+    """S5: a `create_ruleset` failure that is NOT a `RulesetInstallError`
+    means the underlying `gh` POST likely SUCCEEDED (e.g. `json.loads(...)
+    ["id"]` raised `KeyError`/`json.JSONDecodeError` on an unparseable
+    response body) -- mislabeling that RULESET_FAILED would tell an operator
+    the repo is unprotected and safe to tear down when it may already be
+    protected. It must propagate, not be caught."""
+    repo_io = _UnparseableRulesetRepoIO()
+    git_io = _FakeGitIO()
+    scaffold = _FakeScaffold()
+
+    with pytest.raises(KeyError):
+        run_bootstrap(_request(), repo_io=repo_io, git_io=git_io, scaffold=scaffold)
 
 
 def test_no_open_pr_or_merge_verb_is_ever_reachable() -> None:
