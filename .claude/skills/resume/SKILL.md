@@ -18,7 +18,18 @@ without re-reading the whole repo. This is the counterpart to `/handoff`.
 
 2. **Check reality vs. the cursor.** Run `git log --oneline -5` and `git status --short`. Confirm `last_commit` matches HEAD (or note the drift). If the tree is dirty, surface that — a previous session may not have finished a `/handoff`.
 
-3. **Check the branch-protection ruleset for drift** (BL-11 / sprint 34, FD1+FD2 — the cron in `ruleset-drift.yml` catches drift between sessions; this catches it at the moment work resumes, which in a solo repo is when nearly every change begins). One read-only call, no new PAT scope (FD1):
+3. **Prune squash-merged local branches** (standard practice — this repo is squash-only, and `git branch --merged main` **cannot** see a squash-merged branch because the squash makes a new commit the branch never became an ancestor of; so ask GitHub which PRs merged). One read-only `gh` call, then a safe `-D` on **only** the branches whose PR GitHub reports `merged` — never an unmerged or PR-less branch, never `main`, never the current branch:
+   ```bash
+   merged=$(gh pr list --state merged --limit 300 --json headRefName -q '.[].headRefName')
+   cur=$(git branch --show-current)
+   for b in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
+     case "$b" in main|"$cur") continue;; esac
+     printf '%s\n' "$merged" | grep -qxF "$b" && git branch -D "$b" && echo "pruned $b"
+   done
+   ```
+   Report the result in the pick-up summary in **at most one line** (e.g. `Pruned 6 squash-merged local branches.` or `No stale branches to prune.`). This is hygiene, not a gate — never block the session on it; if the `gh` call fails, skip pruning and say so.
+
+4. **Check the branch-protection ruleset for drift** (BL-11 / sprint 34, FD1+FD2 — the cron in `ruleset-drift.yml` catches drift between sessions; this catches it at the moment work resumes, which in a solo repo is when nearly every change begins). One read-only call, no new PAT scope (FD1):
    ```
    gh api repos/OWNER/REPO/rules/branches/main
    ```
@@ -29,9 +40,9 @@ without re-reading the whole repo. This is the counterpart to `/handoff`.
 
    This is a report, not a gate — never block or fail the session on its result.
 
-4. **Adopt the assigned persona/model.** If `assigned_model` does not match the model you are running as, say so explicitly and recommend the user `/model` switch before continuing (Architect=Opus for planning/review, Coder=Sonnet for implementation — see `.ai/context/workflow.md`).
+5. **Adopt the assigned persona/model.** If `assigned_model` does not match the model you are running as, say so explicitly and recommend the user `/model` switch before continuing (Architect=Opus for planning/review, Coder=Sonnet for implementation — see `.ai/context/workflow.md`).
 
-5. **State the pick-up point** in 3–6 lines: current phase/sprint, sprint_status, the single next action, any open HITL gate, and the ruleset check result. Then wait for the user (do not silently start large work — especially if a HITL gate is open).
+6. **State the pick-up point** in 3–6 lines: current phase/sprint, sprint_status, the single next action, any open HITL gate, the ruleset check result, and the branch-prune result. Then wait for the user (do not silently start large work — especially if a HITL gate is open).
 
 ## Load-on-demand
 Only read `.ai/context/modules.md` / `conventions.md` if the next action actually needs

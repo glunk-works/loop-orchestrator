@@ -25,8 +25,20 @@ If any precondition fails, STOP and report why — do not archive.
 
 3. **Seed a fresh `.ai/next-steps.md`** for the next unit: **Now** = next phase/sprint in `planning`; **Just done** = one line noting the prior sprint archived + its commit; **Next** = "plan <next unit> (Opus)"; **Pointers** = roadmap + the next sprint_plan (or "to be written").
 
-4. **Report** what was archived, the new `current_sprint_id`, and the next action. Remind the user to commit the archival (the tracked `next-steps.md` change + roadmap) if they want it durable.
+4. **Prune squash-merged local branches** (standard practice — a sprint boundary is when the just-merged `sprint/NN-*` branch becomes dead, the "squash trap"). This repo is squash-only, so `git branch --merged main` **cannot** see these branches; ask GitHub which PRs merged and `-D` **only** those — never an unmerged or PR-less branch, never `main`, never the current branch:
+   ```bash
+   merged=$(gh pr list --state merged --limit 300 --json headRefName -q '.[].headRefName')
+   cur=$(git branch --show-current)
+   for b in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
+     case "$b" in main|"$cur") continue;; esac
+     printf '%s\n' "$merged" | grep -qxF "$b" && git branch -D "$b" && echo "pruned $b"
+   done
+   ```
+   Report which branches were pruned (or "none"). Hygiene, not a gate — if the `gh` call fails, skip and say so.
+
+5. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. Remind the user to commit the archival (the tracked `next-steps.md` change + roadmap) if they want it durable.
 
 ## Guardrails
 - Never delete the roadmap history or the sprint_plan files — archival only moves the `.ai/` cursor snapshot; the deep record stays in `docs/` and git.
 - Never archive an un-approved or uncommitted sprint.
+- The branch prune deletes **only** branches whose PR GitHub reports `merged` (via `gh`); it never touches an unmerged branch, a branch with no PR, `main`, or the current branch. `git branch -D` is safe here precisely because merged-ness is confirmed out-of-band (a squash-merged branch looks "unmerged" to git).
