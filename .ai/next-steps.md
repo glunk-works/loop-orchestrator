@@ -5,86 +5,93 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Sprint `38_test_validity_audit` (BL-23) — IMPLEMENTING.** Task 1 is merged (PR #90,
-squash `84d4f79`). **Next session is Coder/Sonnet: implement Task 2 (triage).**
+**Sprint `38_test_validity_audit` (BL-23) — IMPLEMENTING.** Task 2 is merged (PR #92,
+squash `875f591`). **Next session is Coder/Sonnet: implement Task 3 (land the fixes).**
 No HITL gate is open.
 
 ## Just done (this session, Coder/Sonnet)
-- **Task 1 landed** (PR #90, squash `84d4f79`): `mutmut==3.6.0` pinned dev dep,
-  `hatch run mutate` scoped to `src/loop_engine/core/` against `tests/core/` only
-  (FD2/FD3), `sbom.json` regenerated, `hatch run audit` clean. Ran to a green baseline:
-  **693 mutants, 546 killed, 147 survived**, ~35s wall-clock, 26.89 mutations/second for
-  the testing loop. Full survivor list (file:line + diff) in
-  `sprints/38_test_validity_audit/mutation_baseline.md` — the raw material for T2.
-- **Deviation from the plan's literal wording (documented on the PR, not a scope change):**
-  kept mutmut on the latest 3.x line rather than the plan's 2.x-shaped `runner =
-  "hatch run test tests/core/"` description, per owner direction. mutmut 3.x's
-  coverage-tracking trampoline re-resolves its `source_paths` config against the *live
-  process cwd* during its one-time stats pass, which collided with three `tests/core/`
-  files' `_isolated_cwd` fixtures (a real `chdir`, needed because those tests write real
-  files into an isolated tmp dir — `coder_gate.py` depends on `Path.cwd()` being the
-  worktree). Worked around with a scoped, auto-reverting `monkeypatch.setattr` in a new
-  shared `tests/core/conftest.py` helper (`absolutize_mutmut_source_paths`), called from
-  `test_coder_gate.py`, `test_engine.py`, and `test_graph_engine.py`'s fixtures. No-op
-  outside `hatch run mutate` (gated on mutmut's own `PY_IGNORE_IMPORTMISMATCH` env var) —
-  confirmed `hatch run test`/`test-parallel` byte-for-byte unaffected. If T2/T3 add a
-  fourth `tests/core/` file with a real-chdir fixture, it needs the same one-line call.
-- Also folded in a small catch-up commit: `.ai/next-steps.md`'s cursor (PLANNING →
-  IMPLEMENTING) had been left uncommitted after PR #89 landed the plan.
+- **Task 2 landed** (PR #92, squash `875f591`): all 147 `core/` mutation survivors from
+  `mutation_baseline.md` triaged into `sprints/38_test_validity_audit/audit_report.md` —
+  **58 keep** (52 provably equivalent by construction, 6 cosmetic message text),
+  **89 fix** (18 mislocated coverage, 71 genuinely uncovered), **0 delete**. Every
+  `fix` row names the concrete test (or, for a couple of genuine defects, source change)
+  T3 makes. Restates the FD1 static-guard scope boundary explicitly so a reader never
+  mistakes this report's silence on the structural guards for a clean bill. Docs-only,
+  `architect-review`-exempt; full suite green (573/573), lint/format clean.
+- **FD3's mandatory full-suite cross-check was actually run** for all 147 survivors —
+  each mutant applied directly to the real `src/loop_engine/core/` tree (not just the
+  mutmut-copied `mutants/` tree) and the full suite re-run, not inferred from absence of
+  a `tests/core/` assertion. Parallelized across 4 `git worktree add --detach` checkouts
+  (each with its own `hatch run mutate`-generated mutant database, sharded mutant names,
+  `pytest -n 7` per shard to avoid oversubscribing a 28-core host) — cut ~110min
+  sequential to ~15min. Full method recorded in `.ai/state.json`'s `fd3_crosscheck_method`.
+- **The cross-check caught real mistakes before they shipped**, not just confirmed
+  priors: a few survivors first reasoned as "genuinely uncovered" from a `tests/core/`-only
+  grep turned out killed by tests **outside** `tests/core/` once actually run —
+  `execute_stage`'s `has_artifact(state, None)` masking bug (killed by
+  `tests/integration/test_revision_flow.py`), the token-delta addition-vs-subtraction bug
+  (killed by `tests/tools/test_logging_config.py`), and the `BudgetExceededError` mid-loop
+  except-block mutants (killed by `tests/integration/test_budget_abort.py`). All
+  reclassified to mislocated coverage with the actual covering test named — this is
+  exactly the failure mode FD3's cross-check exists to catch.
 
-## Next — implement Task 2 (Coder/Sonnet): triage the 147 survivors
-Cut a fresh `sprint/38-t2-*` branch from `main`, then per
-`sprints/38_test_validity_audit/sprint_plan.md` Task 2:
-1. For each of the 147 survivors in `mutation_baseline.md`, produce a verdict:
-   `keep` / `fix` / `delete`, with a one-line reason.
-2. **FD3 cross-check (mandatory, not optional):** re-run the **full** suite against each
-   individual survivor mutant (`mutmut run <mutant_name>` re-tests just that one, or use
-   `mutants/mutmut-stats.json` bookkeeping — check current mutmut docs/behavior for the
-   cleanest single-mutant re-test path under 3.x) to distinguish killed-elsewhere
-   (`fix` — add a local `tests/core/` unit test) from genuinely-uncovered (`fix` real hole,
-   or `keep — equivalent mutant` per FD5). Spot-check the re-test mechanics on a couple of
-   survivors before scripting all 147 — a full-suite run is meaningfully slower per-mutant
-   than the `tests/core/`-scoped T1 run; budget wall-clock accordingly (naively ~1min ×
-   147 ≈ 2.5h if each cross-check re-spawns `hatch run test`, so it's worth checking
-   whether mutmut's own single-mutant CLI path is faster than a bespoke loop).
-3. Output: `sprints/38_test_validity_audit/audit_report.md` — one row per survivor
-   (`file:line`, mutation, verdict, reason, cross-check result), plus a methodology note
-   restating the FD1 static-guard scope boundary so no reader mistakes their absence for a
-   clean bill.
+## Next — implement Task 3 (Coder/Sonnet): land the fixes
+Cut a fresh `sprint/38-t3-*` branch from `main`, then per
+`sprints/38_test_validity_audit/sprint_plan.md` Task 3, working row-by-row through
+`sprints/38_test_validity_audit/audit_report.md`'s **89 `fix` rows** (each already names
+the concrete test/source change — this is not a re-triage):
+1. For each `fix`, add/strengthen the named `tests/core/` test so it kills that mutant.
+   A handful of rows named a genuine `src/loop_engine/core/` defect rather than a missing
+   test (e.g. the `has_artifact`/token-delta bugs above) — fix the source there.
+2. **Keep test-only changes and any `src/core/` source fix on separate PRs** (sprint plan
+   Risks section, restated in the audit report's summary): test-only stays
+   `architect-review`-exempt; a source-touching PR needs a **fresh-session** Opus review
+   on its head commit before merge.
+3. Re-run `hatch run mutate` after landing a batch and confirm the residual survivor set
+   matches `audit_report.md`'s 58 `keep`s **exactly** — no more (a fix that didn't
+   actually kill its mutant), no fewer (don't accidentally over-fit and kill an
+   `equivalent` — FD5 still applies).
+4. Full suite green + lint/format clean gates every PR regardless of exemption status.
 
-Docs-only task → `architect-review`-exempt. T3 (land the fixes) follows and is **not**
-exempt where it touches `src/loop_engine/core/` — keep test-only and source fixes on
-separate PRs (Risks section, sprint plan).
-
-## Scope guard — do NOT re-open (FD1, the load-bearing decision)
+## Scope guard — do NOT re-open (FD1, still the load-bearing decision)
 Mutation-test `core/` **behavioral** tests **only**. The **static structural guards**
 (`test_subprocess_surfaces.py`, `test_encoding_boundary.py`/`_ast_open.py`, the
-`core/`↔`personas/` import-boundary tests, `test_mcp_provider.py` verb-disjointness) are
-**out of scope**: mutmut's operator catalog can't emit the constructs they catch (BL-15's
-`import gzip as gz`), so its green on them is **not** coverage. Their adversarial-injection
-audit is a separate, deferred backlog item (file it as a follow-up, per the plan).
-**FD4:** no numeric score gate — DoD is a reasoned keep/fix/delete verdict per survivor.
-**FD5:** equivalent mutants are a legitimate `keep` — don't contort a test to kill one.
+`core/`↔`personas/` import-boundary tests, `test_mcp_provider.py` verb-disjointness)
+remain **out of scope** and untouched by T1/T2 — their adversarial-injection audit is a
+separate, still-unfiled backlog item (file it as a follow-up per the plan; do not fold it
+into T3). **FD4:** no numeric score gate — DoD is T3 matching the audit report's verdicts
+exactly. **FD5:** equivalent mutants are a legitimate `keep` — don't contort a test to
+kill one just to shrink the survivor count.
 
 ## Gotchas worth remembering
 - **PR title ≤ 72 bytes** — `wc -c` it before every `gh pr create/edit --title`; don't eyeball.
-- **`architect-review` exempt on no-`src/` PRs.** T2 (docs-only report) qualifies; a T3 PR
-  touching `src/loop_engine/core/` does **not** — keep source fixes and test-only fixes on
-  separate PRs.
-- **A squash-merged branch is dead** — cut a fresh branch off updated `main` per task.
+- **`architect-review` exempt on no-`src/` PRs** — confirmed working on T2's PR (auto-passed).
+  A T3 PR touching `src/loop_engine/core/` does **not** qualify — separate PR, fresh-session review.
+- **A squash-merged branch is dead** — cut a fresh branch off updated `main` per task
+  (`sprint/38-t2-triage-survivors` already pruned locally post-merge).
 - **`gh pr view` serves a stale `mergeStateStatus`** — checks are the truth, don't close+reopen.
-- **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.**
+- **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** A signing Timeout =
+  answer the host pinentry and retry the commit (worked cleanly on retry this session).
 - **`.ai/state.json` is gitignored** — **this file is what travels.**
 - **mutmut 3.x + real-chdir tests:** any new `tests/core/` fixture that does
   `monkeypatch.chdir`/`os.chdir` needs `absolutize_mutmut_source_paths(monkeypatch)` from
   `tests/core/conftest.py` called first, or a future `hatch run mutate` goes silently 0/0
-  (mutmut's own singleton `Config.source_paths` gets corrupted process-wide) or crashes
-  outright on that file's stats-collection pass.
+  or crashes outright on that file's stats-collection pass.
+- **`mutants/`/`.mutmut-cache` are gitignored** and must be regenerated (`hatch run mutate`)
+  per checkout/worktree before `mutmut apply <name>` will find a mutant by name.
+- **A full-suite run against a working tree with a stray `mutants/` dir present** causes
+  pytest import-file-mismatch errors (it collects the copied `mutants/tests/` too) —
+  always run against an explicit `tests` path, or clean `mutants/`/`.mutmut-cache` first.
+- **The FD3 cross-check parallelizes cleanly across `git worktree` checkouts** — see
+  `.ai/state.json`'s `fd3_crosscheck_method` for the exact recipe if T3 needs to re-run it
+  at scale (e.g. after a batch of fixes, to check the residual survivor set).
 
 ## Pointers
 - [`sprints/38_test_validity_audit/sprint_plan.md`](../sprints/38_test_validity_audit/sprint_plan.md)
   — merged, authoritative: FD1–FD5, T1–T3, and the two follow-ups.
+- [`sprints/38_test_validity_audit/audit_report.md`](../sprints/38_test_validity_audit/audit_report.md)
+  — T2's output: 147 survivors triaged, 89 `fix` rows are T3's worklist.
 - [`sprints/38_test_validity_audit/mutation_baseline.md`](../sprints/38_test_validity_audit/mutation_baseline.md)
-  — T1's output: 147 survivors, file:line + diff each. T2 triages every row.
+  — T1's raw survivor dump (file:line + diff each) that audit_report.md was triaged against.
 - [`docs/backlog.md`](../docs/backlog.md) — BL-23 (this sprint). Next: BL-2. BL-31 deferred.
 - [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — NEXT ACTION points at sprint 38 / BL-23.
