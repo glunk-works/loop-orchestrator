@@ -1045,10 +1045,27 @@ misleading `#51` run (actor `Seuss27`, green, proving nothing).
 
 ---
 
-### BL-21 — `flows/bootstrap` ships repos with an unprotected `main`; the org cannot protect them for us
+### BL-21 — RESOLVED: `flows/bootstrap` now installs a per-repo protection ruleset, proven live
 *(added 2026-07-14, from a review of the `glunk-works` org settings)*
 
-**Why:** the factory's whole thesis is that integration branches are PR-gated and auto-merge is
+**Status: RESOLVED 2026-07-15 (sprint 36).** The code fix landed across PRs #73 (the
+`create_ruleset` verb + wiring) → #76 → #77 (S4–S9 + round-4 hardening), and was **proven
+live** in sprint 36 Track B (§8). The org-level fix was confirmed unavailable (Free plan →
+`403 "Upgrade to GitHub Team"`), so protection is installed **per repo, by the flow that
+creates it** — which forced the visibility default to **public** (FD3: repo-level rulesets
+are free only on public repos). `run_bootstrap` calls `repo_io.create_ruleset` **last**
+(FD7), shipping `deletion` + `non_fast_forward` + `pull_request` on **both** `main` and
+`develop` (FD5) with **zero** required checks (FD4). Per **FD9** the gate was proven
+*functional*, not merely present: a live direct/force push and a branch deletion were each
+**observed rejected** (`GH013`) on the real scratch repo — the admin token itself included
+(empty `bypass_actors`). `create_ruleset` stayed orchestrator-only (FD6 — the github MCP
+server is still exactly four verbs). Full evidence: `sprints/DEFERRED_VERIFICATION.md` §8.
+Live verification surfaced three follow-ups, all in generated-repo territory: **[BL-28]**
+(scaffold fails its own `ruff check`), **[BL-29]** (maintenance escalation crashes on a
+missing `loop-engine/needs-human` label), **[BL-30]** (the maintenance gate targets `src`
+but the scaffold puts tests in `tests/`).
+
+**Why (original):** the factory's whole thesis is that integration branches are PR-gated and auto-merge is
 impossible — loop-engine enforces this on *itself* via the `protected-integration-branches` ruleset,
 and structurally by giving `repo_io` no merge verb at all. But `flows/bootstrap` hands a brand-new
 repo to the world with **no ruleset**, so the repo it just created accepts direct pushes to `main`,
@@ -1417,3 +1434,62 @@ readings of one absent value point at two different sets of real repositories.
 **Notes / where to look:** `glunk-works/global-bootstrap` (`variables.tf` `projects`, `main.tf`
 `aws_iam_role.github_actions_role` / `aws_iam_role_policy.pipeline_state_policy`, both `for_each =
 var.projects`), `gh repo list glunk-works`, the real S3/DynamoDB tofu backend.
+
+### BL-28 — A factory-scaffolded repo fails its own `ruff check` out of the box
+*(added 2026-07-15, from sprint 36 live verification — `DEFERRED_VERIFICATION.md` §8)*
+
+**Why:** the scaffold's `tools/scaffold/templates/python/pyproject.toml.tmpl` sets
+`[tool.ruff.lint] select = ["E", "F", "I", "B", "S"]` but ships **no `per-file-ignores`**,
+while `tools/scaffold/templates/python/tests/test_smoke.py.tmpl` is `def test_smoke(): assert
+True`. `S101` (bandit: "use of `assert`") therefore fires on the scaffold's own smoke test, so a
+brand-new generated repo **fails `ruff check`** immediately — observed live on
+`factory-scratch-boot-20260715` (`pytest` and `ruff format --check` both passed; only lint
+failed). The Global Conventions the factory injects mandate `ruff check` is green before a
+commit, so the factory ships a repo that cannot meet its own Definition of Done on commit #1.
+
+**Shape:** add a `[tool.ruff.lint.per-file-ignores]` entry to the template exempting `tests/*`
+from `S101` (mirroring how loop-engine's own `pyproject.toml` handles it), and extend
+`tests/tools/scaffold/test_writer.py` (or the §8 evidence) so a scaffolded tree passes `ruff
+check` on its own. `src/` change (template) → needs its own sprint/PR + fresh-session
+architect-review.
+
+**Related:** [BL-21] (the sprint that surfaced it), [BL-30] (the other "generated repo can't
+satisfy its own gate" finding).
+
+### BL-29 — Maintenance escalation against a factory-born repo CRASHES: the `loop-engine/needs-human` label doesn't exist there
+*(added 2026-07-15, from sprint 36 live verification — `DEFERRED_VERIFICATION.md` §7)*
+
+**Why:** when the default loop escalates a question mid-run, `_pause_for_issue` →
+`tools/issue_io.default_issue_filer` files a GitHub issue via `gh issue create … --label
+loop-engine/needs-human`. On loop-engine itself that label exists; on a **factory-born**
+managed repo it does **not** (bootstrap scaffolds files but provisions no labels), so `gh`
+exits non-zero (`could not add label: 'loop-engine/needs-human' not found`) and the call raises
+`MCPToolError` — **crashing the whole run** instead of pausing at `AWAITING_ISSUE`. Observed
+live twice on `factory-scratch-boot-20260715`: the engine had already persisted the
+`AWAITING_ISSUE` snapshot, but the issue never got filed and the process died. So the very
+escalation path that exists to hand control to a human is **broken for exactly the repos the
+factory manages** — a human is never actually asked. The §7 green PASS was only reachable after
+manually `gh label create`-ing the label.
+
+**Shape (decide deliberately):** either (a) `flows/bootstrap` provisions the
+`loop-engine/needs-human` label at repo creation (the label becomes part of the factory's
+output contract, alongside the ruleset), or (b) `default_issue_filer` creates-the-label-if-
+missing / degrades to no `--label`, or (c) both. Note the failure mode is *worse than silent*:
+the snapshot says `awaiting_issue` while no issue exists, so `resume --from-issue` has nothing
+to resume from. `src/` change → own sprint/PR + fresh-session review.
+
+**Related:** [BL-7]/[BL-9] (the escalation/issue path), [BL-21] (the sprint that surfaced it).
+
+### BL-30 — The maintenance green gate runs `pytest src`, but the scaffold puts tests in `tests/`
+*(added 2026-07-15, from sprint 36 live verification — `DEFERRED_VERIFICATION.md` §7)*
+
+**Why:** `flows/maintenance` hard-codes `_TARGET_TEST_PATH = "src"`, so its green gate is
+`pytest src`. But `tools/scaffold` ships the smoke test at `tests/test_smoke.py`, **not** under
+`src/`. So a freshly-scaffolded repo, run through maintenance unchanged, has `pytest src` collect
+**0 tests → exit 5 → GATE_FAILED**, and the flow could **never** open a green PR on it. The §7
+green PASS only worked because the seeded and loop-written tests happened to live under `src/`.
+Either the gate should target the repo root (or `tests/`), or the scaffold/conventions should
+colocate tests under `src/` — decide which is the intended layout and make the two agree. The
+in-loop Coder gate (`core/coder_gate.py`) keys off the same `src` assumption, so check both.
+
+**Related:** [BL-28] (the other generated-repo-can't-pass-its-own-gate finding), [BL-21].

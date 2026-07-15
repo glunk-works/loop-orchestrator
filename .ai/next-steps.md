@@ -1,68 +1,75 @@
 # Next steps — dev-workflow cursor
 
 Thin, live cursor for whoever picks up this repo next. Points into the deep record
-(`sprints/36_live_factory_verification/sprint_plan.md`, `docs/backlog.md`) — it does not
-copy them. Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
+(`sprints/36_live_factory_verification/sprint_plan.md`, `sprints/DEFERRED_VERIFICATION.md`,
+`docs/backlog.md`) — it does not copy them. Regenerated on every `/handoff`. (Run `/resume`
+to rehydrate a fresh session.)
 
 ## Now
-**Sprint `36_live_factory_verification` — Track A DONE; Track B (Tasks 4–7) is all that
-remains.** Both hardening PRs are **merged into `main`**: #76 → squash `e551a43`, and #77 →
-squash `08e9d2c` (2026-07-15). FD1–FD11 are locked; do not re-open them. **No HITL gate is
-open.** The next move is a **deliberate, human-gated GO decision on Track B** (real irreversible
-GitHub side effects + real LLM spend) — it does not auto-start.
+**Sprint `36_live_factory_verification` — Track B is DONE; the whole sprint is complete
+bar the merge.** All of Tasks 4–7 were executed **live** (2026-07-15). **PR #79**
+(`sprint/36-track-b-verification`, **docs-only**, base `main`) is **open and green** —
+it discharges `DEFERRED_VERIFICATION.md` §5/§7/§8 and closes BL-21. **No HITL gate is
+open** (docs-only ⇒ `architect-review` is exempt and already shows PASS). The human's
+**merge of #79 is the approval.**
 
-## Just done (this session — Opus/Architect)
-- **Posted the fresh-session HITL review on #77** (`/resume` → `/code-review` → post against head
-  `bc7ebaf`). Verdict: **accept, no blockers.** Verified finding 1 (stderr rides through to
-  `BootstrapResult.ruleset_error` via `flow.py:232`) and finding 2 (`SubprocessError`'s only two
-  subclasses are `CalledProcessError`/`TimeoutExpired`, so narrowing lets the timeout propagate with
-  nothing else swallowed). Flagged the raw-`TimeoutExpired`-out-of-`run_bootstrap` as an accepted
-  posture, not a defect; one optional nit (double `.strip()`). Body carried both gate strings
-  verbatim → `architect-review` went green on the **first** post (no paraphrase re-run this time).
-- **The human merged #77** (`08e9d2c`). Its branch `sprint/36-ruleset-error-detail` is now **DEAD**
-  (squash trap — never push to it again). Track A (S4–S9 + round-4 findings 1–2) is fully complete.
+## Just done (this session — Opus/Architect, live execution)
+- **§5 (Task 4) — PASS.** All four `github_server` verbs via `build_github_provider()`
+  (first authenticated MCP-fronted `gh` round-trip): create/clone/branch/PR against a
+  private scratch repo; traversal + symlink `dest` rejected pre-`gh`; FD6 = exactly 4
+  verbs at runtime, no `create_ruleset`, no merge verb.
+- **§8 (Task 5) — PASS, and BL-21 proven live (FD9).** `run_bootstrap` → public repo +
+  ruleset (id 18965237). Direct/force/delete pushes on `main` **and** `develop` all
+  **observed rejected** (`GH013`) — the `administration=write` admin token itself blocked
+  (empty `bypass_actors`). `develop` based on `main`'s exact SHA; zero required checks (FD4).
+- **§7 (Task 6) — PASS.** Green: a real loop run (COMPLETED, $1.46/$5) opened **PR #2**
+  against `develop` (unmerged); `.agent/STATE.md` absorption confirmed; no `.worktrees`
+  under `LOOP_ENGINE_ISOLATION=worktree`. Red: the flow's red-gate contract proven
+  deterministically (`GATE_FAILED` → no push/PR); a **real-loop** re-run (after the API
+  top-up) showed a real loop *converges a red suite to green* — the Coder transparently
+  emptied the seeded failing test.
+- **Teardown (FD11):** all three scratch repos (`factory-scratch-s5-`, `-boot-`,
+  `-boot2-`) deleted with explicit slugs, read-back-asserted, loop-engine-refusal guard;
+  `glunk-works/loop-engine` confirmed intact.
+- **Docs:** `DEFERRED_VERIFICATION.md` §5/§7/§8 retired in place (not renumbered) + FD1's
+  stale "no gh auth / daemon-bearing host" premise corrected; **BL-21 closed**; **BL-28/29/30
+  filed** (see below).
+- **PAT decision:** `administration=write` was **KEPT** (owner's call, to finish testing;
+  account topped up). Revoke when no further live factory testing is planned.
 
-## Next — Track B, Tasks 4–7 (**Opus/Architect, FRESH SESSION; real side effects + $ spend**)
-The sprint's real payload, and the only work left. **The human has chosen a handoff → fresh
-session for it, but Track B still needs an explicit GO before any destructive/paid call runs** —
-`/resume` should state the plan and wait, not auto-launch it. **First** get onto an up-to-date
-`main` (this handoff's branch `sprint/36-ruleset-error-detail` is DEAD — checkout `main`, pull
-`08e9d2c`, cut a fresh `sprint/NN-slug` if Task 7 produces a code/docs diff). **Then re-read
-FD1–FD11**, especially **FD11** (explicit `owner/repo` on every destructive call; NEVER point a
-flow at `loop-engine`) and **FD9**. The work:
-- Run `flows/bootstrap` + `flows/maintenance` against a **real scratch repo** in `glunk-works`.
-- **Prove the ruleset REJECTS a push** — FD9, *observed* not inferred; this exercises the code #76/#77 hardened.
-- Teardown the scratch repo (FD11).
-- Decide **deliberately** whether to revoke `administration=write` (Task 7 — closes BL-21).
-**Real, irreversible GitHub side effects and real LLM spend** (~$5.00 budget at Task 6).
+## Next — a FRESH session (no blocking gate)
+1. **Merge PR #79** once fully green (docs-only; the merge is the approval).
+2. **`/archive-sprint`** to retire sprint 36.
+3. **BL-2 (Slack control plane) planning pass** — the agreed next work after sprint 36.
+
+## Findings filed this sprint (all generated-repo territory, all `src/` → own sprints)
+- **[BL-28]** — a factory-scaffolded repo **fails its own `ruff check`** (`S101` in
+  `tests/`, no `per-file-ignores`). `pytest`/`ruff format` pass; only lint fails.
+- **[BL-29]** — maintenance **escalation crashes** on a factory-born repo: `gh issue
+  create --label loop-engine/needs-human` fails (bootstrap provisions no such label); the
+  run raises after the `AWAITING_ISSUE` snapshot already persisted. Provision the label at
+  bootstrap, or make the issue filer tolerant.
+- **[BL-30]** — the maintenance green gate runs `pytest src` but the scaffold puts tests
+  in `tests/`; a fresh repo would `GATE_FAILED` on 0 collected tests. Make gate & layout agree.
 
 ## Gotchas worth remembering
-- **The `architect-review` gate matches the review body by EXACT substring** on both the header and
-  the attestation line. Paraphrase = red. Copy both from `.github/workflows/hitl-review.yml`; a
-  corrected re-post flips it green (latest run per name wins).
-- **⚠️ The PAT carries `administration=write` on the org — it can DELETE ANY REPO, `loop-engine`
-  included.** Hard-code the scratch repo name and read it back before every destructive call (FD11).
-- **A `CONFLICTING` PR runs ZERO CI** — an empty check rollup is "nothing ran", not "all green".
-- **A check rollup shows BOTH the stale `FAILURE` and the fresh `SUCCESS` for one check name.** The
-  latest run is what counts.
-- **`gh pr view` serves a stale `mergeStateStatus`.** `BLOCKED`/`UNKNOWN` with *nothing failing* is
-  GitHub lag — **the checks are the truth.** Do not close+reopen to "fix" it.
-- **PR title regex has no room for commas in the scope** — `[a-z0-9._/-]+` only. Pick **one** scope.
-- **A squash-merged branch is dead** — `sprint/36-s4-s9-hardening` (#76) is now history; never push to it.
-- **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** It breaks signing; the key
-  *appears* to vanish (`No secret key`). Recovery: reload the window. A `Timeout` means answer the
-  host pinentry prompt and retry.
-- **Rebase a stale branch by merging `main` INTO it** — force-pushing a pushed branch is forbidden.
+- **`architect-review` is exempt on docs-only PRs** (it showed PASS on #79 with no review).
+  A PR touching `src/` still needs the fresh-session review.
+- **PR title ≤ 72 chars** and must match `^(feat|fix|docs|…)(\(scope\))?!?: [a-z].*[^.]$`
+  (first #79 title failed the length limit; also avoid `§` in the title to dodge byte-count).
+- **The factory's own gate suppression works:** a real maintenance loop will *edit
+  out-of-scope failing tests to go green* (transparently, in the PR diff, human-reviewed,
+  no auto-merge) — so you cannot observe `GATE_FAILED` from a real loop via a *fixable*
+  seeded failure; prove the gate contract deterministically instead.
+- **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** A signing `Timeout`
+  means answer the host pinentry and retry the commit (seen once on #79's first commit).
+- **`administration=write` is LIVE on the token** — it can delete any org repo. FD11 guards
+  (explicit slug, read-back, loop-engine refusal) apply to every destructive call.
 - **`.ai/state.json` is gitignored** — **`next-steps.md` is what travels.**
 
-## Open, outside the sprint
-- **[BL-27] needs one lookup**: `var.github_organization` in `global-bootstrap` has **no default**.
-- **At Task 7, decide deliberately whether to REVOKE `administration=write`** (it can delete *any*
-  repo in the org, loop-engine included).
-- **[BL-2] (Slack bot control plane) gets its planning pass immediately after sprint 36.**
-
 ## Pointers
-- [`sprints/36_live_factory_verification/sprint_plan.md`](../sprints/36_live_factory_verification/sprint_plan.md) — **the plan. FD1–FD11 locked.** Tasks 1–3 done; Track A merged (#76 + #77); Tasks 4–7 untouched (Track B).
-- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — **§5/§7/§8 are this sprint's protocols** and the register of record. Task 7 retires them (**without renumbering**).
-- [`docs/backlog.md`](../docs/backlog.md) — open: BL-1..BL-5, BL-15, BL-16, BL-18, BL-20, BL-22..BL-27. **BL-21: code fix landed (#73), hardened by #76 + #77; Task 7 closes it once the live run proves it.** Resolved: BL-13, BL-17. Declined: BL-19.
-- Ruleset on loop-engine's own `main` healthy 2026-07-15: 4 rule types, 8 required checks.
+- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — §5/§7/§8 now
+  carry their PERFORMED (sprint 36) records; **§1 and §6 remain open** (§1 → BL-3, §6 → BL-24).
+- [`sprints/36_live_factory_verification/sprint_plan.md`](../sprints/36_live_factory_verification/sprint_plan.md) — the plan; Tasks 1–7 all done.
+- [`docs/backlog.md`](../docs/backlog.md) — **BL-21 closed**; open: BL-1..BL-5, BL-15/16/18/20,
+  BL-22..BL-30. **Next: BL-2.**
