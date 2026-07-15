@@ -222,6 +222,27 @@ def test_ralph_gate_revises_when_no_src_tree_was_produced() -> None:
     assert "requires tests" in result.findings[0]
 
 
+def test_ralph_gate_status_finding_names_next_task_and_joins_remaining_with_comma() -> None:
+    # Real gaps (Sprint 38 T3, BL-23): the existing "incomplete coverage" test
+    # only asserted a task id appeared SOMEWHERE in the message (via `remaining`),
+    # which passes even if `next_task` is forced to None or the join separator
+    # is wrong. Pin both the "next task: X" substring and the exact ", "-joined
+    # remaining-tasks substring with 2+ outstanding tasks.
+    Path("src").mkdir()
+    Path("src/test_green.py").write_text("def test_ok():\n    assert True\n")
+    state = _ralph_state(
+        ["s::t01", "s::t02", "s::t03"],
+        {"/sprints/01_foo/sprint_plan.md": "done"},
+        ["s::t01"],
+    )
+
+    result = RalphCoderGate()(state, "RalphCoderPersona")
+
+    assert result.decision is GateDecision.REVISE
+    assert "next task: s::t02" in result.findings[0]
+    assert "tasks still to complete: s::t02, s::t03" in result.findings[0]
+
+
 def test_ralph_gate_defers_to_the_content_gate_for_shape_problems() -> None:
     # A malformed implementation_reports artifact is a shape problem: the composed
     # content gate owns that finding, and the Ralph gate must not run pytest at all.

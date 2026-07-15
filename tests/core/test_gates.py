@@ -83,3 +83,28 @@ def test_extract_open_questions_stops_at_next_header() -> None:
 
 def test_extract_open_questions_absent_section_returns_empty() -> None:
     assert extract_open_questions("# Doc with no questions", "S") == []
+
+
+def test_gate_escalates_question_shaped_output_at_length_one_boundary() -> None:
+    # Real boundary gap (Sprint 38 T3, BL-23): lower bound is `0 < len(stripped)`,
+    # so a bare length-1 question-shaped string ("?") must still escalate.
+    result = ArtifactGate("doc")(_state({"doc": "?"}), "S")
+    assert result.decision is GateDecision.ESCALATE
+
+
+def test_gate_escalates_question_shaped_output_at_max_length_boundary() -> None:
+    # Real boundary gap: upper bound is `<= _QUESTION_SHAPED_MAX_LENGTH` (600),
+    # so a question-shaped string of EXACTLY 600 chars must still escalate.
+    doc = "a" * 599 + "?"
+    assert len(doc) == 600
+    result = ArtifactGate("doc")(_state({"doc": doc}), "S")
+    assert result.decision is GateDecision.ESCALATE
+
+
+def test_gate_escalates_question_shaped_output_with_trailing_markdown_emphasis() -> None:
+    # Real gap: `.rstrip("*_`")` exists to strip trailing markdown emphasis
+    # (e.g. a model bolding its own question) before checking for "?".
+    result = ArtifactGate("doc")(
+        _state({"doc": "Before I proceed, what is the target region?**"}), "S"
+    )
+    assert result.decision is GateDecision.ESCALATE
