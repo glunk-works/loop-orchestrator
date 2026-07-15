@@ -67,10 +67,23 @@ dependencies = [
   # Trigger surface tests only: Starlette's TestClient needs httpx. Dev/test
   # dependency, not a runtime one — the app itself never imports it.
   "httpx==0.28.1",
+  # Sprint 37 Task 4: parallel test runs via `test-parallel` below. Not wired
+  # into the default `test` script -- that keeps the documented single-file/
+  # single-test fast path (`hatch run test tests/x.py::test_name`) exactly as
+  # fast as before, since worker-spinup overhead would dominate a 1-test run.
+  "pytest-xdist==3.8.0",
 ]
 
 [tool.hatch.envs.default.scripts]
 test = "pytest {args}"
+# Measured (Sprint 37 Task 4): ~1.7-1.8x wall-clock speedup on the full suite,
+# repeatable, no flake, 573/573 passed across 5 runs at two worker counts.
+# `--dist=loadscope` (not the xdist default) keeps each test *module*'s tests
+# on one worker -- module-scoped MCP-provider fixtures (Task 2) do not
+# amortize across workers otherwise, and the default distribution showed
+# real instability (one transient >120s hang) on a small file subset spread
+# thin across many workers; loadscope was stable across every repeat run.
+test-parallel = "pytest -n auto --dist=loadscope {args}"
 lint = "ruff check ."
 format = "ruff format ."
 sbom = "cyclonedx-py environment -o sbom.json"

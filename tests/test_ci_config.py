@@ -261,8 +261,8 @@ def test_test_job_docs_only_short_circuit_is_step_level_not_job_level() -> None:
     cfg = _load_workflow("ci.yml")
     test_job = cfg["jobs"]["test"]
     assert "if" not in test_job  # unconditional job (BL-10 guard, unchanged)
-    run_test_steps = [s for s in test_job["steps"] if s.get("run") == "hatch run test"]
-    assert len(run_test_steps) == 1, "expected exactly one `hatch run test` step"
+    run_test_steps = [s for s in test_job["steps"] if s.get("run", "").startswith("hatch run test")]
+    assert len(run_test_steps) == 1, "expected exactly one pytest-invoking step"
     assert "if" in run_test_steps[0]  # the short-circuit lives here instead
 
 

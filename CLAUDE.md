@@ -69,6 +69,7 @@ merge commit that landed the migration on `main` in sprint 35).
 hatch run test                        # pytest (full suite)
 hatch run test tests/core/test_engine.py            # single file
 hatch run test tests/core/test_engine.py::test_name  # single test
+hatch run test-parallel               # pytest-xdist, -n auto --dist=loadscope (CI uses this; ~1.7-1.8x faster on the full suite, not worth it for a single file/test)
 hatch run lint                        # ruff check . (incl. S/bandit and B/bugbear rule sets)
 hatch run format                      # ruff format .
 hatch run audit                       # pip-audit CVE scan of pinned deps (CI gate)

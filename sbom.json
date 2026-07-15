@@ -473,9 +473,14 @@
       "version": "2026.6.17"
     },
     {
-      "bom-ref": "cffi==2.0.0",
+      "bom-ref": "cffi==2.1.0",
       "description": "Foreign Function Interface for Python calling C code.",
       "externalReferences": [
+        {
+          "comment": "from packaging metadata Project-URL: Download",
+          "type": "distribution",
+          "url": "https://github.com/python-cffi/cffi/releases"
+        },
         {
           "comment": "from packaging metadata Project-URL: Documentation",
           "type": "documentation",
@@ -492,11 +497,6 @@
           "url": "https://github.com/python-cffi/cffi"
         },
         {
-          "comment": "from packaging metadata Project-URL: Downloads",
-          "type": "other",
-          "url": "https://github.com/python-cffi/cffi/releases"
-        },
-        {
           "comment": "from packaging metadata Project-URL: Contact",
           "type": "other",
           "url": "https://groups.google.com/forum/#!forum/python-cffi"
@@ -511,14 +511,14 @@
         {
           "license": {
             "acknowledgement": "declared",
-            "id": "MIT"
+            "id": "MIT-0"
           }
         }
       ],
       "name": "cffi",
-      "purl": "pkg:pypi/cffi@2.0.0",
+      "purl": "pkg:pypi/cffi@2.1.0",
       "type": "library",
-      "version": "2.0.0"
+      "version": "2.1.0"
     },
     {
       "bom-ref": "chardet==5.2.0",
@@ -559,7 +559,7 @@
       "version": "5.2.0"
     },
     {
-      "bom-ref": "charset-normalizer==3.4.8",
+      "bom-ref": "charset-normalizer==3.4.9",
       "description": "The Real First Universal Charset Detector. Open, modern and actively maintained alternative to Chardet.",
       "externalReferences": [
         {
@@ -592,9 +592,9 @@
         }
       ],
       "name": "charset-normalizer",
-      "purl": "pkg:pypi/charset-normalizer@3.4.8",
+      "purl": "pkg:pypi/charset-normalizer@3.4.9",
       "type": "library",
-      "version": "3.4.8"
+      "version": "3.4.9"
     },
     {
       "bom-ref": "click==8.4.2",
@@ -879,6 +879,29 @@
       "version": "0.18.0"
     },
     {
+      "bom-ref": "execnet==2.1.2",
+      "description": "execnet: rapid multi-Python deployment",
+      "externalReferences": [
+        {
+          "comment": "from packaging metadata Project-URL: Homepage",
+          "type": "website",
+          "url": "https://execnet.readthedocs.io/en/latest/"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "acknowledgement": "declared",
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "execnet",
+      "purl": "pkg:pypi/execnet@2.1.2",
+      "type": "library",
+      "version": "2.1.2"
+    },
+    {
       "bom-ref": "fastapi==0.139.0",
       "description": "FastAPI framework, high performance, easy to learn, fast to code, ready for production",
       "externalReferences": [
@@ -922,7 +945,7 @@
       "version": "0.139.0"
     },
     {
-      "bom-ref": "filelock==3.29.5",
+      "bom-ref": "filelock==3.29.7",
       "description": "A platform independent file lock.",
       "externalReferences": [
         {
@@ -955,9 +978,9 @@
         }
       ],
       "name": "filelock",
-      "purl": "pkg:pypi/filelock@3.29.5",
+      "purl": "pkg:pypi/filelock@3.29.7",
       "type": "library",
-      "version": "3.29.5"
+      "version": "3.29.7"
     },
     {
       "bom-ref": "fqdn==1.5.1",
@@ -1526,7 +1549,7 @@
       "version": "25.7.0"
     },
     {
-      "bom-ref": "langchain-core==1.4.8",
+      "bom-ref": "langchain-core==1.4.9",
       "description": "Building applications with LLMs through composability",
       "externalReferences": [
         {
@@ -1579,9 +1602,9 @@
         }
       ],
       "name": "langchain-core",
-      "purl": "pkg:pypi/langchain-core@1.4.8",
+      "purl": "pkg:pypi/langchain-core@1.4.9",
       "type": "library",
-      "version": "1.4.8"
+      "version": "1.4.9"
     },
     {
       "bom-ref": "langchain-protocol==0.0.18",
@@ -1617,7 +1640,7 @@
       "version": "0.0.18"
     },
     {
-      "bom-ref": "langgraph==1.2.8",
+      "bom-ref": "langgraph==1.2.9",
       "description": "Building stateful, multi-actor applications with LLMs",
       "externalReferences": [
         {
@@ -1665,9 +1688,9 @@
         }
       ],
       "name": "langgraph",
-      "purl": "pkg:pypi/langgraph@1.2.8",
+      "purl": "pkg:pypi/langgraph@1.2.9",
       "type": "library",
-      "version": "1.2.8"
+      "version": "1.2.9"
     },
     {
       "bom-ref": "langgraph-checkpoint==4.1.1",
@@ -1784,7 +1807,7 @@
       "version": "0.4.2"
     },
     {
-      "bom-ref": "langsmith==0.9.8",
+      "bom-ref": "langsmith==0.10.2",
       "description": "Client library to connect to the LangSmith Observability and Evaluation Platform.",
       "externalReferences": [
         {
@@ -1812,9 +1835,9 @@
         }
       ],
       "name": "langsmith",
-      "purl": "pkg:pypi/langsmith@0.9.8",
+      "purl": "pkg:pypi/langsmith@0.10.2",
       "type": "library",
-      "version": "0.9.8"
+      "version": "0.10.2"
     },
     {
       "bom-ref": "lark==1.3.1",
@@ -2647,6 +2670,49 @@
       "version": "9.1.1"
     },
     {
+      "bom-ref": "pytest-xdist==3.8.0",
+      "description": "pytest xdist plugin for distributed testing, most importantly across multiple CPUs",
+      "externalReferences": [
+        {
+          "comment": "from packaging metadata Project-URL: Documentation",
+          "type": "documentation",
+          "url": "https://pytest-xdist.readthedocs.io/en/latest"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: Tracker",
+          "type": "issue-tracker",
+          "url": "https://github.com/pytest-dev/pytest-xdist/issues"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: Source",
+          "type": "other",
+          "url": "https://github.com/pytest-dev/pytest-xdist"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: Changelog",
+          "type": "release-notes",
+          "url": "https://pytest-xdist.readthedocs.io/en/latest/changelog.html"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: Homepage",
+          "type": "website",
+          "url": "https://github.com/pytest-dev/pytest-xdist"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "acknowledgement": "declared",
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "pytest-xdist",
+      "purl": "pkg:pypi/pytest-xdist@3.8.0",
+      "type": "library",
+      "version": "3.8.0"
+    },
+    {
       "bom-ref": "python-dateutil==2.9.0.post0",
       "description": "Extensions to the standard Python datetime module",
       "externalReferences": [
@@ -3475,7 +3541,7 @@
       "version": "4.16.0"
     },
     {
-      "bom-ref": "tzdata==2026.2",
+      "bom-ref": "tzdata==2026.3",
       "description": "Provider of IANA time zone data",
       "externalReferences": [
         {
@@ -3508,9 +3574,9 @@
         }
       ],
       "name": "tzdata",
-      "purl": "pkg:pypi/tzdata@2026.2",
+      "purl": "pkg:pypi/tzdata@2026.3",
       "type": "library",
-      "version": "2026.2"
+      "version": "2026.3"
     },
     {
       "bom-ref": "uri-template==1.3.0",
@@ -3574,7 +3640,7 @@
       "version": "2.7.0"
     },
     {
-      "bom-ref": "uuid_utils==0.16.2",
+      "bom-ref": "uuid_utils==0.17.0",
       "description": "Fast, drop-in replacement for Python's uuid module, powered by Rust.",
       "externalReferences": [
         {
@@ -3602,12 +3668,12 @@
         }
       ],
       "name": "uuid_utils",
-      "purl": "pkg:pypi/uuid-utils@0.16.2",
+      "purl": "pkg:pypi/uuid-utils@0.17.0",
       "type": "library",
-      "version": "0.16.2"
+      "version": "0.17.0"
     },
     {
-      "bom-ref": "uvicorn==0.50.2",
+      "bom-ref": "uvicorn==0.51.0",
       "description": "The lightning-fast ASGI server.",
       "externalReferences": [
         {
@@ -3646,9 +3712,9 @@
           "value": "standard"
         }
       ],
-      "purl": "pkg:pypi/uvicorn@0.50.2",
+      "purl": "pkg:pypi/uvicorn@0.51.0",
       "type": "library",
-      "version": "0.50.2"
+      "version": "0.51.0"
     },
     {
       "bom-ref": "webcolors==25.10.0",
@@ -3788,7 +3854,7 @@
   "dependencies": [
     {
       "dependsOn": [
-        "filelock==3.29.5",
+        "filelock==3.29.7",
         "msgpack==1.2.1",
         "pytest==9.1.1",
         "requests==2.34.2",
@@ -3850,7 +3916,7 @@
       "dependsOn": [
         "pytest==9.1.1",
         "python-dateutil==2.9.0.post0",
-        "tzdata==2026.2"
+        "tzdata==2026.3"
       ],
       "ref": "arrow==1.4.0"
     },
@@ -3859,6 +3925,7 @@
     },
     {
       "dependsOn": [
+        "pytest-xdist==3.8.0",
         "pytest==9.1.1"
       ],
       "ref": "boolean.py==5.0"
@@ -3870,20 +3937,20 @@
       "dependsOn": [
         "pycparser==3.0"
       ],
-      "ref": "cffi==2.0.0"
+      "ref": "cffi==2.1.0"
     },
     {
       "ref": "chardet==5.2.0"
     },
     {
-      "ref": "charset-normalizer==3.4.8"
+      "ref": "charset-normalizer==3.4.9"
     },
     {
       "ref": "click==8.4.2"
     },
     {
       "dependsOn": [
-        "cffi==2.0.0",
+        "cffi==2.1.0",
         "typing_extensions==4.16.0"
       ],
       "ref": "cryptography==49.0.0"
@@ -3926,6 +3993,12 @@
     },
     {
       "dependsOn": [
+        "pytest==9.1.1"
+      ],
+      "ref": "execnet==2.1.2"
+    },
+    {
+      "dependsOn": [
         "PyYAML==6.0.3",
         "annotated-doc==0.0.4",
         "httpx==0.28.1",
@@ -3935,12 +4008,12 @@
         "starlette==1.3.1",
         "typing-inspection==0.4.2",
         "typing_extensions==4.16.0",
-        "uvicorn==0.50.2"
+        "uvicorn==0.51.0"
       ],
       "ref": "fastapi==0.139.0"
     },
     {
-      "ref": "filelock==3.29.5"
+      "ref": "filelock==3.29.7"
     },
     {
       "ref": "fqdn==1.5.1"
@@ -4067,14 +4140,14 @@
         "PyYAML==6.0.3",
         "jsonpatch==1.33",
         "langchain-protocol==0.0.18",
-        "langsmith==0.9.8",
+        "langsmith==0.10.2",
         "packaging==26.2",
         "pydantic==2.13.4",
         "tenacity==9.1.4",
         "typing_extensions==4.16.0",
-        "uuid_utils==0.16.2"
+        "uuid_utils==0.17.0"
       ],
-      "ref": "langchain-core==1.4.8"
+      "ref": "langchain-core==1.4.9"
     },
     {
       "dependsOn": [
@@ -4084,14 +4157,14 @@
     },
     {
       "dependsOn": [
-        "langchain-core==1.4.8",
+        "langchain-core==1.4.9",
         "ormsgpack==1.12.2"
       ],
       "ref": "langgraph-checkpoint==4.1.1"
     },
     {
       "dependsOn": [
-        "langchain-core==1.4.8",
+        "langchain-core==1.4.9",
         "langgraph-checkpoint==4.1.1"
       ],
       "ref": "langgraph-prebuilt==1.1.0"
@@ -4099,7 +4172,7 @@
     {
       "dependsOn": [
         "httpx==0.28.1",
-        "langchain-core==1.4.8",
+        "langchain-core==1.4.9",
         "langchain-protocol==0.0.18",
         "orjson==3.11.9",
         "websockets==15.0.1"
@@ -4108,14 +4181,14 @@
     },
     {
       "dependsOn": [
-        "langchain-core==1.4.8",
+        "langchain-core==1.4.9",
         "langgraph-checkpoint==4.1.1",
         "langgraph-prebuilt==1.1.0",
         "langgraph-sdk==0.4.2",
         "pydantic==2.13.4",
         "xxhash==3.8.1"
       ],
-      "ref": "langgraph==1.2.8"
+      "ref": "langgraph==1.2.9"
     },
     {
       "dependsOn": [
@@ -4131,12 +4204,12 @@
         "rich==15.0.0",
         "sniffio==1.3.1",
         "typing_extensions==4.16.0",
-        "uuid_utils==0.16.2",
+        "uuid_utils==0.17.0",
         "websockets==15.0.1",
         "xxhash==3.8.1",
         "zstandard==0.25.0"
       ],
-      "ref": "langsmith==0.9.8"
+      "ref": "langsmith==0.10.2"
     },
     {
       "ref": "lark==1.3.1"
@@ -4144,6 +4217,7 @@
     {
       "dependsOn": [
         "boolean.py==5.0",
+        "pytest-xdist==3.8.0",
         "pytest==9.1.1",
         "ruff==0.15.20"
       ],
@@ -4155,7 +4229,7 @@
         "anthropic==0.116.0",
         "fastapi==0.139.0",
         "keyring==25.7.0",
-        "langgraph==1.2.8",
+        "langgraph==1.2.9",
         "mcp==1.28.1",
         "pydantic==2.13.4",
         "pytest==9.1.1",
@@ -4192,7 +4266,7 @@
         "typer==0.26.8",
         "typing-inspection==0.4.2",
         "typing_extensions==4.16.0",
-        "uvicorn==0.50.2",
+        "uvicorn==0.51.0",
         "websockets==15.0.1"
       ],
       "ref": "mcp==1.28.1"
@@ -4231,6 +4305,7 @@
       "dependsOn": [
         "packaging==26.2",
         "pyparsing==3.3.2",
+        "pytest-xdist==3.8.0",
         "pytest==9.1.1"
       ],
       "ref": "pip-requirements-parser==32.0.1"
@@ -4289,7 +4364,7 @@
         "pydantic_core==2.46.4",
         "typing-inspection==0.4.2",
         "typing_extensions==4.16.0",
-        "tzdata==2026.2"
+        "tzdata==2026.3"
       ],
       "ref": "pydantic==2.13.4"
     },
@@ -4301,6 +4376,14 @@
     },
     {
       "ref": "pyparsing==3.3.2"
+    },
+    {
+      "dependsOn": [
+        "execnet==2.1.2",
+        "filelock==3.29.7",
+        "pytest==9.1.1"
+      ],
+      "ref": "pytest-xdist==3.8.0"
     },
     {
       "dependsOn": [
@@ -4347,7 +4430,7 @@
       "dependsOn": [
         "certifi==2026.6.17",
         "chardet==5.2.0",
-        "charset-normalizer==3.4.8",
+        "charset-normalizer==3.4.9",
         "idna==3.18",
         "urllib3==2.7.0"
       ],
@@ -4400,7 +4483,7 @@
         "fastapi==0.139.0",
         "pydantic==2.13.4",
         "starlette==1.3.1",
-        "uvicorn==0.50.2"
+        "uvicorn==0.51.0"
       ],
       "ref": "sse-starlette==3.4.5"
     },
@@ -4444,7 +4527,7 @@
       "ref": "typing_extensions==4.16.0"
     },
     {
-      "ref": "tzdata==2026.2"
+      "ref": "tzdata==2026.3"
     },
     {
       "ref": "uri-template==1.3.0"
@@ -4453,7 +4536,7 @@
       "ref": "urllib3==2.7.0"
     },
     {
-      "ref": "uuid_utils==0.16.2"
+      "ref": "uuid_utils==0.17.0"
     },
     {
       "dependsOn": [
@@ -4464,7 +4547,7 @@
         "typing_extensions==4.16.0",
         "websockets==15.0.1"
       ],
-      "ref": "uvicorn==0.50.2"
+      "ref": "uvicorn==0.51.0"
     },
     {
       "ref": "webcolors==25.10.0"
@@ -4477,13 +4560,13 @@
     },
     {
       "dependsOn": [
-        "cffi==2.0.0"
+        "cffi==2.1.0"
       ],
       "ref": "zstandard==0.25.0"
     }
   ],
   "metadata": {
-    "timestamp": "2026-07-09T20:15:17.123168+00:00",
+    "timestamp": "2026-07-15T15:51:21.082557+00:00",
     "tools": {
       "components": [
         {
@@ -4587,7 +4670,7 @@
       ]
     }
   },
-  "serialNumber": "urn:uuid:bcb6376e-21f8-477e-a7f7-774f00a73a46",
+  "serialNumber": "urn:uuid:af984a49-0599-4d5c-aa27-4b3a9b648c97",
   "version": 1,
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",
