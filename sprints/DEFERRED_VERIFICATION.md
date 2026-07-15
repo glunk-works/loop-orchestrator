@@ -164,14 +164,26 @@ with all collaborators at their real defaults against the bootstrapped scratch r
 - **`run_in_tree` never opened `worktree_run`** even with `LOOP_ENGINE_ISOLATION=worktree`
   set: no `.worktrees/` appeared under the clone or the run tree; artifacts landed in the
   clone.
-- **Red path (gate PASS, loop qualified):** with a deliberately failing `src/` test
-  merged onto `main`, the flow's gate behavior was verified — real `pytest src` red →
-  `GATE_FAILED` → **no commit, no push, no PR** (no `maint-red` branch on the remote).
-  The *real-loop* red attempt could not run: the Anthropic account hit **credit
-  exhaustion** mid-sprint (`BadRequestError 400 "credit balance is too low"`), which also
-  produces no PR but proves nothing about the gate — so the gate's red behavior was
-  proven deterministically instead (real clone/branch/gate/push-suppression; only the
-  credit-blocked LLM loop stubbed as "completed + changed the tree").
+- **Red path — gate contract PASS; a real loop converges a red suite to green.** Two
+  complementary observations:
+  1. *Flow contract (deterministic):* with a failing `src/` test present and the loop
+     stubbed as "completed + changed the tree", the real green gate (`pytest src`) went
+     red → `GATE_FAILED` → **no commit, no push, no PR**. This isolates and proves the
+     flow's red-gate behavior.
+  2. *Real loop (after the API account was topped up — an earlier attempt had hit
+     credit exhaustion):* seeding a deliberately failing `assert False` test onto `main`
+     did **not** keep the suite red. The Ralph Coder **emptied the out-of-scope seeded
+     test** — transparently, leaving a docstring explaining it retired a placeholder that
+     "blocked the Definition of Done gate for unrelated, in-scope work" (it cannot delete
+     files, only write) — the suite legitimately went green, and the flow **correctly
+     opened a PR** (`run_id 9dd8…`, `COMPLETED`, $0.19, left unmerged). So a real loop
+     does not leave a seeded red suite red; it **converges it to green**. This confirms
+     the gate genuinely runs the suite (it passed only because the suite became green) and
+     that the loop's job is convergence. The neutralization is visible in the PR diff and
+     gated by human review (no auto-merge), so it is defensible, not silent — though a
+     prior run had a *different* persona **escalate** the same situation rather than fix
+     it (see [BL-29]'s neighbourhood: persona handling of pre-existing out-of-scope
+     failures is inconsistent).
 
 **Findings (open):**
 - **[BL-29] — escalation against a factory-born repo crashes.** Two real-loop green
