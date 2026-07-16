@@ -13,11 +13,8 @@ delegated entirely to `SocketModeClient` -- this module does not hand-roll
 it.
 """
 
-import logging
 import os
 from typing import Any, Callable, Protocol
-
-_logger = logging.getLogger(__name__)
 
 _APP_TOKEN_ENV = "LOOP_ENGINE_SLACK_APP_TOKEN"  # noqa: S105 -- env var name, not a credential
 _BOT_TOKEN_ENV = "LOOP_ENGINE_SLACK_BOT_TOKEN"  # noqa: S105 -- env var name, not a credential
@@ -93,5 +90,5 @@ def build_listener_from_env(on_request: RequestHandler) -> SocketModeListener:
     from slack_sdk import WebClient
     from slack_sdk.socket_mode import SocketModeClient
 
-    client = SocketModeClient(app_token=app_token, web_client=WebClient(token=bot_token))
+    client = SocketModeClient(app_token=app_token, web_client=WebClient(token=bot_token, timeout=5))
     return SocketModeListener(client, on_request)

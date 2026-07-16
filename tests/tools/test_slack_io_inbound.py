@@ -11,8 +11,9 @@ _FAKE_BOT_TOKEN = "xoxb-fake-not-a-real-token"  # noqa: S105 -- fixture literal,
 
 
 class _FakeWebClient:
-    def __init__(self, token: str) -> None:
+    def __init__(self, token: str, timeout: int = 5) -> None:
         self.token = token
+        self.timeout = timeout
 
 
 class _FakeSocketModeClient:
@@ -109,6 +110,7 @@ def test_build_listener_from_env_constructs_a_listener_without_connecting(monkey
     client = _FakeSocketModeClient.instances[0]
     assert client.app_token == _FAKE_APP_TOKEN
     assert client.web_client.token == _FAKE_BOT_TOKEN
+    assert client.web_client.timeout == 5
     assert client.connected is False
     assert client.socket_mode_request_listeners  # the listener registered itself
 
