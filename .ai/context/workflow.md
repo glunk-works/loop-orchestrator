@@ -33,7 +33,8 @@ OPUS (plan)    design/plan the sprint -> write sprint_plan.md + roadmap -> /hand
    |                                                                          |
    v   (fresh session, /model sonnet)                                         |
 SONNET (code)  /resume -> branch sprint/NN-slug -> implement + tests -> green
-   |           gate -> commit -> push -> /handoff                             |
+   |           gate -> /critic-gate (QA-critic pass) -> commit -> push        |
+   |           -> /handoff                                                    |
    |                                                                          |
    v   *** NEW SESSION (context empty), then /model opus ***                  |
    |   /model alone does NOT clear context — a reviewer holding the authoring |
@@ -101,6 +102,50 @@ without it. Claude commits and pushes freely on a sprint branch, opens the PR, a
   checks* is visually almost identical to *checks still queuing*. If a PR shows no
   checks after a minute, check `mergeable` before assuming CI is slow:
   `gh api repos/<owner>/<repo>/pulls/<N> -q '.mergeable_state'`.
+
+### The QA-critic pass runs Coder-side, before the Architect review (`/critic-gate`)
+
+After the green gate and before `/handoff`, the implementation session runs **`/critic-gate`**:
+a read-only critic pass over the diff that catches the cheap, mechanical, boundary-shaped
+defects Sonnet-side, so the fresh-session Opus review spends its attention on judgment — and
+so nothing ships with *no* critic having looked (the sprint 27 Task 8 failure below is
+exactly what one standing critic pass defends against). The session orchestrates it: a
+subagent cannot spawn subagents, so the **session** spawns coder and critics as siblings.
+
+> **`/critic-gate` is defense-in-depth that runs EARLIER — it is NOT the `architect-review`
+> CI gate and never satisfies it.** The fresh-session Architect review still happens after
+> `/handoff`, unchanged (next section). Two properties keep the pass honest: the critics are
+> **separate subagents** (fresh context — not `/model`-switching and self-reviewing), and
+> they are **read-only** (they *find*; the coder *fixes* — so a critic can't wave its own
+> problem through).
+
+Route by what the diff touches — don't spawn critics that have nothing to look at:
+
+| Diff touches… | spawn |
+| --- | --- |
+| any `src/` | **`security-critic`** (taint / trust-boundary) **+ `architect`** (correctness pre-review) |
+| a guard surface (new subprocess/write/import/MCP verb) | **also `guard-adversary`** (`isolation: "worktree"`) |
+| a test-validity sprint (BL-23) | **`mutation-triage`** (sharded, N in parallel) |
+| load-bearing docs / roadmap / CLAUDE.md | **`docs-consistency`** |
+
+#### The agent catalog (spawn via the Agent tool by `subagent_type`)
+
+All live in `.claude/agents/`. A definition loads at session start; name it here so a
+`/resume`'d session knows to reach for it (the same pattern that puts `coder` in the loop).
+
+- **`coder`** (Sonnet, read/write) — implement one defined sprint task; the secondary
+  in-session path when a full handoff is overkill.
+- **`architect`** (Opus, read-only) — correctness + structural-invariant review; the
+  `/critic-gate` pre-review and a `/code-review` fan-out target. **Not** the CI gate.
+- **`security-critic`** (Opus, read-only) — threat-model SAST / taint-flow on a `src/` diff.
+- **`guard-adversary`** (Opus, worktree) — BL-32: adversarial invariant-injection audit of
+  the static structural guards; run when a diff touches a guard surface, or as its own beat.
+- **`mutation-triage`** (Sonnet, read-only) — BL-23: triage a shard of mutmut survivors into
+  keep/fix/delete; spawn N in parallel on a test-validity sprint.
+- **`live-verify`** (Opus, worktree) — a DEFERRED_VERIFICATION V-run against a disposable
+  scratch repo. **Requires explicit per-run authorization** (real GitHub side effects + spend).
+- **`docs-consistency`** (Opus, read-only) — cross-check load-bearing prose against ground
+  truth; run before a roadmap-heavy PR or at archive time.
 
 ### The Architect's HITL review is a posted GitHub review, not just prose
 
@@ -180,8 +225,13 @@ Rules:
 Nothing here changes on-branch commit hygiene: commits stay signed, and the green
 gate still runs locally before the push.
 
-## The three skills
+## The skills
 
+- **`/critic-gate`** — run in the implementation session **after the green gate, before
+  `/handoff`**. Runs the read-only QA-critic pass over the diff (routing to the critic
+  subagents above), aggregates findings for the coder to fix, iterates to clean. Defense-in-
+  depth that runs *earlier* — **not** the `architect-review` CI gate, which still runs fresh
+  after handoff.
 - **`/resume`** — run at the **start** of a session. Reads `.ai/state.json` +
   `.ai/next-steps.md` + the pointed sprint_plan + roadmap NEXT ACTION, states the exact
   pick-up point, and adopts the assigned persona/model. (Distinct from the
