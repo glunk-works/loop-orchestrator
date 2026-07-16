@@ -56,7 +56,7 @@ and before `/handoff`.
    session → `/code-review` → post the `architect-review` HITL comment. `/critic-gate` never
    posts a review, never `--approve`s, never merges.
 
-## Why route instead of always-spawn-all-six
+## Why route instead of spawning every critic
 Spawning every critic on every sprint is off-altitude and wasteful. Most sprints are a
 `src/` change → `security-critic` + `architect`. `guard-adversary`, `mutation-triage`, and
 `docs-consistency` are conditional on the diff actually touching their domain.

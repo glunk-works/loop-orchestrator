@@ -171,7 +171,7 @@ merge (findings in PR #34). A rule that lives only in prose is a rule that gets 
 The required sequence — the same `/handoff` boundary the model split already uses:
 
 ```
-SONNET (code)   implement -> green gate -> push -> open PR -> /handoff
+SONNET (code)   implement -> green gate -> /critic-gate -> push -> open PR -> /handoff
                                    ↓
                         *** NEW SESSION. Context empty. ***
                                    ↓
