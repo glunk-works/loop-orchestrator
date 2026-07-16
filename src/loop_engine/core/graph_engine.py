@@ -11,6 +11,7 @@ in Phase 6 (sprint 27) once the LangGraph path was verified end to end on a
 real host run; it remains recoverable at the `pre-phase6-classic` tag.
 """
 
+import logging
 from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -23,14 +24,38 @@ from loop_engine.core.engine import (
     _prime_resume,
     execute_stage,
 )
+from loop_engine.core.notify import EventKind, LifecycleEvent, Notifier
 from loop_engine.core.state import RunStatus, State
 from loop_engine.tools.llm.client import LLMClient
+from loop_engine.tools.slack_io import build_notifier_from_env
+
+_logger = logging.getLogger(__name__)
 
 # Our own hard caps (MAX_ESCALATIONS_PER_STAGE, MAX_REPLANS_PER_RUN) already
 # guarantee termination; this bound only needs enough headroom that a legitimate
 # run — every stage revising, escalating, and replanning to its cap — never trips
 # LangGraph's super-step guard. Scaled off the loop length, generously.
 _RECURSION_HEADROOM = 50
+
+# The four terminal `RunStatus` values map 1:1 to an `EventKind`; `RUNNING`
+# never maps to one (an explicit dict, not `EventKind(status.value)`, so an
+# unexpected `RUNNING` at this point is a no-emit rather than a raise).
+_TERMINAL_EVENT_KINDS: dict[RunStatus, EventKind] = {
+    RunStatus.COMPLETED: EventKind.COMPLETED,
+    RunStatus.FAILED_STAGE: EventKind.FAILED_STAGE,
+    RunStatus.BUDGET_EXCEEDED: EventKind.BUDGET_EXCEEDED,
+    RunStatus.AWAITING_ISSUE: EventKind.AWAITING_ISSUE,
+}
+
+
+def _safe_emit(notifier: Notifier, event: LifecycleEvent) -> None:
+    """Fail-open at the call site (E2): a raising notifier must never affect
+    the run, so every emit is caught and swallowed here, not just inside the
+    notifier's own implementation."""
+    try:
+        notifier.emit(event)
+    except Exception:
+        _logger.warning("notifier raised for event kind=%s", event.kind)
 
 
 class GraphState(TypedDict):
@@ -114,11 +139,30 @@ def run_graph_loop(
     start_index: int = 0,
     initial_findings: list[str] | None = None,
     issue_filer: IssueFiler | None = None,
+    notifier: Notifier | None = None,
+    resuming: bool = False,
 ) -> State:
     """Drive `loop` to a terminal state, returning the final, already-persisted
     `State`."""
+    active_notifier = notifier or build_notifier_from_env()
+
     state = initial_state.model_copy(update={"status": RunStatus.RUNNING, "pending_issue": None})
     state, carried_findings, carried_until = _prime_resume(loop, state, initial_findings)
+
+    # A deep snapshot, not the live `state` reference: the CRASHED path must
+    # never carry an object that later in-graph mutation could have touched.
+    pre_invoke_state = state.model_copy(deep=True)
+
+    # `resuming` (E1), not `start_index == 0` — a resume re-entering at stage 0
+    # (e.g. after answering an escalation) is not a fresh run and must not fire
+    # a spurious STARTED.
+    if not resuming:
+        _safe_emit(
+            active_notifier,
+            LifecycleEvent(
+                kind=EventKind.STARTED, state=pre_invoke_state, budget_usd=llm_client.budget_usd
+            ),
+        )
 
     compiled = build_state_graph(loop, llm_client, issue_filer)
     init: GraphState = {
@@ -129,5 +173,28 @@ def run_graph_loop(
         "done": False,
     }
     recursion_limit = len(loop.stages) * (_RECURSION_HEADROOM // max(len(loop.stages), 1) + 4) + 50
-    result = compiled.invoke(init, config={"recursion_limit": recursion_limit})
-    return result["state"]
+    try:
+        result = compiled.invoke(init, config={"recursion_limit": recursion_limit})
+    except Exception as exc:
+        # `result` is unbound here — only the pre-invoke primed snapshot is
+        # meaningful; this is not a finalized/snapshotted exit path, so the
+        # error is a short type/message string, never a traceback or secret.
+        _safe_emit(
+            active_notifier,
+            LifecycleEvent(
+                kind=EventKind.CRASHED,
+                state=pre_invoke_state,
+                budget_usd=llm_client.budget_usd,
+                error=f"{type(exc).__name__}: {exc}",
+            ),
+        )
+        raise
+
+    final_state = result["state"]
+    event_kind = _TERMINAL_EVENT_KINDS.get(final_state.status)
+    if event_kind is not None:
+        _safe_emit(
+            active_notifier,
+            LifecycleEvent(kind=event_kind, state=final_state, budget_usd=llm_client.budget_usd),
+        )
+    return final_state

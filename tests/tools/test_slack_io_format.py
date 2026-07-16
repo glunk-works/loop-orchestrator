@@ -85,15 +85,60 @@ def test_crashed_includes_run_id_and_error_only() -> None:
     assert "ValueError: boom" in text
 
 
-def test_crashed_message_never_contains_a_token_or_traceback() -> None:
+def test_crashed_message_includes_only_run_id_and_error_not_other_state_fields() -> None:
+    # Was vacuous: feeding an already-clean error string can never fail,
+    # regardless of what format_event does. The real, checkable invariant is
+    # that CRASHED ignores everything else on `event.state` -- a crashed
+    # event's state is the pre-invoke primed snapshot, so leaking its
+    # artifacts/stage_history/pending_issue would surface stale or sensitive
+    # data (e.g. human_input) under a message that looks like a bare error.
+    state = _state(
+        artifacts={"human_input": "sensitive plan detail"},
+        stage_history=[StageRecord(stage_name="A", tokens_used=1, cost_usd=1.0, completed_at="t1")],
+        pending_issue=IssueRef(number=99, url="https://github.com/acme/widgets/issues/99"),
+    )
+    event = LifecycleEvent(kind=EventKind.CRASHED, state=state, error="RuntimeError: engine bug")
+    text = format_event(event)
+    assert "sensitive plan detail" not in text
+    assert "99" not in text
+    assert "1.00" not in text
+
+
+def test_crashed_error_is_escaped_for_mrkdwn() -> None:
     event = LifecycleEvent(
-        kind=EventKind.CRASHED,
-        state=_state(),
-        error="RuntimeError: engine bug",
+        kind=EventKind.CRASHED, state=_state(), error="RuntimeError: <a href=x&y>boom</a>"
     )
     text = format_event(event)
-    assert "xoxb-" not in text
-    assert "Traceback" not in text
+    assert "<a href=x&y>" not in text
+    assert "&lt;a href=x&amp;y&gt;boom&lt;/a&gt;" in text
+
+
+def test_crashed_error_is_truncated_before_escaping() -> None:
+    # An unhandled exception's str() is unbounded -- without truncation, mrkdwn
+    # escaping's ~5x expansion (`&` -> `&amp;`) could push it over Slack's
+    # msg_too_long threshold, letting the crash alert itself get silently
+    # swallowed by the notifier's fail-open path (the exact failure mode
+    # truncation exists to prevent).
+    event = LifecycleEvent(kind=EventKind.CRASHED, state=_state(), error="x" * 1000)
+    text = format_event(event)
+    assert "x" * 501 not in text
+    assert "(truncated)" in text
+
+
+def test_started_human_input_is_escaped_for_mrkdwn() -> None:
+    state = _state(artifacts={"human_input": "<!channel> ship it & <a|link>"})
+    event = LifecycleEvent(kind=EventKind.STARTED, state=state, budget_usd=1.0)
+    text = format_event(event)
+    assert "<!channel>" not in text
+    assert "&lt;!channel&gt; ship it &amp; &lt;a|link&gt;" in text
+
+
+def test_started_human_input_is_truncated_before_escaping() -> None:
+    state = _state(artifacts={"human_input": "x" * 1000})
+    event = LifecycleEvent(kind=EventKind.STARTED, state=state, budget_usd=1.0)
+    text = format_event(event)
+    assert "x" * 501 not in text
+    assert "(truncated)" in text
 
 
 def test_all_six_event_kinds_render_a_non_empty_message() -> None:
