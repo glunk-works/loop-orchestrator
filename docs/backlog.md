@@ -91,6 +91,18 @@ server.
 > sidestep), [BL-4] (a Ralph-loop watcher wants somewhere to report *to* — the notify direction
 > here is a natural home).
 
+> ### LANDED: pass 1 of 3 — outbound notify (sprint 39, 2026-07-16)
+> The planning pass resolved direction-first: **outbound notify shipped first** (FD1), as an
+> official `slack_sdk` transport in `tools/slack_io`, **not** an MCP server (FD2). Credentials are
+> env vars — `LOOP_ENGINE_SLACK_BOT_TOKEN` / `LOOP_ENGINE_SLACK_CHANNEL` (FD3) — not the keyring,
+> confirming the third-credential-class question above. `core/graph_engine.py`'s `run_graph_loop`
+> emits through the `core/notify` `Notifier` seam, fail-open at the call site (FD4). Landed across
+> T1+T2 (#107), T3 (#112), T4 (this docs pass). **Passes 2–3 — the inbound trigger surface and the
+> escalation round-trip — remain open**, and BL-24 (the never-live-verified inbound surface) is
+> still unresolved; the planning questions above (supersede/parallel/wait-behind `trigger/`; Socket
+> Mode's connection posture against the module-boundary rules) still apply to whichever surface is
+> planned next.
+
 ### BL-3 — Review the prompt-caching implementation (correctness + improvement)
 *(added 2026-07-10, from repo owner; **absorbed `DEFERRED_VERIFICATION.md` §1** in sprint 35 Task 6,
 2026-07-14, agreed with the repo owner)*

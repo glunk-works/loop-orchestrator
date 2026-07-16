@@ -5,64 +5,63 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Sprint 39 — BL-2 Slack outbound notify (pass 1 of 3) — AWAITING HITL REVIEW.**
-T1+T2 are implemented, tested, and open as
-[PR #107](https://github.com/glunk-works/loop-engine/pull/107)
-(`sprint/39-bl2-slack-notify` → `main`, head `5dd66c3`). It touches `src/`, so the
-fresh-session `architect-review` gate is open and blocking merge.
-**Next session: Opus/Architect posts the review.**
+**Sprint 39 — BL-2 Slack outbound notify (pass 1 of 3) — T4 implemented, PR #113
+open, critic-clean, awaiting merge.** T1+T2 merged (#107). T3 merged (#112). T4
+(docs) is on `sprint/39-bl2-slack-notify-t4`, pushed, tree clean at `a3a8074`.
+**Next session: confirm CI green on #113, ask the owner to merge (docs-only ⇒ no
+HITL review needed), then `/archive-sprint` — sprint 39 is COMPLETE once it lands.**
 
-## Just done (this session, Coder/Sonnet — T1+T2 implementation)
-- Cut `sprint/39-bl2-slack-notify` from `main`, committed the sprint plan (`617bd54`).
-- Implemented **T1**: `core/notify.py` — the pure `EventKind`/`LifecycleEvent`/
-  `Notifier`/`NoOpNotifier` contract, a leaf module, no `slack_sdk` import — and
-  `tools/slack_io`'s `SlackNotifier`/`build_notifier_from_env` (function-scoped
-  `slack_sdk` import, `WebClient(timeout=5)`, internally fail-open — the `try/except`
-  wraps both `format_event` and the post).
-- Implemented **T2**: `tools/slack_io/format.py`'s pure `format_event()`, mrkdwn over
-  all six `EventKind`s (cost summed from `stage_history`, budget from
-  `event.budget_usd`, awaiting-issue link from `pending_issue` with a graceful
-  `None` degrade).
-- Pinned `slack_sdk==3.43.0`, regenerated `sbom.json`; `hatch run audit` clean.
-- New tests: `tests/core/test_notify.py`, `tests/tools/test_slack_io.py`,
-  `tests/tools/test_slack_io_format.py`, `tests/tools/test_slack_io_boundaries.py`
-  (mirrors `tests/trigger/test_boundaries.py` — no `keyring`, no direct file write,
-  no subprocess surface, `slack_sdk` stays function-scoped).
-- Full suite green (624 tests), lint clean, format-check clean, local `gitleaks`
-  scan clean. Landed as one commit (`5dd66c3`), pushed, PR #107 opened against
-  `main`, labeled `feature`/`area/tools`.
-- **No emission call sites yet** — `run_graph_loop` doesn't call the notifier.
-  Every existing test/call site is unchanged; the module is inert until T3.
+## Just done (this session, Coder/Sonnet — T4 docs + critic-gate)
+- Cut `sprint/39-bl2-slack-notify-t4` from `main`; updated `docs/architecture_definition.md`
+  (§1 trust boundary + §4 secrets management — Slack `chat.postMessage` as a second,
+  third-party, fail-open, off-by-default egress; `LOOP_ENGINE_SLACK_BOT_TOKEN`/
+  `LOOP_ENGINE_SLACK_CHANNEL` as a new env-var credential class), `CLAUDE.md`
+  ("Enforced module boundaries" — added `tools/slack_io`), `.ai/context/modules.md`
+  (added `core/notify.py` + `tools/slack_io/` entries — not explicitly named in the
+  prior cursor but called for by the sprint plan's T4 acceptance criteria),
+  `docs/backlog.md` (`LANDED: pass 1 of 3` note under BL-2), `docs/migration_roadmap.md`
+  (flipped NEXT ACTION off "plan BL-2" to a Sprint 39 DONE entry + BL-2-passes-2–3
+  pointer). Opened [PR #113](https://github.com/glunk-works/loop-engine/pull/113)
+  (`eadbca2`, then `cea6136` filling in the PR URL).
+- Ran `/critic-gate docs-consistency` against the diff (user-confirmed critic choice —
+  right fit since this PR's whole job is cross-doc consistency). One real finding:
+  `CLAUDE.md`'s new `tools/slack_io` bullet had inverted subject/object ("`slack_sdk`
+  is the only module that imports it" — swapped subject/object; fact was right, wording
+  was garbled). Fixed and pushed (`a3a8074`). Two low-severity non-blocking observations
+  (not defects, no action taken): the architecture diagram's egress arrow doesn't show
+  Slack (defensible — off by default), and `README.md` doesn't mention the new Slack env
+  vars (an omission, not a false claim). Everything else the critic checked (event kinds,
+  env var names, fail-open behavior at both layers, the `resuming` gate, cross-doc
+  PR/task consistency) matched ground truth.
+- Tree is clean at `a3a8074`, fully pushed. No `src/` changes anywhere in T4.
 
-## Next — post the architect-review on PR #107 (Opus/Architect)
-1. Fresh session → `/resume` (this file) → `/code-review` the diff on
-   `sprint/39-bl2-slack-notify` against `main`.
-2. Post via `gh pr review 107 --comment` headed
-   `**Opus/Architect HITL review (automated)**` with the fresh-session
-   attestation — **never `--approve`**.
-3. If findings come back, they route to a Coder/Sonnet fix pass, then a re-review
-   against the new head commit.
-4. Once `architect-review` is green and the owner merges #107, switch back to
-   Coder/Sonnet for **T3**: add `notifier`/`resuming: bool` to `run_graph_loop`
-   ([`graph_engine.py:110`](../src/loop_engine/core/graph_engine.py#L110)), the two
-   emit points (`started` gated on `not resuming` — **not** `start_index`, per E1;
-   the terminal event via an explicit `RunStatus`→`EventKind` dict; `crashed` on an
-   escaping exception carrying the pre-invoke primed state, then re-raise), each
-   wrapped in its own `try/except`; the two `cli.py` resume call sites pass
-   `resuming=True`. Then **T4** (docs/boundaries/threat-model/backlog + roadmap).
+## Next — get #113 merged, then archive
+1. `gh pr checks 113` — confirm all required checks green (docs-only ⇒
+   `architect-review` exempt, but `lint`/`format-check`/`test`/`secrets-scan`/
+   `dependency-audit`/`sbom`/`pr-title` still gate). No HITL review needed for this PR.
+2. Ask the owner to merge. Sync local `main`, prune `sprint/39-bl2-slack-notify-t4`.
+3. Run `/archive-sprint` — sprint 39 is COMPLETE (all of T1–T4 landed).
+4. After archiving, the live NEXT ACTION becomes **BL-2 passes 2–3** (inbound trigger
+   surface + escalation round-trip) — see `docs/backlog.md`'s BL-2 entry /
+   `docs/migration_roadmap.md`. Needs its own **Opus/Architect planning pass** before
+   any implementation.
 
 ## Gotchas worth remembering
 - **`.ai/state.json` is git-ignored** — **this file is what travels.**
 - **PR title:** `wc -c` the byte count AND re-read the text before `gh pr create/edit`.
-- **A squash-merged branch is dead** — prune via `gh pr list --state merged` + `git branch -D`.
+- **T4 is docs-only ⇒ no `architect-review` gate** (it doesn't touch `src/`).
 - **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** Signing Timeout =
   answer the host pinentry and retry.
+- The three T3-review observations (in `docs/migration_roadmap.md`/prior cursor
+  history) were notes for a future BL-2 pass, not T4 — T4 changed no code.
 
 ## Pointers
-- [PR #107](https://github.com/glunk-works/loop-engine/pull/107) — T1+T2, open,
-  awaiting `architect-review`.
 - [`sprints/39_bl2_slack_notify/sprint_plan.md`](../sprints/39_bl2_slack_notify/sprint_plan.md)
-  — the active plan (FD1–FD4 + T1–T4, grounded with file:line refs). T3/T4 remain.
-- [`docs/backlog.md`](../docs/backlog.md) — **BL-2** + its `SCHEDULED` note.
-- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — NEXT ACTION line
-  still says "implement Sprint 39"; leave until T3/T4 land.
+  — the active plan (FD1–FD4 + T1–T4). All four tasks implemented; T4 = PR #113,
+  awaiting merge.
+- [PR #113](https://github.com/glunk-works/loop-engine/pull/113) — T4, docs-only,
+  critic-clean, awaiting CI confirmation + merge.
+- [`docs/backlog.md`](../docs/backlog.md) — **BL-2** (pass 1 landed, passes 2–3 open)
+  + **BL-33** (guard-hardening, #109 merged, no sprint plan yet).
+- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — NEXT ACTION line now
+  points at BL-2 passes 2–3.
