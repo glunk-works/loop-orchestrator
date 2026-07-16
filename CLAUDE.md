@@ -23,9 +23,13 @@ loop-engine runs a named sequence of decoupled AI "persona" stages against a sin
 
 Development on this repo is split by model to keep each session lean and single-model
 (the token/session-limit fix). The workflow is externalized into `.ai/` and driven by
-three skills — **`/resume`** (rehydrate from `.ai/` at the start of a session),
-**`/handoff`** (serialize state before switching model/session), **`/archive-sprint`**
-(retire a completed, HITL-approved sprint). See `.ai/context/workflow.md` for the protocol.
+skills — **`/resume`** (rehydrate from `.ai/` at the start of a session), **`/handoff`**
+(serialize state before switching model/session), **`/critic-gate`** (the read-only QA-critic
+pass over a coding diff, run after the green gate and before `/handoff` — defense-in-depth,
+**not** the `architect-review` CI gate), and **`/archive-sprint`** (retire a completed,
+HITL-approved sprint). See `.ai/context/workflow.md` for the protocol and the **agent
+catalog** (the `coder` / `architect` / `security-critic` / `guard-adversary` /
+`mutation-triage` / `live-verify` / `docs-consistency` subagents and their trigger points).
 
 - **Architect (Opus).** Architecture, design, sprint/phase **planning** (planning pass, one question at a time, HITL gates), **HITL review** of a coding session's diff, module-boundary decisions, non-trivial debugging, and roadmap/memory updates. This is the default model for planning and review sessions.
 - **Coder (Sonnet).** Implementing an already-**defined** sprint task, writing/adjusting tests, mechanical refactors, running the green gate, fixing lint. Sonnet runs the implementation sessions (or is dispatched as the `coder` subagent for a small in-session task).
