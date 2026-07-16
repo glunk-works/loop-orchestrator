@@ -44,6 +44,14 @@ without re-reading the whole repo. This is the counterpart to `/handoff`.
 
 6. **State the pick-up point** in 3–6 lines: current phase/sprint, sprint_status, the single next action, any open HITL gate, the ruleset check result, and the branch-prune result. Then wait for the user (do not silently start large work — especially if a HITL gate is open).
 
+   > **If the next action is posting the Architect HITL review:** the review body must
+   > **open with the verbatim two-line header + attestation block** from
+   > `.ai/context/workflow.md` (`**Opus/Architect HITL review (automated)**` then
+   > `*Fresh-session review: this session did not author the diff.*`). The
+   > `architect-review` check matches both lines by literal `contains()` — **paste them,
+   > do not paraphrase**; a reworded attestation ("Fresh-session attestation: …") fails
+   > the gate ~4s after posting even though it reads identically.
+
 ## Load-on-demand
 Only read `.ai/context/modules.md` / `conventions.md` if the next action actually needs
 them. The point of `/resume` is a cheap, targeted rehydrate — not reloading everything.

@@ -191,16 +191,25 @@ author found obvious has to survive being read cold.
 
 Both prior reviews violated this and it shows: #32's review was done by `/model opus` inside
 the authoring session, and #34 was authored by Opus and would have been self-reviewed. The
-gate now requires the reviewer to attest:
+gate now requires the reviewer to attest. **The review body must OPEN with these two
+lines, verbatim — the check matches BOTH by literal `contains()` (`hitl-review.yml`
+`HEADER` + `ATTESTATION`), so a paraphrase that reads identically to a human still fails
+the gate:**
 
 ```
+**Opus/Architect HITL review (automated)**
+
 *Fresh-session review: this session did not author the diff.*
 ```
 
-CI cannot observe a session boundary. The attestation does not prove one — it makes
-reviewing your own work a *knowing false statement* rather than something that quietly
-happens. That is as far as a check can go; real attribution needs a separate machine
-identity (**BL-6**).
+⚠️ Paste that block **unchanged** and write the verdict below it. Do **not** reword the
+attestation to "Fresh-session attestation: …", "this review was produced in a new
+session…", or any equivalent — the matcher is a substring test, not an intent test, and
+every such variant fails (this is a recurring, silent mistake: the check goes red 4s after
+you post, not because the review is wrong but because the string drifted). CI cannot
+observe a session boundary; the attestation does not prove one — it makes reviewing your
+own work a *knowing false statement* rather than something that quietly happens. That is as
+far as a check can go; real attribution needs a separate machine identity (**BL-6**).
 
 Two distinct artifacts — do not conflate them:
 
@@ -217,11 +226,12 @@ Rules:
   human's approval; a Claude-issued approval would be a gate approving itself. This is
   also enforced by GitHub: the `gh` token authenticates as **`Seuss27`**, the same
   identity that opens the PR, and GitHub forbids approving your own PR.
-- **Prefix every posted review with `**Opus/Architect HITL review (automated)**`.**
-  Because Claude and the repo owner share the `Seuss27` identity, a posted review
-  otherwise renders as the owner reviewing their own PR. The header is what makes
-  authorship unambiguous. (A separate machine identity would make attribution *real*
-  rather than declared — tracked as **BL-6** in `docs/backlog.md`.)
+- **Open the review with the verbatim two-line header + attestation block above** —
+  paste it, do not retype or reword it. Because Claude and the repo owner share the
+  `Seuss27` identity, a posted review otherwise renders as the owner reviewing their own
+  PR; the header is what makes authorship unambiguous, and the check enforces both lines
+  by literal `contains()` (a paraphrase fails). (A separate machine identity would make
+  attribution *real* rather than declared — tracked as **BL-6** in `docs/backlog.md`.)
 - **Inline comments for line-anchored defects; the summary body for the scope verdict.**
   `/code-review --comment` posts findings inline on the diff — right for concrete bugs.
   But most of the Architect review is *not* line-anchored ("does this honor the sprint
