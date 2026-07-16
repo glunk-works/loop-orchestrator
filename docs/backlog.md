@@ -1561,3 +1561,45 @@ just repeat the wrong-instrument mistake this item exists to avoid.
 
 **Related:** [BL-23] (this item's parent — the `core/` behavioral pass that scoped these guards
 *out* and filed this as the next beat), [BL-15] (the proven instance this audit generalizes).
+
+### BL-33 — The boundary-guard AST walkers share BL-15's blind spots — a confirmed remediation list from a BL-32-style audit
+
+*(added 2026-07-16, from the `/critic-gate` `guard-adversary` pass on PR #107 (BL-2 Slack notify, T1+T2))*
+
+**Why:** running the BL-32 adversarial invariant-injection audit (via the `guard-adversary` subagent)
+against the *new* `tests/tools/test_slack_io_boundaries.py` confirmed BL-32's thesis concretely — and
+showed the blind spots are **not** unique to that file. The same AST-walker helpers
+(`_direct_write_calls`, `_subprocess_surfaces`, `_imports_named_module` / the module-scope variant) are
+copy-pasted across `tests/trigger/test_boundaries.py`, `tests/flows/test_boundaries.py`, and
+`tests/tools/test_subprocess_surfaces.py`, so every one of these guards inherits the same holes. Four
+were confirmed (the guard stays **green** under the violating construct it exists to catch):
+
+- **Write guard (highest — BL-15 recurring):** flags `open` only when the receiver is a bare
+  `ast.Name`, and `.write_text`/`.write_bytes` only as attributes. `io.open` / `gzip.open` / `os.open`
+  (attribute-receiver) and `f.write(...)` walk straight through — BL-15's name-based `open()` blind
+  spot, reproduced in the boundary-guard family.
+- **Subprocess guard:** enumerates `.Popen` / bare `Popen` + a fixed `os` exec/system list; misses
+  `os.popen`, `os.spawn*`, `os.posix_spawn*`, `os.fork`, and `subprocess.run`/`call`/`check_output` as
+  *calls* (`os` is already imported, so no import line trips it either).
+- **Leaf-import guard:** `from loop_engine.tools import slack_io` slips — `node.module` is
+  `loop_engine.tools` and the imported *name* (`slack_io`) is never inspected. A real back-channel
+  into a guarded package.
+- **Module-scope guard:** "module scope" is defined as direct `tree.body` children only, so a
+  top-level `try: import slack_sdk` (which executes at import time) slips — defeating the exact
+  F7/FD4 deferred-import invariant the guard protects.
+
+**What to do:** replace the per-file copy-pasted AST walkers with a **single shared, hardened guard
+helper** — resolve `open`/`gzip.open`/`io.open`/`os.open` by qualified name and add
+`write`/`writelines`/`truncate`; enumerate the full `os` process-creation surface + `subprocess`
+module calls; inspect `ImportFrom` alias names; treat an import as deferred only when an enclosing
+`FunctionDef`/`AsyncFunctionDef` exists on the path from the module root (not merely "not a
+`tree.body` child"). Fixing one file leaves the siblings porous. Add a regression that the
+`guard-adversary` audit goes red on each construct above before the fix and green after.
+
+**Explicitly NOT:** widening PR #107's scope — the new `slack_io` guard is no weaker than its
+siblings and catches the naive/common violations; this is a cross-cutting hardening of the shared
+pattern, and belongs on its own PR.
+
+**Related:** [BL-32] (the audit instrument this is the output of), [BL-15] (the original name-based
+`open()` blind spot the write finding reproduces), BL-2 / sprint 39 (the diff whose critic pass
+surfaced it).
