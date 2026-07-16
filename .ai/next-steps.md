@@ -29,7 +29,7 @@ COMPLETE → run `/archive-sprint`.**
   emit points.
 - No `src/` changes — verified no test asserts on the specific prose touched
   (`tests/test_ci_config.py`'s CLAUDE.md check is about the abort exit code, unrelated).
-- PR opened: <FILL IN PR URL/NUMBER AFTER `gh pr create`>.
+- PR opened: [#113](https://github.com/glunk-works/loop-engine/pull/113).
 
 ## Next — once the T4 PR merges
 1. Confirm all required checks green (docs-only ⇒ `architect-review` exempt, but
