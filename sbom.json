@@ -3516,6 +3516,39 @@
       "version": "1.17.0"
     },
     {
+      "bom-ref": "slack_sdk==3.43.0",
+      "description": "The Slack API Platform SDK for Python",
+      "externalReferences": [
+        {
+          "comment": "from packaging metadata Project-URL: Documentation",
+          "type": "documentation",
+          "url": "https://docs.slack.dev/tools/python-slack-sdk/"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: Source",
+          "type": "other",
+          "url": "https://github.com/slackapi/python-slack-sdk"
+        },
+        {
+          "comment": "from packaging metadata: Home-page",
+          "type": "website",
+          "url": "https://github.com/slackapi/python-slack-sdk"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "acknowledgement": "declared",
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "slack_sdk",
+      "purl": "pkg:pypi/slack-sdk@3.43.0",
+      "type": "library",
+      "version": "3.43.0"
+    },
+    {
       "bom-ref": "sniffio==1.3.1",
       "description": "Sniff out which async library your code is running under",
       "evidence": {
@@ -4681,6 +4714,7 @@
         "mcp==1.28.1",
         "pydantic==2.13.4",
         "pytest==9.1.1",
+        "slack_sdk==3.43.0",
         "typer==0.26.8"
       ],
       "ref": "loop-engine==0.1.0"
@@ -4961,6 +4995,12 @@
       "ref": "six==1.17.0"
     },
     {
+      "dependsOn": [
+        "websockets==15.0.1"
+      ],
+      "ref": "slack_sdk==3.43.0"
+    },
+    {
       "ref": "sniffio==1.3.1"
     },
     {
@@ -5076,7 +5116,7 @@
     }
   ],
   "metadata": {
-    "timestamp": "2026-07-15T18:27:47.391794+00:00",
+    "timestamp": "2026-07-16T12:51:53.853619+00:00",
     "tools": {
       "components": [
         {
@@ -5180,7 +5220,7 @@
       ]
     }
   },
-  "serialNumber": "urn:uuid:c08d1f41-7697-4648-b46b-e00d96ce9b42",
+  "serialNumber": "urn:uuid:cf5d4e6b-cb9e-440d-acff-2a44e9171f30",
   "version": 1,
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",

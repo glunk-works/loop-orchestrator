@@ -1,68 +1,68 @@
 # Next steps — dev-workflow cursor
 
 Thin, live cursor for whoever picks up this repo next. Points into the deep record
-(`docs/backlog.md`, `docs/migration_roadmap.md`) — it does not copy them. Regenerated on
-every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
+(`docs/backlog.md`, `docs/migration_roadmap.md`, the sprint plan) — it does not copy them.
+Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**BL-2 (Slack control plane) — PLANNING.** No sprint directory exists yet. Sprint 38
-(BL-23 pass 1, `core/` mutation testing) is archived — see
-`.ai/archive/38_test_validity_audit-next-steps.md` for its final cursor if you need
-the history. **Next session: Architect/Opus plans BL-2.** No HITL gate is open.
+**Sprint 39 — BL-2 Slack outbound notify (pass 1 of 3) — AWAITING HITL REVIEW.**
+T1+T2 are implemented, tested, and open as
+[PR #107](https://github.com/glunk-works/loop-engine/pull/107)
+(`sprint/39-bl2-slack-notify` → `main`, head `5dd66c3`). It touches `src/`, so the
+fresh-session `architect-review` gate is open and blocking merge.
+**Next session: Opus/Architect posts the review.**
 
-## Just done (previous session)
-- **Sprint 38 archived** (`/archive-sprint`) after landing in full: T1/T2/T3
-  (PRs #90/#92/#94), BL-32 filed (PR #95), handoff doc (PR #96), and a roadmap
-  close-out commit (`02c48d0`, local as of this handoff — not yet pushed/PR'd).
-  Final tally: 61 keep / 86 fix / 0 delete, `hatch run mutate` residual survivor
-  count verified to match exactly, per-file, against `audit_report.md`.
+## Just done (this session, Coder/Sonnet — T1+T2 implementation)
+- Cut `sprint/39-bl2-slack-notify` from `main`, committed the sprint plan (`617bd54`).
+- Implemented **T1**: `core/notify.py` — the pure `EventKind`/`LifecycleEvent`/
+  `Notifier`/`NoOpNotifier` contract, a leaf module, no `slack_sdk` import — and
+  `tools/slack_io`'s `SlackNotifier`/`build_notifier_from_env` (function-scoped
+  `slack_sdk` import, `WebClient(timeout=5)`, internally fail-open — the `try/except`
+  wraps both `format_event` and the post).
+- Implemented **T2**: `tools/slack_io/format.py`'s pure `format_event()`, mrkdwn over
+  all six `EventKind`s (cost summed from `stage_history`, budget from
+  `event.budget_usd`, awaiting-issue link from `pending_issue` with a graceful
+  `None` degrade).
+- Pinned `slack_sdk==3.43.0`, regenerated `sbom.json`; `hatch run audit` clean.
+- New tests: `tests/core/test_notify.py`, `tests/tools/test_slack_io.py`,
+  `tests/tools/test_slack_io_format.py`, `tests/tools/test_slack_io_boundaries.py`
+  (mirrors `tests/trigger/test_boundaries.py` — no `keyring`, no direct file write,
+  no subprocess surface, `slack_sdk` stays function-scoped).
+- Full suite green (624 tests), lint clean, format-check clean, local `gitleaks`
+  scan clean. Landed as one commit (`5dd66c3`), pushed, PR #107 opened against
+  `main`, labeled `feature`/`area/tools`.
+- **No emission call sites yet** — `run_graph_loop` doesn't call the notifier.
+  Every existing test/call site is unchanged; the module is inert until T3.
 
-## Next — plan BL-2 (Architect/Opus)
-Read `docs/backlog.md`'s **BL-2** entry in full, including its `SCHEDULED` sub-note
-(added 2026-07-14) — it names three open questions the planning pass must weigh
-**before** drafting a `sprint_plan.md`:
-1. **BL-24's inbound trigger surface has never received a real webhook.** BL-2's
-   inbound-trigger candidate inherits that unverified foundation — decide whether
-   BL-2 depends on discharging BL-24 first, or can proceed independently of it.
-2. **Slack credential class.** A bot token is distinct from the keyring-only
-   Anthropic key and the env-var `LOOP_ENGINE_WEBHOOK_SECRET` (per the `trigger/`
-   precedent) — decide storage/threading before scoping the rest.
-3. **Architecture shape.** A new top-level orchestrator-level caller (sibling of
-   `trigger/`/`flows/`) vs. a new MCP server — decide against the module-boundary
-   conventions in `CLAUDE.md` before committing to file layout.
-
-No sprint directory exists yet — create `sprints/NN_bl2_slack/` (NN = next
-sequential number after 38) once the planning pass actually starts drafting.
-
-## Outstanding from before (not blocking BL-2)
-- **`02c48d0`** (the sprint-38 roadmap close-out) is committed on local `main` but
-  not yet pushed or PR'd — cut a branch and open a PR for it whenever asked.
-- **BL-32** (adversarial static-guard audit, filed PR #95) has no sprint plan yet —
-  it's BL-23's next pass, not a BL-2 blocker, and not urgent.
+## Next — post the architect-review on PR #107 (Opus/Architect)
+1. Fresh session → `/resume` (this file) → `/code-review` the diff on
+   `sprint/39-bl2-slack-notify` against `main`.
+2. Post via `gh pr review 107 --comment` headed
+   `**Opus/Architect HITL review (automated)**` with the fresh-session
+   attestation — **never `--approve`**.
+3. If findings come back, they route to a Coder/Sonnet fix pass, then a re-review
+   against the new head commit.
+4. Once `architect-review` is green and the owner merges #107, switch back to
+   Coder/Sonnet for **T3**: add `notifier`/`resuming: bool` to `run_graph_loop`
+   ([`graph_engine.py:110`](../src/loop_engine/core/graph_engine.py#L110)), the two
+   emit points (`started` gated on `not resuming` — **not** `start_index`, per E1;
+   the terminal event via an explicit `RunStatus`→`EventKind` dict; `crashed` on an
+   escaping exception carrying the pre-invoke primed state, then re-raise), each
+   wrapped in its own `try/except`; the two `cli.py` resume call sites pass
+   `resuming=True`. Then **T4** (docs/boundaries/threat-model/backlog + roadmap).
 
 ## Gotchas worth remembering
-- **Local `main` vs. `origin/main` after a squash merge:** this repo squash-merges
-  every PR, so a locally-committed change and its later squash-merged counterpart
-  are DIFFERENT commit objects with IDENTICAL content — `git merge --ff-only`
-  will fail with "diverging branches." Verify via `git diff origin/main main`
-  (expect empty), then `git reset --hard origin/main` to resync local `main`
-  safely (nothing is lost — the content already landed via the squash commit).
-- **PR title:** `wc -c` the byte count AND re-read the actual text before
-  `gh pr create/edit --title` — a stale copy-pasted `(#NN)` suffix from a prior
-  commit message slipped through once this cycle.
-- **A squash-merged branch is dead** — prune via `gh pr list --state merged` +
-  `git branch -D`, never bare `git branch --merged main` (invisible to squash merges).
-- **`.ai/state.json` is gitignored** — **this file is what travels.**
-- **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** A signing
-  Timeout = answer the host pinentry and retry the commit.
+- **`.ai/state.json` is git-ignored** — **this file is what travels.**
+- **PR title:** `wc -c` the byte count AND re-read the text before `gh pr create/edit`.
+- **A squash-merged branch is dead** — prune via `gh pr list --state merged` + `git branch -D`.
+- **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** Signing Timeout =
+  answer the host pinentry and retry.
 
 ## Pointers
-- [`docs/backlog.md`](../docs/backlog.md) — **BL-2** (this unit, with its `SCHEDULED`
-  sub-note), BL-24 (the dependency question), BL-32 (filed, no plan yet).
+- [PR #107](https://github.com/glunk-works/loop-engine/pull/107) — T1+T2, open,
+  awaiting `architect-review`.
+- [`sprints/39_bl2_slack_notify/sprint_plan.md`](../sprints/39_bl2_slack_notify/sprint_plan.md)
+  — the active plan (FD1–FD4 + T1–T4, grounded with file:line refs). T3/T4 remain.
+- [`docs/backlog.md`](../docs/backlog.md) — **BL-2** + its `SCHEDULED` note.
 - [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — NEXT ACTION line
-  points at BL-2 planning; sprint 38's full closing paragraph is the historical
-  record of BL-23 pass 1.
-- [`sprints/38_test_validity_audit/`](../sprints/38_test_validity_audit/) — archived
-  sprint's full record (`sprint_plan.md`, `mutation_baseline.md`, `audit_report.md`).
-- `.ai/archive/38_test_validity_audit-next-steps.md` — sprint 38's final live cursor,
-  preserved for manual history queries (git-ignored, local only).
+  still says "implement Sprint 39"; leave until T3/T4 land.
