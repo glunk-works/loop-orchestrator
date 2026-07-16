@@ -1,11 +1,18 @@
-"""Boundary posture for `tools/slack_io` (Sprint 39/BL-2 pass 1), mirroring
+"""Boundary posture for `tools/slack_io` (Sprint 39/BL-2 pass 1, extended
+Sprint 40/BL-2 pass 2 for the inbound transport), mirroring
 `tests/trigger/test_boundaries.py`: it is a `tools/*` module that imports no
 `keyring`, writes no files directly, and adds no subprocess surface — the
 five sanctioned subprocess surfaces (`tests/tools/test_subprocess_surfaces.py`)
 are unaffected. It also asserts the FD2/FD4 import-graph shape: the pure
 contract in `core/notify.py` never imports `slack_sdk`, and no module in the
-package imports `slack_sdk` at module scope (it must stay function-scoped
-inside `SlackNotifier.emit`).
+package imports `slack_sdk` at module scope (it must stay function-scoped,
+inside `SlackNotifier.emit` for the outbound path and inside
+`inbound.build_listener_from_env`/`SocketModeListener._handle` for the
+inbound path added in pass 2). `_slack_io_modules()` globs every `.py` file
+under the package directory, so `inbound.py` is covered by the existing
+assertions automatically — `test_boundary_suite_covers_inbound_module`
+below just pins that `inbound.py` is actually present in that enumeration,
+so a future rename/move can't silently drop it out of coverage.
 """
 
 import ast
@@ -131,3 +138,11 @@ def test_slack_io_package_never_imports_slack_sdk_at_module_scope() -> None:
             f"{path} imports slack_sdk at module scope -- it must be function-scoped "
             "inside SlackNotifier.emit so the no-op default never pulls it in"
         )
+
+
+def test_boundary_suite_covers_inbound_module() -> None:
+    assert (SLACK_IO_DIR / "inbound.py") in _slack_io_modules(), (
+        "inbound.py is missing from the slack_io boundary sweep -- the "
+        "keyring/write/subprocess/module-scope-import assertions above "
+        "would silently stop covering it"
+    )
