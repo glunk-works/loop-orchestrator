@@ -4,10 +4,12 @@ token reference — deterministic given a `LifecycleEvent`.
 
 from loop_engine.core.notify import EventKind, LifecycleEvent
 
-# Well under Slack's ~40k message limit — bounds a hostile/oversized
-# human_input (e.g. a webhook-sourced GitHub issue body) so it can never hit
-# `msg_too_long` and get silently swallowed by the notifier's fail-open path.
-_MAX_HUMAN_INPUT_CHARS = 500
+# Well under Slack's ~40k message limit — bounds any untrusted/unbounded text
+# reaching the message body (human_input, and an unhandled exception's str())
+# so it can never hit `msg_too_long` and get silently swallowed by the
+# notifier's fail-open path. Applied before escaping, since mrkdwn escaping
+# can expand a string up to ~5x (`&` -> `&amp;`).
+_MAX_UNTRUSTED_TEXT_CHARS = 500
 
 
 def _escape_mrkdwn(text: str) -> str:
@@ -43,7 +45,7 @@ def format_event(event: LifecycleEvent) -> str:
         lines = [f":rocket: Run `{run_id}` started."]
         human_input = event.state.artifacts.get("human_input")
         if human_input:
-            safe_input = _escape_mrkdwn(_truncate(human_input, _MAX_HUMAN_INPUT_CHARS))
+            safe_input = _escape_mrkdwn(_truncate(human_input, _MAX_UNTRUSTED_TEXT_CHARS))
             lines.append(f"Input: {safe_input}")
         if event.budget_usd is not None:
             lines.append(f"Budget: ${event.budget_usd:.2f}")
@@ -62,7 +64,8 @@ def format_event(event: LifecycleEvent) -> str:
         return f":raising_hand: Run `{run_id}` is awaiting human input.\n{_issue_line(event)}"
 
     if event.kind == EventKind.CRASHED:
-        error = _escape_mrkdwn(event.error or "unknown error")
+        raw_error = event.error or "unknown error"
+        error = _escape_mrkdwn(_truncate(raw_error, _MAX_UNTRUSTED_TEXT_CHARS))
         return f":boom: Run `{run_id}` crashed: {error}"
 
     raise ValueError(f"unhandled EventKind: {event.kind}")

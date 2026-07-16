@@ -113,6 +113,18 @@ def test_crashed_error_is_escaped_for_mrkdwn() -> None:
     assert "&lt;a href=x&amp;y&gt;boom&lt;/a&gt;" in text
 
 
+def test_crashed_error_is_truncated_before_escaping() -> None:
+    # An unhandled exception's str() is unbounded -- without truncation, mrkdwn
+    # escaping's ~5x expansion (`&` -> `&amp;`) could push it over Slack's
+    # msg_too_long threshold, letting the crash alert itself get silently
+    # swallowed by the notifier's fail-open path (the exact failure mode
+    # truncation exists to prevent).
+    event = LifecycleEvent(kind=EventKind.CRASHED, state=_state(), error="x" * 1000)
+    text = format_event(event)
+    assert "x" * 501 not in text
+    assert "(truncated)" in text
+
+
 def test_started_human_input_is_escaped_for_mrkdwn() -> None:
     state = _state(artifacts={"human_input": "<!channel> ship it & <a|link>"})
     event = LifecycleEvent(kind=EventKind.STARTED, state=state, budget_usd=1.0)

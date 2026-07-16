@@ -28,8 +28,9 @@ from loop_engine.core.graph_engine import run_graph_loop
 from loop_engine.core.notify import EventKind, LifecycleEvent
 from loop_engine.core.state import IssueRef, RunStatus, StageRecord
 from loop_engine.personas.base import BasePersona
+from loop_engine.tools.llm.client import ToolLoopExceededError
 from tests.core.conftest import absolutize_mutmut_source_paths
-from tests.core.test_engine import _initial_state, _stub_llm_client
+from tests.core.test_engine import QuestionAskingPersona, _initial_state, _stub_llm_client
 
 
 @pytest.fixture(autouse=True)
@@ -196,6 +197,90 @@ def test_run_graph_loop_crash_emits_crashed_with_pre_invoke_state_and_still_rera
     assert crashed_event.state.stage_history == []
     assert "InvalidStateTransitionError" in crashed_event.error
     assert "Traceback" not in crashed_event.error
+
+
+def test_run_graph_loop_crash_with_a_raising_notifier_still_reraises_the_original_exception() -> (
+    None
+):
+    # Combines the two fail-open halves that were previously only tested
+    # separately: a notifier that raises on EVERY emit (including the
+    # CRASHED-path one) must not mask or replace the engine's own exception.
+    class CorruptingPersona(BasePersona):
+        produces = ("x",)
+
+        def run(self, state, llm_client, findings=None):
+            record = StageRecord(
+                stage_name="corrupt", tokens_used=1, cost_usd=0.0, completed_at="t1"
+            )
+            state.stage_history.append(record)
+            state.stage_history[0].tokens_used = -5  # bypasses construction-time validation
+            return state
+
+    loop = Loop(stages=[Stage(persona=CorruptingPersona(), gate=ArtifactGate("x"))])
+
+    with pytest.raises(InvalidStateTransitionError):
+        run_graph_loop(
+            loop,
+            _initial_state("rg-crash-fo"),
+            _stub_llm_client(),
+            notifier=_FakeNotifier(raise_on_emit=True),
+        )
+
+
+def test_run_graph_loop_maps_each_terminal_status_to_its_event_kind() -> None:
+    # The COMPLETED case is covered by the emission-polarity test above; this
+    # closes the other three terminal statuses end-to-end through
+    # `_TERMINAL_EVENT_KINDS`, not just at the formatter layer.
+    class StuckPersona(BasePersona):
+        def run(self, state, llm_client, findings=None):
+            raise ToolLoopExceededError("did not converge")
+
+    failed_stage_notifier = _FakeNotifier()
+    loop = Loop(stages=[Stage(persona=StuckPersona(), gate=ArtifactGate("x"))])
+    final = run_graph_loop(
+        loop, _initial_state("rg-failed-stage"), _stub_llm_client(), notifier=failed_stage_notifier
+    )
+    assert final.status is RunStatus.FAILED_STAGE
+    assert [e.kind for e in failed_stage_notifier.events] == [
+        EventKind.STARTED,
+        EventKind.FAILED_STAGE,
+    ]
+
+    class NeverCalledPersona(BasePersona):
+        def run(self, state, llm_client, findings=None):
+            raise AssertionError("must not be invoked -- budget is already exhausted")
+
+    budget_notifier = _FakeNotifier()
+    loop = Loop(stages=[Stage(persona=NeverCalledPersona(), gate=ArtifactGate("x"))])
+    final = run_graph_loop(
+        loop,
+        _initial_state("rg-budget-exceeded"),
+        _stub_llm_client(cost_used=5.0, budget_usd=5.0),
+        notifier=budget_notifier,
+    )
+    assert final.status is RunStatus.BUDGET_EXCEEDED
+    assert [e.kind for e in budget_notifier.events] == [
+        EventKind.STARTED,
+        EventKind.BUDGET_EXCEEDED,
+    ]
+
+    def fake_filer(state, questions, snapshot_path):
+        return IssueRef(number=1, url="https://github.com/acme/widgets/issues/1")
+
+    awaiting_notifier = _FakeNotifier()
+    loop = Loop(stages=[Stage(persona=QuestionAskingPersona(), gate=ArtifactGate("doc"))])
+    final = run_graph_loop(
+        loop,
+        _initial_state("rg-awaiting-issue"),
+        _stub_llm_client(),
+        issue_filer=fake_filer,
+        notifier=awaiting_notifier,
+    )
+    assert final.status is RunStatus.AWAITING_ISSUE
+    assert [e.kind for e in awaiting_notifier.events] == [
+        EventKind.STARTED,
+        EventKind.AWAITING_ISSUE,
+    ]
 
 
 def test_run_graph_loop_fail_open_a_raising_notifier_never_changes_the_outcome() -> None:
