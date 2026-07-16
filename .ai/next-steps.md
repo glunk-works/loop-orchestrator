@@ -49,6 +49,8 @@ T1 is implemented, green, and critic-gate-clean on
 
 ## Gotchas worth remembering
 - **`.ai/state.json` is git-ignored** — **this file is what travels.**
+- **Not yet pushed:** the plan/cursor commit lives on local `sprint/40-bl2-slack-inbound` only —
+  push + open the docs PR (base `main`) when ready, or let the Sonnet session carry it.
 - **PR title:** `wc -c` the byte count AND re-read the text before `gh pr create/edit`.
 - **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** Signing Timeout = answer the host pinentry and retry.
 - **`/critic-gate` proposes, never auto-spawns** — it asked before running security-critic + architect this session; keep that pattern for T2-T5's PRs too (the plan flags critic-gate as applying "with force" through this sprint).
