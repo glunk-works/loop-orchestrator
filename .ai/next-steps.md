@@ -5,63 +5,57 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Sprint 39 — BL-2 Slack outbound notify (pass 1 of 3) — T4 implemented, PR #113
-open, critic-clean, awaiting merge.** T1+T2 merged (#107). T3 merged (#112). T4
-(docs) is on `sprint/39-bl2-slack-notify-t4`, pushed, tree clean at `a3a8074`.
-**Next session: confirm CI green on #113, ask the owner to merge (docs-only ⇒ no
-HITL review needed), then `/archive-sprint` — sprint 39 is COMPLETE once it lands.**
+**Sprint 40 — BL-2 pass 2 (Slack inbound trigger) — IMPLEMENTING.**
+The Opus/Architect planning pass is done and the plan is approved:
+[`sprints/40_bl2_slack_inbound/sprint_plan.md`](../sprints/40_bl2_slack_inbound/sprint_plan.md)
+(Goal, out-of-scope, **FD1–FD6**, security considerations, risks, **T1–T6**). Next session is
+**Coder/Sonnet** implementation. Switch model: `/handoff` is done → new session → `/model sonnet`
+→ `/resume`.
 
-## Just done (this session, Coder/Sonnet — T4 docs + critic-gate)
-- Cut `sprint/39-bl2-slack-notify-t4` from `main`; updated `docs/architecture_definition.md`
-  (§1 trust boundary + §4 secrets management — Slack `chat.postMessage` as a second,
-  third-party, fail-open, off-by-default egress; `LOOP_ENGINE_SLACK_BOT_TOKEN`/
-  `LOOP_ENGINE_SLACK_CHANNEL` as a new env-var credential class), `CLAUDE.md`
-  ("Enforced module boundaries" — added `tools/slack_io`), `.ai/context/modules.md`
-  (added `core/notify.py` + `tools/slack_io/` entries — not explicitly named in the
-  prior cursor but called for by the sprint plan's T4 acceptance criteria),
-  `docs/backlog.md` (`LANDED: pass 1 of 3` note under BL-2), `docs/migration_roadmap.md`
-  (flipped NEXT ACTION off "plan BL-2" to a Sprint 39 DONE entry + BL-2-passes-2–3
-  pointer). Opened [PR #113](https://github.com/glunk-works/loop-engine/pull/113)
-  (`eadbca2`, then `cea6136` filling in the PR URL).
-- Ran `/critic-gate docs-consistency` against the diff (user-confirmed critic choice —
-  right fit since this PR's whole job is cross-doc consistency). One real finding:
-  `CLAUDE.md`'s new `tools/slack_io` bullet had inverted subject/object ("`slack_sdk`
-  is the only module that imports it" — swapped subject/object; fact was right, wording
-  was garbled). Fixed and pushed (`a3a8074`). Two low-severity non-blocking observations
-  (not defects, no action taken): the architecture diagram's egress arrow doesn't show
-  Slack (defensible — off by default), and `README.md` doesn't mention the new Slack env
-  vars (an omission, not a false claim). Everything else the critic checked (event kinds,
-  env var names, fail-open behavior at both layers, the `resuming` gate, cross-doc
-  PR/task consistency) matched ground truth.
-- Tree is clean at `a3a8074`, fully pushed. No `src/` changes anywhere in T4.
+## Just done (this session, Opus)
+- **Planned BL-2 pass 2** end to end via five HITL gates; wrote + committed the sprint plan
+  on branch `sprint/40-bl2-slack-inbound` (docs-only, `architect-review`-exempt; not yet pushed).
+- **FD1** Socket Mode **supersedes** the GitHub webhook (`trigger/` parked in place, **not** deleted;
+  BL-24 superseded-in-practice). **FD2** trigger-surface-only (escalation round-trip = pass 3).
+  **FD3** channel-scoped authz **only** (residual risk accepted; user-allowlist = future tightening).
+  **FD4** app token = env var `LOOP_ENGINE_SLACK_APP_TOKEN`; daemon **fails closed** if any cred unset.
+  **FD5** `/agent-run` slash command, budget **required** (fail-closed). **FD6** module layout below.
+- No code yet; the only commit is the plan/cursor on `sprint/40-bl2-slack-inbound` (base `main`).
 
-## Next — get #113 merged, then archive
-1. `gh pr checks 113` — confirm all required checks green (docs-only ⇒
-   `architect-review` exempt, but `lint`/`format-check`/`test`/`secrets-scan`/
-   `dependency-audit`/`sbom`/`pr-title` still gate). No HITL review needed for this PR.
-2. Ask the owner to merge. Sync local `main`, prune `sprint/39-bl2-slack-notify-t4`.
-3. Run `/archive-sprint` — sprint 39 is COMPLETE (all of T1–T4 landed).
-4. After archiving, the live NEXT ACTION becomes **BL-2 passes 2–3** (inbound trigger
-   surface + escalation round-trip) — see `docs/backlog.md`'s BL-2 entry /
-   `docs/migration_roadmap.md`. Needs its own **Opus/Architect planning pass** before
-   any implementation.
+## Next — implement (Coder/Sonnet)
+1. Cut `sprint/40-bl2-slack-inbound` from `main`. Work under the **synced project env**
+   (`slack_sdk==3.43.0` must import — the planning env lacked it).
+2. **T1** `tools/slack_io/inbound.py` (Socket Mode transport, `slack_sdk` function-scoped,
+   fail-closed builder) — own PR. Then **T2+T3** (`slack_control/command.py` + `dispatch.py`),
+   **T4+T5** (`daemon.py` + `slack-listen` CLI + boundary tests), **T6** docs-only last.
+3. Each `src/`-touching PR ⇒ **fresh-session `architect-review`** (never `/model opus` mid-session:
+   `/handoff` → new session → `/resume` → `/code-review` → post the verbatim-header review).
+   `/critic-gate` applies hard here (security-critic + architect — untrusted-input → model-exec sink).
+
+## FD6 module layout (owner-reviewable at PR)
+- `tools/slack_io/inbound.py` — Socket Mode transport; keeps `slack_sdk` **single-importer** (function-scoped).
+- `slack_control/` — **new top-level caller** (sibling of `trigger/`/`flows/`), imports no `slack_sdk`:
+  `command.py` (pure parser → `SlackRunCommand`), `dispatch.py` (`SlackRunDispatcher`, mirrors
+  `InProcessDispatcher`, `_run_lock` for BL-8), `daemon.py` (channel guard + dispatch + ephemeral replies).
+- CLI `loop-engine slack-listen` (blocking daemon). No new subprocess surface; no `sbom`/`audit` churn.
+
+## Implementation traps (baked into the plan — don't relearn them)
+- `RunRequest` is **not** reusable (GitHub-shaped required fields) → separate `SlackRunCommand`.
+- Channel guard compares **IDs, not names** (resolve a `#name` → ID once at startup, else it silently drops all).
+- Socket Mode's **~3 s ack window** → ack promptly, run on a worker thread, **dedupe on `envelope_id`** (redelivery).
+- **Fail-CLOSED on start** (the deliberate inverse of pass 1's fail-open notify).
+- New `slack_control/` needs `tests/slack_control/test_boundaries.py` mirroring `tests/trigger/`;
+  `tests/tools/test_subprocess_surfaces.py` must stay at **five**.
 
 ## Gotchas worth remembering
 - **`.ai/state.json` is git-ignored** — **this file is what travels.**
+- **Not yet pushed:** the plan/cursor commit lives on local `sprint/40-bl2-slack-inbound` only —
+  push + open the docs PR (base `main`) when ready, or let the Sonnet session carry it.
 - **PR title:** `wc -c` the byte count AND re-read the text before `gh pr create/edit`.
-- **T4 is docs-only ⇒ no `architect-review` gate** (it doesn't touch `src/`).
-- **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** Signing Timeout =
-  answer the host pinentry and retry.
-- The three T3-review observations (in `docs/migration_roadmap.md`/prior cursor
-  history) were notes for a future BL-2 pass, not T4 — T4 changed no code.
+- **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** Signing Timeout = answer the host pinentry and retry.
 
 ## Pointers
-- [`sprints/39_bl2_slack_notify/sprint_plan.md`](../sprints/39_bl2_slack_notify/sprint_plan.md)
-  — the active plan (FD1–FD4 + T1–T4). All four tasks implemented; T4 = PR #113,
-  awaiting merge.
-- [PR #113](https://github.com/glunk-works/loop-engine/pull/113) — T4, docs-only,
-  critic-clean, awaiting CI confirmation + merge.
-- [`docs/backlog.md`](../docs/backlog.md) — **BL-2** (pass 1 landed, passes 2–3 open)
-  + **BL-33** (guard-hardening, #109 merged, no sprint plan yet).
-- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — NEXT ACTION line now
-  points at BL-2 passes 2–3.
+- [`sprints/40_bl2_slack_inbound/sprint_plan.md`](../sprints/40_bl2_slack_inbound/sprint_plan.md) — the approved plan.
+- [`docs/backlog.md`](../docs/backlog.md) — **BL-2** (pass 2 in progress, pass 3 open), **BL-24** (webhook, superseded-in-practice), **BL-33** (guard-hardening).
+- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — Status table + NEXT ACTION (→ pass 3 once this lands).
+- [`sprints/39_bl2_slack_notify/sprint_plan.md`](../sprints/39_bl2_slack_notify/sprint_plan.md) — pass 1's plan (FD1–FD4 + T1–T4), for reference.
