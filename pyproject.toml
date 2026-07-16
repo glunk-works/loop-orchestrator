@@ -39,7 +39,7 @@ dependencies = [
   # never yaml.load — so an in-repo config can never instantiate code.
   "PyYAML==6.0.3",
   # Trigger surface — GitHub webhook ASGI app; uvicorn/hosting deferred.
-  "fastapi==0.139.0",
+  "fastapi==0.139.1",
   # Outbound Slack notify (tools/slack_io, Sprint 39/BL-2 pass 1). Imported
   # function-scoped inside SlackNotifier only — the no-op default never pulls
   # it into the import graph.
