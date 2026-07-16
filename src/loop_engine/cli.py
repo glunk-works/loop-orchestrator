@@ -113,7 +113,11 @@ def run(
         llm_client = LLMClient(budget_usd=budget)
         with worktree_run(initial_state.run_id, reuse=True):
             final_state = run_graph_loop(
-                selected_loop, initial_state, llm_client, start_index=start_index
+                selected_loop,
+                initial_state,
+                llm_client,
+                start_index=start_index,
+                resuming=resuming,
             )
     else:
         human_input = input.read_text(encoding="utf-8") if input is not None else ""
@@ -262,6 +266,7 @@ def resume(
             llm_client,
             start_index=start_index,
             initial_findings=findings,
+            resuming=True,
         )
     _report_outcome(final_state)
 

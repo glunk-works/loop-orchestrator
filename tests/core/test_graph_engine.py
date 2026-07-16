@@ -18,13 +18,15 @@ duplicated scenarios collapsed back into `test_engine.py`.)
 """
 
 import json
+import sys
 
 import pytest
 
-from loop_engine.core.engine import Loop, Stage
-from loop_engine.core.gates import GateDecision, GateResult
+from loop_engine.core.engine import InvalidStateTransitionError, Loop, Stage
+from loop_engine.core.gates import ArtifactGate, GateDecision, GateResult
 from loop_engine.core.graph_engine import run_graph_loop
-from loop_engine.core.state import IssueRef, RunStatus
+from loop_engine.core.notify import EventKind, LifecycleEvent
+from loop_engine.core.state import IssueRef, RunStatus, StageRecord
 from loop_engine.personas.base import BasePersona
 from tests.core.conftest import absolutize_mutmut_source_paths
 from tests.core.test_engine import _initial_state, _stub_llm_client
@@ -126,3 +128,101 @@ def test_run_graph_loop_resets_stale_status_and_pending_issue_from_input_state()
     assert seen_status == [RunStatus.RUNNING]
     assert final.status is RunStatus.COMPLETED
     assert final.pending_issue is None
+
+
+class _FakeNotifier:
+    """Captures emitted events; can also simulate a buggy notifier that
+    raises on every call, for the fail-open regression."""
+
+    def __init__(self, raise_on_emit: bool = False) -> None:
+        self.events: list[LifecycleEvent] = []
+        self.raise_on_emit = raise_on_emit
+
+    def emit(self, event: LifecycleEvent) -> None:
+        if self.raise_on_emit:
+            raise RuntimeError("notifier boom")
+        self.events.append(event)
+
+
+def test_run_graph_loop_emits_started_and_terminal_event_for_a_fresh_run() -> None:
+    notifier = _FakeNotifier()
+    final = run_graph_loop(
+        _ralph_like_loop(), _initial_state("rg-notify"), _stub_llm_client(), notifier=notifier
+    )
+
+    assert [e.kind for e in notifier.events] == [EventKind.STARTED, EventKind.COMPLETED]
+    assert final.status is RunStatus.COMPLETED
+
+
+def test_run_graph_loop_resuming_true_emits_no_started_only_the_terminal_event() -> None:
+    # E1: resuming=True must suppress STARTED even though this loop re-enters
+    # at start_index's default of 0 -- exactly the "start_index == 0 on a
+    # resume" case the fixed `resuming` param (not start_index) guards against.
+    notifier = _FakeNotifier()
+    final = run_graph_loop(
+        _ralph_like_loop(),
+        _initial_state("rg-resume"),
+        _stub_llm_client(),
+        notifier=notifier,
+        resuming=True,
+    )
+
+    assert [e.kind for e in notifier.events] == [EventKind.COMPLETED]
+    assert final.status is RunStatus.COMPLETED
+
+
+def test_run_graph_loop_crash_emits_crashed_with_pre_invoke_state_and_still_reraises() -> None:
+    class CorruptingPersona(BasePersona):
+        produces = ("x",)
+
+        def run(self, state, llm_client, findings=None):
+            record = StageRecord(
+                stage_name="corrupt", tokens_used=1, cost_usd=0.0, completed_at="t1"
+            )
+            state.stage_history.append(record)
+            state.stage_history[0].tokens_used = -5  # bypasses construction-time validation
+            return state
+
+    loop = Loop(stages=[Stage(persona=CorruptingPersona(), gate=ArtifactGate("x"))])
+    notifier = _FakeNotifier()
+
+    with pytest.raises(InvalidStateTransitionError):
+        run_graph_loop(loop, _initial_state("rg-crash"), _stub_llm_client(), notifier=notifier)
+
+    assert [e.kind for e in notifier.events] == [EventKind.STARTED, EventKind.CRASHED]
+    crashed_event = notifier.events[1]
+    # The pre-invoke primed snapshot, not the in-flight corrupted object --
+    # stage_history is empty because the run never got past stage 0's node.
+    assert crashed_event.state.stage_history == []
+    assert "InvalidStateTransitionError" in crashed_event.error
+    assert "Traceback" not in crashed_event.error
+
+
+def test_run_graph_loop_fail_open_a_raising_notifier_never_changes_the_outcome() -> None:
+    baseline = run_graph_loop(
+        _ralph_like_loop(), _initial_state("rg-fo-baseline"), _stub_llm_client()
+    )
+
+    result = run_graph_loop(
+        _ralph_like_loop(),
+        _initial_state("rg-fo-raising"),
+        _stub_llm_client(),
+        notifier=_FakeNotifier(raise_on_emit=True),
+    )
+
+    assert result.status == baseline.status
+    assert result.artifacts == baseline.artifacts
+
+
+def test_run_graph_loop_unconfigured_default_notifier_is_inert(monkeypatch) -> None:
+    monkeypatch.delenv("LOOP_ENGINE_SLACK_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("LOOP_ENGINE_SLACK_CHANNEL", raising=False)
+    # Any attempt to import slack_sdk raises ImportError -- proves the
+    # notifier resolved by `notifier or build_notifier_from_env()` (with no
+    # env vars set) never pulls it in, without depending on whatever earlier
+    # tests happened to leave in sys.modules.
+    monkeypatch.setitem(sys.modules, "slack_sdk", None)
+
+    final = run_graph_loop(_ralph_like_loop(), _initial_state("rg-noop"), _stub_llm_client())
+
+    assert final.status is RunStatus.COMPLETED
