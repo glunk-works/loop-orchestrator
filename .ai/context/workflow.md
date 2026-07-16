@@ -112,6 +112,12 @@ so nothing ships with *no* critic having looked (the sprint 27 Task 8 failure be
 exactly what one standing critic pass defends against). The session orchestrates it: a
 subagent cannot spawn subagents, so the **session** spawns coder and critics as siblings.
 
+**The gate proposes; the human picks — it does not auto-fan-out.** Each critic is real spend
+(mostly Opus subagents) and `architect`/`security-critic` overlap, so `/critic-gate` works out
+which critics a diff *warrants* from the table below, presents that list with a reason each,
+and spawns **only** what the human confirms (or the critics named explicitly in the call). A
+light change may want one critic; a trust-boundary change may want the full set.
+
 > **`/critic-gate` is defense-in-depth that runs EARLIER — it is NOT the `architect-review`
 > CI gate and never satisfies it.** The fresh-session Architect review still happens after
 > `/handoff`, unchanged (next section). Two properties keep the pass honest: the critics are
@@ -119,9 +125,9 @@ subagent cannot spawn subagents, so the **session** spawns coder and critics as 
 > they are **read-only** (they *find*; the coder *fixes* — so a critic can't wave its own
 > problem through).
 
-Route by what the diff touches — don't spawn critics that have nothing to look at:
+Propose by what the diff touches — don't offer critics that have nothing to look at:
 
-| Diff touches… | spawn |
+| Diff touches… | propose |
 | --- | --- |
 | any `src/` | **`security-critic`** (taint / trust-boundary) **+ `architect`** (correctness pre-review) |
 | a guard surface (new subprocess/write/import/MCP verb) | **also `guard-adversary`** (`isolation: "worktree"`) |
@@ -228,10 +234,10 @@ gate still runs locally before the push.
 ## The skills
 
 - **`/critic-gate`** — run in the implementation session **after the green gate, before
-  `/handoff`**. Runs the read-only QA-critic pass over the diff (routing to the critic
-  subagents above), aggregates findings for the coder to fix, iterates to clean. Defense-in-
-  depth that runs *earlier* — **not** the `architect-review` CI gate, which still runs fresh
-  after handoff.
+  `/handoff`**. Proposes which read-only critics the diff warrants (the table above) and
+  spawns only what you confirm — no auto-fan-out — then aggregates findings for the coder to
+  fix and iterates to clean. Defense-in-depth that runs *earlier* — **not** the
+  `architect-review` CI gate, which still runs fresh after handoff.
 - **`/resume`** — run at the **start** of a session. Reads `.ai/state.json` +
   `.ai/next-steps.md` + the pointed sprint_plan + roadmap NEXT ACTION, states the exact
   pick-up point, and adopts the assigned persona/model. (Distinct from the
