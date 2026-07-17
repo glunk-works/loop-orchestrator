@@ -4,16 +4,18 @@ from pydantic import ValidationError
 from loop_engine.core.state import (
     CURRENT_SCHEMA_VERSION,
     RunStatus,
+    SlackRef,
     State,
     migrate_state_payload,
 )
 
 VALID_PAYLOAD = {
-    "schema_version": 4,
+    "schema_version": 5,
     "run_id": "run-001",
     "status": "running",
     "questions": [],
     "pending_issue": None,
+    "pending_slack": None,
     "counters": {},
     "stage_history": [
         {
@@ -172,6 +174,36 @@ def test_migrate_v3_payload_pops_populated_artifact_refs() -> None:
     # Every other field, including the inline artifacts bodies, carries forward.
     assert state.artifacts == {"spec": "docs/project_spec.json"}
     assert state.run_id == "run-001"
+
+
+def test_migrate_v4_payload_adds_pending_slack_default() -> None:
+    # Finding #8 — the off-by-one trap: v4 must be added to the (1, 2, 3)
+    # upgrade set, or a v4 snapshot falls through to the "Unsupported" branch.
+    v4_payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "pending_slack"}
+    v4_payload["schema_version"] = 4
+    migrated = migrate_state_payload(v4_payload)
+    assert migrated["schema_version"] == CURRENT_SCHEMA_VERSION
+
+    state = State.model_validate(migrated)
+    assert state.schema_version == CURRENT_SCHEMA_VERSION
+    assert state.pending_slack is None
+    assert state.artifacts == {"spec": "docs/project_spec.json"}
+
+
+def test_state_validates_with_pending_slack_set() -> None:
+    payload = {
+        **VALID_PAYLOAD,
+        "status": "awaiting_slack",
+        "pending_slack": {"channel_id": "C123", "message_ts": "1234.5678"},
+    }
+    state = State.model_validate(payload)
+    assert state.status is RunStatus.AWAITING_SLACK
+    assert state.pending_slack == SlackRef(channel_id="C123", message_ts="1234.5678")
+
+
+def test_slack_ref_rejects_unrecognized_field() -> None:
+    with pytest.raises(ValidationError):
+        SlackRef.model_validate({"channel_id": "C123", "message_ts": "1", "extra": "x"})
 
 
 def test_migrate_unknown_version_raises() -> None:
