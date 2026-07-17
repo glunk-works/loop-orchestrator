@@ -7,7 +7,13 @@ from loop_engine import runner as runner_module
 from loop_engine.core.engine import Loop, Stage
 from loop_engine.core.state import Question, RunStatus, State
 from loop_engine.loops.default.loop import DEFAULT_LOOP
-from loop_engine.runner import DEFAULT_BUDGET_USD, resume_run, run_in_tree, run_new
+from loop_engine.runner import (
+    DEFAULT_BUDGET_USD,
+    LoopHasNoFoldAnswersPersonaError,
+    resume_run,
+    run_in_tree,
+    run_new,
+)
 
 
 def _completed_state(**overrides) -> State:
@@ -230,8 +236,28 @@ def test_resume_run_raises_value_error_without_a_fold_answers_persona(monkeypatc
     bare_loop = Loop(stages=[Stage(persona=_NoFoldPersona(), gate=MagicMock())])
     monkeypatch.setitem(runner_module.NAMED_LOOPS, "bare", bare_loop)
 
-    with pytest.raises(ValueError, match="no answer-folding persona"):
+    with pytest.raises(LoopHasNoFoldAnswersPersonaError, match="no answer-folding persona"):
         resume_run(_paused_state(), {1: "eu-west-1"}, resolved_by="human:17", loop_name="bare")
+
+
+def test_resume_run_does_not_swallow_a_value_error_raised_deep_in_the_loop(monkeypatch) -> None:
+    # A ValueError from inside fold_answers/run_graph_loop (e.g. bad env-var
+    # config) is a different failure than "no fold_answers persona" and must
+    # propagate uncaught, not get relabeled as LoopHasNoFoldAnswersPersonaError.
+    monkeypatch.setattr(
+        type(DEFAULT_LOOP.stages[0].persona), "fold_answers", lambda self, state, llm: state
+    )
+
+    def raising_engine(loop, state, client, *, start_index, initial_findings=None, resuming=False):
+        raise ValueError("LOOP_ENGINE_RALPH_MAX_ITERS is not an integer")
+
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", raising_engine)
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
+
+    with pytest.raises(ValueError, match="RALPH_MAX_ITERS") as exc_info:
+        resume_run(_paused_state(), {1: "eu-west-1"}, resolved_by="human:17")
+
+    assert not isinstance(exc_info.value, LoopHasNoFoldAnswersPersonaError)
 
 
 def test_resume_run_default_budget_is_used_when_not_specified(monkeypatch) -> None:

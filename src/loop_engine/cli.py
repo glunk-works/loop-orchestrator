@@ -244,7 +244,7 @@ def resume(
             budget_usd=budget,
             loop_name=loop,
         )
-    except ValueError as exc:
+    except runner.LoopHasNoFoldAnswersPersonaError as exc:
         raise typer.BadParameter(str(exc)) from exc
     _report_outcome(final_state)
 

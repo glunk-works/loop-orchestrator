@@ -29,6 +29,14 @@ NAMED_LOOPS: dict[str, Loop] = {"default": DEFAULT_LOOP}
 DEFAULT_BUDGET_USD = 5.00
 
 
+class LoopHasNoFoldAnswersPersonaError(ValueError):
+    """`resume_run` can't resume: the named loop's stage-0 persona exposes no
+    `fold_answers`. A distinct type (not a bare `ValueError`) so callers can
+    catch exactly this signal without also swallowing a `ValueError` raised
+    from deep inside the resumed loop itself (e.g. bad env-var config read at
+    persona-build time) -- that must propagate uncaught, same as pre-refactor."""
+
+
 def _resolve_loop(loop_name: str) -> Loop:
     """The named loop, rebuilt for "default" so the loop is constructed fresh
     per run; other names come from NAMED_LOOPS."""
@@ -76,7 +84,7 @@ def resume_run(
     selected_loop = _resolve_loop(loop_name)
     pm_persona = selected_loop.stages[0].persona
     if not hasattr(pm_persona, "fold_answers"):
-        raise ValueError(
+        raise LoopHasNoFoldAnswersPersonaError(
             f"Loop {loop_name!r} has no answer-folding persona at stage 0; cannot resume."
         )
 
