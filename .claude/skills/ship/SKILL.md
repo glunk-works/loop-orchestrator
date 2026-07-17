@@ -59,7 +59,7 @@ approval (`pr-gated-commits`).
    namespaced (`loop-engine/*`).
 
 7. **If the diff touches `src/`, flag the review gate — do not satisfy it here.** The
-   `architect-review` check stays red until a **fresh-session** Opus/Architect HITL review
+   `architect-review` check stays red until a **fresh-session** Opus Architect Review
    is posted against the PR's current head. `/ship` does **not** post that review (switching
    model mid-session is not a review session). Tell the user the PR needs the
    `/handoff` → new session → `/resume` → `/code-review` → post sequence.

@@ -12,7 +12,7 @@ without re-reading the whole repo. This is the counterpart to `/handoff`.
 
 1. **Read the cursor** (in this order, stop reading once you have enough):
    - `.ai/state.json` — the machine cursor (`current_phase`, `current_sprint_id`, `sprint_status`, `assigned_model`, `assigned_persona`, `last_commit`, `next_action`, `pointers`). If it is missing, fall back to `.ai/next-steps.md` alone.
-   - `.ai/next-steps.md` — the human ledger: what was just done, what's next, which model to use, HITL-gate status.
+   - `.ai/next-steps.md` — the human ledger: what was just done, what's next, which model to use, HITL Gate status.
    - The `pointers.sprint_plan` file (the active `sprints/NN_*/sprint_plan.md`) — the task list for the current sprint.
    - `docs/migration_roadmap.md` — read only the **Status table** + the **NEXT ACTION** line, not the whole file, unless the next action needs the decisions log.
 
@@ -42,15 +42,16 @@ without re-reading the whole repo. This is the counterpart to `/handoff`.
 
 5. **Adopt the assigned persona/model.** If `assigned_model` does not match the model you are running as, say so explicitly and recommend the user `/model` switch before continuing (Architect=Opus for planning/review, Coder=Sonnet for implementation — see `.ai/context/workflow.md`).
 
-6. **State the pick-up point** in 3–6 lines: current phase/sprint, sprint_status, the single next action, any open HITL gate, the ruleset check result, and the branch-prune result. Then wait for the user (do not silently start large work — especially if a HITL gate is open).
+6. **State the pick-up point** in 3–6 lines: current phase/sprint, sprint_status, the single next action, any open HITL Gate, the ruleset check result, and the branch-prune result. Then wait for the user (do not silently start large work — especially if a HITL Gate is open).
 
-   > **If the next action is posting the Architect HITL review:** the review body must
+   > **If the next action is posting the Architect Review:** the review body must
    > **open with the verbatim two-line header + attestation block** from
    > `.ai/context/workflow.md` (`**Opus/Architect HITL review (automated)**` then
    > `*Fresh-session review: this session did not author the diff.*`). The
    > `architect-review` check matches both lines by literal `contains()` — **paste them,
    > do not paraphrase**; a reworded attestation ("Fresh-session attestation: …") fails
-   > the gate ~4s after posting even though it reads identically.
+   > the gate ~4s after posting even though it reads identically. That header still says
+   > "HITL review" on purpose — it is a frozen wire string, **not** an escaped rename.
 
 ## Load-on-demand
 Only read `.ai/context/modules.md` / `conventions.md` if the next action actually needs

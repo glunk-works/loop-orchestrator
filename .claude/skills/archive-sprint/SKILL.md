@@ -1,6 +1,6 @@
 ---
 name: archive-sprint
-description: Retire a COMPLETED, HITL-approved, committed sprint — snapshot its .ai/next-steps.md into .ai/archive/, advance .ai/state.json to the next sprint, and seed a fresh next-steps.md. Run ONLY on sprint completion; /handoff and /resume never archive.
+description: Retire a COMPLETED sprint that has passed its HITL Gate and is committed — snapshot its .ai/next-steps.md into .ai/archive/, advance .ai/state.json to the next sprint, and seed a fresh next-steps.md. Run ONLY on sprint completion; /handoff and /resume never archive.
 ---
 
 # /archive-sprint — retire a completed sprint and bootstrap the next
@@ -11,7 +11,7 @@ command that archives — do not invoke it for ordinary session switches.
 
 ## Preconditions (verify ALL before doing anything)
 
-1. The sprint's HITL gate is **approved** by the user (ask if unclear — never assume).
+1. The sprint's HITL Gate is **passed** — the user approved it (ask if unclear — never assume).
 2. The work is **committed** (`git status --short` clean, or only unrelated changes). If dirty, stop and tell the user to commit first.
 3. `docs/migration_roadmap.md` reflects the sprint as done (status row + commit hash recorded). If not, do that first (or flag it).
 

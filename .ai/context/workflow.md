@@ -8,7 +8,7 @@ inheriting a bloated context window.
 ## The two state layers (do not conflate)
 
 - **`.ai/`** — *this* dev-workflow's state (how Claude Code sessions hand off).
-  - `.ai/next-steps.md` (git-tracked) — the human-readable cursor: current phase/sprint, status, next action, which model to use, HITL-gate state. A **thin pointer** into the roadmap + the active sprint file; not a second copy of them.
+  - `.ai/next-steps.md` (git-tracked) — the human-readable cursor: current phase/sprint, status, next action, which model to use, HITL Gate state. A **thin pointer** into the roadmap + the active sprint file; not a second copy of them.
   - `.ai/state.json` (git-ignored) — the machine cursor (`current_sprint_id`, `sprint_status`, `assigned_model`, `last_commit`, `next_action`, `pointers`).
   - `.ai/context/` (git-tracked) — heavy reference loaded on demand (`modules.md`, `conventions.md`, this file).
   - `.ai/archive/` (git-ignored) — retired sprint snapshots.
@@ -19,7 +19,7 @@ duplicates it, only points at the current cursor within it.
 
 ## Model routing
 
-- **Architect = Opus.** Decide *what* to build or *whether* a diff is correct: architecture, design, sprint/phase planning (one question at a time, HITL gates), HITL review of a coding diff, boundary calls, non-trivial debugging, roadmap/memory updates.
+- **Architect = Opus.** Decide *what* to build or *whether* a diff is correct: architecture, design, sprint/phase planning (one question at a time, HITL Gates), Architect Review of a coding diff, boundary calls, non-trivial debugging, roadmap/memory updates.
 - **Coder = Sonnet.** Execute an already-defined spec: implement a sprint task, write/adjust tests, mechanical refactors, run the green gate (`hatch run lint/format/test/audit/sbom`), fix lint.
 
 Phase 1 (now) is **manual, persona-driven** routing — you or the orchestrator pick the
@@ -39,7 +39,7 @@ SONNET (code)  /resume -> branch sprint/NN-slug -> implement + tests -> green
    v   *** NEW SESSION (context empty), then /model opus ***                  |
    |   /model alone does NOT clear context — a reviewer holding the authoring |
    |   context proofreads its own reasoning instead of re-deriving it.        |
-OPUS (review)  /resume -> /code-review the diff -> HITL gate -> update roadmap
+OPUS (review)  /resume -> /code-review the diff -> HITL Gate -> update roadmap
    |           -> open PR (base: main) -> STOP                                |
    |                                                                          |
    v                                                                          |
@@ -153,7 +153,16 @@ All live in `.claude/agents/`. A definition loads at session start; name it here
 - **`docs-consistency`** (Opus, read-only) — cross-check load-bearing prose against ground
   truth; run before a roadmap-heavy PR or at archive time.
 
-### The Architect's HITL review is a posted GitHub review, not just prose
+### The Architect Review is a posted GitHub review, not just prose
+
+> **Vocabulary (two distinct checkpoints — do not use them interchangeably):**
+> - **Architect Review** — the fresh-session Opus review of a coding diff, posted onto the PR.
+>   Enforced by the `architect-review` CI check. *Claude does this one.*
+> - **HITL Gate** — the human's approval. In practice: **the merge**. *Only the owner does this one.*
+>
+> An Architect Review going green does **not** pass the HITL Gate; it only unblocks it. The
+> older term "HITL review" meant the first of these and is retired — but note it survives,
+> deliberately and permanently, inside the frozen header string below.
 
 **It is a CI gate** (`.github/workflows/hitl-review.yml`): any PR touching `src/` fails
 the `architect-review` check until a review carrying the header + attestation below is
@@ -181,7 +190,7 @@ SONNET (code)   implement -> green gate -> /critic-gate -> push -> open PR -> /h
                                    ↓
                         *** NEW SESSION. Context empty. ***
                                    ↓
-OPUS (review)   /resume -> /code-review the diff -> post review -> HITL gate
+OPUS (review)   /resume -> /code-review the diff -> post review -> HITL Gate
 ```
 
 `/resume` rehydrates from `.ai/` — the externalized cursor — **not** from a memory of having
@@ -195,6 +204,13 @@ gate now requires the reviewer to attest. **The review body must OPEN with these
 lines, verbatim — the check matches BOTH by literal `contains()` (`hitl-review.yml`
 `HEADER` + `ATTESTATION`), so a paraphrase that reads identically to a human still fails
 the gate:**
+
+> ⚠️ **The header says "HITL review" and that is deliberate — it is a frozen wire string, not
+> prose.** It predates the Architect Review / HITL Gate vocabulary above and was **knowingly
+> left unrenamed**: it is matched byte-for-byte by `hitl-review.yml` and pinned by
+> `tests/test_ci_config.py`. Do **not** "correct" it to say "Architect Review". Renaming it is a
+> deliberate, atomic change to the workflow + the test + every skill that recites it, never a
+> docs tidy-up.
 
 ```
 **Opus/Architect HITL review (automated)**
@@ -255,6 +271,6 @@ gate still runs locally before the push.
 - **`/handoff`** — run **before** switching model/session. Serializes the current cursor
   to `.ai/state.json`, regenerates `.ai/next-steps.md` (what was done, what's next, which
   model next), and reminds you to commit if the tree is dirty. Does **not** archive.
-- **`/archive-sprint`** — run **only** when a sprint is HITL-approved **and** committed.
+- **`/archive-sprint`** — run **only** when a sprint has passed its HITL Gate **and** is committed.
   Moves its `next-steps.md` snapshot into `.ai/archive/`, advances `.ai/state.json` to
   the next sprint, and seeds a fresh `.ai/next-steps.md`.

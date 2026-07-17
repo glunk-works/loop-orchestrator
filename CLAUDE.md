@@ -27,11 +27,11 @@ skills — **`/resume`** (rehydrate from `.ai/` at the start of a session), **`/
 (serialize state before switching model/session), **`/critic-gate`** (the read-only QA-critic
 pass over a coding diff, run after the green gate and before `/handoff` — defense-in-depth,
 **not** the `architect-review` CI gate), and **`/archive-sprint`** (retire a completed,
-HITL-approved sprint). See `.ai/context/workflow.md` for the protocol and the **agent
+HITL Gate-approved sprint). See `.ai/context/workflow.md` for the protocol and the **agent
 catalog** (the `coder` / `architect` / `security-critic` / `guard-adversary` /
 `mutation-triage` / `live-verify` / `docs-consistency` subagents and their trigger points).
 
-- **Architect (Opus).** Architecture, design, sprint/phase **planning** (planning pass, one question at a time, HITL gates), **HITL review** of a coding session's diff, module-boundary decisions, non-trivial debugging, and roadmap/memory updates. This is the default model for planning and review sessions.
+- **Architect (Opus).** Architecture, design, sprint/phase **planning** (planning pass, one question at a time, HITL Gates), **Architect Review** of a coding session's diff, module-boundary decisions, non-trivial debugging, and roadmap/memory updates. This is the default model for planning and review sessions.
 - **Coder (Sonnet).** Implementing an already-**defined** sprint task, writing/adjusting tests, mechanical refactors, running the green gate, fixing lint. Sonnet runs the implementation sessions (or is dispatched as the `coder` subagent for a small in-session task).
 
 Rule of thumb: if the task requires deciding *what* to build or *whether* a diff is
@@ -40,16 +40,18 @@ Switch at sprint boundaries via `/handoff` → fresh session → `/resume`.
 
 **Every sprint lands via a pull request — a merged PR is the human approval.** Work on a
 `sprint/NN-slug` branch cut from `main`; commit and push freely there, then open a PR whose
-**base is `main`**. Post the Opus HITL review on it with `gh pr review --comment` (**never
+**base is `main`**. Post the Opus Architect Review on it with `gh pr review --comment` (**never
 `--approve`** — the human's merge is the approval, and `gh` authenticates as the PR author
 anyway). **Never merge, and never force-push a pushed branch.** Full protocol in
 `.ai/context/workflow.md` (including a historical note on the one-time `feat/mcp-langgraph-migration`
 merge commit that landed the migration on `main` in sprint 35).
 
-> **The Opus review is a CI gate, not a courtesy — and it runs in a FRESH session.**
+> **The Architect Review is a CI gate, not a courtesy — and it runs in a FRESH session.**
 > Any PR touching `src/` fails the `architect-review` check until a review headed
 > `**Opus/Architect HITL review (automated)**`, carrying the fresh-session attestation, is
-> posted against its **current head commit** (`.github/workflows/hitl-review.yml`). That check
+> posted against its **current head commit** (`.github/workflows/hitl-review.yml`). That header
+> is **frozen protocol** — it predates the Architect Review / HITL Gate naming and is matched by
+> literal `contains()`, so paste it verbatim and never "fix" it to match this vocabulary. That check
 > is **enforced**: the `protected-integration-branches` ruleset makes it a required check on
 > `main` and `feat/**`, so an unreviewed `src/` PR cannot be merged (see **BL-11** — until
 > sprint 33 the repo had *no* protection at all and every check here was advisory).
