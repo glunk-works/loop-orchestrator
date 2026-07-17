@@ -5,69 +5,65 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Sprint 40 — BL-2 pass 2 (Slack inbound trigger) — T1-T5 done; only T6 remains.**
-T4+T5 are on an open PR awaiting HITL review. **Do NOT `/archive-sprint` yet** —
-archive only after **T6** merges (the whole sprint).
+**Sprint 40 — BL-2 pass 2 (Slack inbound trigger) — T1–T6 all done.**
+T6 is on **[PR #120](https://github.com/glunk-works/loop-engine/pull/120)** (docs-only,
+`architect-review`-exempt). **`/archive-sprint` once #120 merges** — that closes the sprint.
 
-## Just done (Coder/Sonnet session)
-- Rehydrated via `/resume`: cut `sprint/40-bl2-slack-daemon-cli` fresh off updated `main`
-  (`b43c326`); no stale branches to prune; ruleset healthy (4 rule types, 8 required checks).
-- Implemented **T4** (`slack_control/daemon.py` — `SlackDaemon` wiring the T1 listener to
-  T2/T3 parse+dispatch under the FD3 channel-ID guard, `build_daemon_from_env()` fail-closed
-  on any of the three env vars, ephemeral replies) and **T5** (`loop-engine slack-listen` CLI
-  subcommand + `tests/slack_control/test_boundaries.py`).
-- Added two small supporting pieces inside `tools/slack_io` (kept behind its existing
-  boundary, not named individually in the sprint plan but load-bearing for FD3/T4):
-  `resolve_channel_id` (name/`#name`/ID → ID resolution, paginated `conversations.list`) and
-  `send_ephemeral_reply` + `format_command_accepted`/`format_command_rejected` (fail-open
-  ephemeral-reply transport + mrkdwn-escaped/truncated formatting).
-- Green gate: lint clean, format clean, full suite 706 passed, five subprocess surfaces
-  intact, `slack_control/` confirmed keyring- and `slack_sdk`-free.
-- Committed (`c26c610`), pushed, opened **[PR #119](https://github.com/glunk-works/loop-engine/pull/119)**
-  (base `main`, title ≤72 bytes checked). Folded in the prior session's uncommitted
-  `.ai/next-steps.md` regeneration into this commit.
-- Ran **`/critic-gate`**: proposed `security-critic` + `architect` (both indicated —
-  untrusted Slack input → model-exec + spend sink, matching the T2/T3 precedent), human
-  confirmed both, spawned in parallel. `security-critic`: **zero security findings** (channel
-  guard, fail-closed ordering, mrkdwn escaping, token non-logging, async bridge all sound);
-  flagged one non-security robustness gap (`resolve_channel_id` could raise `slack_sdk`'s
-  `SlackApiError` instead of `RuntimeError`, bypassing the CLI's fail-closed catch).
-  `architect`: 3 low-severity findings, no blockers — met all Task 4/5 acceptance criteria.
-  Fixed 2 (the `SlackApiError`-wrapping gap, and `_handle_request` no longer sends a
-  misleading "accepted" reply when a command wasn't actually dispatched — covers both the
-  `_loop is None` path and a `run_coroutine_threadsafe` failure during shutdown teardown,
-  with the orphaned coroutine explicitly `.close()`d). Left one as an accepted judgment call
-  (a redelivered Socket Mode envelope can still produce a duplicate "accepted" reply even
-  though the dispatcher correctly dedupes the run — UX-only; fixing it would mean changing
-  `dispatch.py`'s already-merged T3 return contract). Re-ran the green gate after fixes: 709
-  passed, lint/format clean. Committed (`da5a2d2`), pushed to the same PR.
+## Just done (Architect/Opus session)
+- Posted the fresh-session **Architect HITL review on PR #119** (T4+T5) — LGTM, no changes
+  requested, `--comment` only. **#119 merged** (`54c2a65`).
+- **Found and cleared a stale-red CI trap on #119.** All eight checks passed, yet the PR stayed
+  `BLOCKED` — *not* the usual GitHub lag. `hitl-review.yml` fires on **both** `pull_request` and
+  `pull_request_review`, so every `src/` PR gets **two `architect-review` check-runs on the same
+  SHA**: the first fails correctly (no review exists yet), the second passes once the review lands.
+  `statusCheckRollup` aggregated to **FAILURE** and did **not** self-supersede. Fixed with
+  `gh run rerun` on the **old** run (truthful — the review genuinely exists at that SHA) →
+  rollup SUCCESS → CLEAN. **This is structural and will recur on every `src/` PR** — flagged to
+  the owner as likely `hitl-review.yml` backlog material; **not filed** (owner's call).
+  - Discriminator worth keeping: `BLOCKED` + rollup **SUCCESS** = lag, wait. `BLOCKED` + rollup
+    **FAILURE** = stale red, `gh run rerun` the old run.
+- Implemented **T6** (docs close-out) and opened **PR #120**: README operator setup (app token,
+  Socket Mode, `/agent-run` registration, Infisical provenance, `slack-listen`, fail-closed,
+  required-budget grammar); `CLAUDE.md` + `modules.md` boundary updates (`slack_control/` as a new
+  orchestrator-level caller; `tools/slack_io` now bidirectional, still sole `slack_sdk` importer);
+  the inbound-trigger **threat model**; `docs/backlog.md` BL-2 pass 2 LANDED + the BL-24 supersede
+  note; roadmap Sprint 40 row + NEXT ACTION → pass 3.
+- Green gate: lint clean, format clean, full suite **709 passed**.
 
-## Next — post the architect-review (Opus)
-1. **New session** → `/model opus` → `/resume` → `/code-review` → post the fresh-session
-   Architect HITL review on PR #119 (`gh pr review --comment`, verbatim two-line header +
-   attestation block — **never `--approve`**). Cite the critic-gate pass (zero security
-   findings, two low-severity fixes landed, one accepted-with-reason) as evidence of the
-   defense-in-depth pass. Review focus: the FD3 channel-ID guard (`resolve_channel_id`'s
-   name-vs-ID regex + pagination + the new API-error wrapping), FD4 fail-closed ordering in
-   `build_daemon_from_env` (all three env vars checked before any socket/API call), and the
-   sync→async bridge in `daemon.py`'s `_handle_request`.
-2. After the owner merges #119: **T6** (docs — operator setup, `CLAUDE.md` boundary update,
-   threat-model note, `docs/backlog.md`/roadmap update; `architect-review`-exempt) is the
-   last sprint task. **Archive after T6.**
+## Next
+1. **`/archive-sprint` after #120 merges.** Sprint 40 is then complete (BL-2 pass 2 shipped).
+2. **Then: plan BL-2 pass 3** (escalation round-trip — route a paused run's questions to Slack and
+   fold the reply back). Last BL-2 pass; both notify (pass 1) and command (pass 2) are live to
+   build on. Planning = **Opus**.
+
+## Open decisions left for the owner (do not silently resolve)
+- **BL-24 — retire or verify.** Slack superseded `trigger/` as the live inbound path, but shares
+  **no code** with it, so `trigger/`'s HMAC path stays unverified. The risk shifted from
+  "unverified auth on a live surface" to "**dead code carrying an inbound credential**"
+  (`LOOP_ENGINE_WEBHOOK_SECRET`). Decide: retire `trigger/` + the secret and close §6 as moot, or
+  keep it and pay for the verification. Recorded in the BL-24 supersede note; **still open**.
+- **`hitl-review.yml`'s stale-red check-run** (above) — worth filing?
+
+## Accepted-with-reason on #119 (don't re-litigate without cause)
+- A redelivered Socket Mode envelope can still produce a **duplicate "accepted" ephemeral reply**
+  even though the dispatcher correctly dedupes the run. UX-only; fixing it means changing
+  `dispatch.py`'s already-merged T3 return contract. Both the critic-gate and the HITL review
+  concurred with leaving it.
+- `dispatch.py`'s dedupe is **active-only** ("no concurrent double-run," not exactly-once) —
+  effectively unreachable here, since real runs vastly exceed Slack's ~3s redelivery window.
 
 ## Gotchas worth remembering
 - **`.ai/state.json` is git-ignored** — **this file is what travels.**
-- **Squash trap:** `sprint/40-bl2-slack-command-dispatch` (T2+T3, PR #117) is dead. The live
-  branch is now `sprint/40-bl2-slack-daemon-cli` (PR #119) — once it merges it too goes dead;
-  cut T6's branch fresh off updated `main`.
+- **Squash trap:** `sprint/40-bl2-slack-daemon-cli` (#119) is dead and pruned. The live branch is
+  `sprint/40-bl2-slack-docs` (#120) — once it merges it too goes dead; cut the next sprint's
+  branch fresh off updated `main`.
 - **PR title:** `wc -c` the byte count AND re-read the text before `gh pr create/edit`.
 - **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** Signing Timeout = answer
   the host pinentry and retry.
-- **`/critic-gate` proposes, never auto-spawns** — this session confirmed `security-critic` +
-  `architect` before either ran; keep that pattern going forward.
+- **`/critic-gate` proposes, never auto-spawns** — confirm the subagents before spawning.
 
 ## Pointers
-- [PR #119](https://github.com/glunk-works/loop-engine/pull/119) — T4+T5, awaiting `architect-review`.
-- [`sprints/40_bl2_slack_inbound/sprint_plan.md`](../sprints/40_bl2_slack_inbound/sprint_plan.md) — the approved plan, Task 6 header for what's left.
-- [`docs/backlog.md`](../docs/backlog.md) — **BL-2** (pass 2 nearly done, pass 3 open), **BL-24** (webhook, superseded-in-practice), **BL-33** (guard-hardening), **BL-34** (CI `test` docs-only fail-safe defeated by `bash -e`).
-- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — Status table + NEXT ACTION (→ pass 3 once this lands).
+- [PR #120](https://github.com/glunk-works/loop-engine/pull/120) — T6 docs close-out, awaiting merge.
+- [`sprints/40_bl2_slack_inbound/sprint_plan.md`](../sprints/40_bl2_slack_inbound/sprint_plan.md) — the approved plan (all tasks done).
+- [`docs/backlog.md`](../docs/backlog.md) — **BL-2** (pass 3 open), **BL-24** (retire-or-verify decision), **BL-33** (guard-hardening), **BL-34** (CI `test` docs-only fail-safe defeated by `bash -e`).
+- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — Status table + NEXT ACTION (→ BL-2 pass 3).

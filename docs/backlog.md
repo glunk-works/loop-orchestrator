@@ -103,6 +103,39 @@ server.
 > Mode's connection posture against the module-boundary rules) still apply to whichever surface is
 > planned next.
 
+> ### LANDED: pass 2 of 3 — inbound trigger (sprint 40, 2026-07-17)
+> The Slack **inbound trigger** shipped: `loop-engine slack-listen` runs a Socket Mode daemon that
+> turns `/agent-run --budget <n> <requirements>` in `LOOP_ENGINE_SLACK_CHANNEL` into a real run.
+> Landed across T1 (listener), T2+T3 (parser + dispatcher, #117), T4+T5 (daemon + CLI, #119), T6
+> (this docs pass).
+>
+> **The three planning questions above are now answered — record, not repeat:**
+> 1. **Supersede, not unify (FD1).** Slack **supersedes** `trigger/` as the live inbound path;
+>    `trigger/` is **parked**, deliberately not refactored into a shared abstraction, and
+>    `slack_control/` shares **no code** with it. We did *not* land "two inbound paths, neither run
+>    live" — we landed one live path beside one parked one. See the BL-24 note below.
+> 2. **Socket Mode dissolved the hosting blocker, as hoped.** No tunnel, no public address, no bound
+>    port — the daemon dials **out**. The connection-posture question (#2's "unverified") **checked
+>    out**: the long-lived WebSocket fits the existing rules without relaxing them —
+>    `slack_control/` adds **no subprocess surface** (the five sanctioned surfaces are unchanged),
+>    writes no files, and imports neither `keyring` nor `slack_sdk`; `tools/slack_io` remains the
+>    sole `slack_sdk` importer, function-scoped in both directions.
+> 3. **Third credential class confirmed, and it transferred.** `LOOP_ENGINE_SLACK_APP_TOKEN`
+>    (`xapp-…`, `connections:write`) joins the pass-1 vars as **env vars, not keyring** (FD3) —
+>    despite #3's doubt that the `trigger/` precedent would transfer to a token that opens an
+>    *outbound* connection, it did: the discriminator is "not the LLM API call," not the direction.
+>
+> **Postures worth not re-deriving:** inbound **fails closed** (`build_listener_from_env` /
+> `build_daemon_from_env` raise before any socket opens) — the deliberate **inverse** of pass 1's
+> inert-by-default notifier; the **FD3 channel guard compares resolved IDs, not names**; `--budget`
+> is **required** (fail-closed on the money cap, never `DEFAULT_BUDGET_USD`); dedupe is on
+> `envelope_id` (FD6). **Accepted residual risk: channel membership IS the authorization model** —
+> anyone who can post in the channel can spend money and run the Coder (threat model, §1).
+>
+> **Pass 3 — the escalation round-trip — remains open** (route a paused run's questions to Slack and
+> fold the reply back, as an alternative to the GitHub-issue round-trip). It is the last BL-2 pass;
+> the notify (pass 1) and command (pass 2) directions are both live to build on.
+
 ### BL-3 — Review the prompt-caching implementation (correctness + improvement)
 *(added 2026-07-10, from repo owner; **absorbed `DEFERRED_VERIFICATION.md` §1** in sprint 35 Task 6,
 2026-07-14, agreed with the repo owner)*
@@ -1281,6 +1314,31 @@ opportunistically rather than standing the whole thing up twice.
 
 **Notes / where to look:** `sprints/DEFERRED_VERIFICATION.md` §6 (the full protocol),
 `src/loop_engine/trigger/` (`app.py`, `dispatch.py`), `tests/trigger/`.
+
+> ### SUPERSEDED IN PRACTICE — not deleted (sprint 40, 2026-07-17, BL-2 pass 2)
+> **Slack is now the live inbound path.** `slack_control/`'s Socket Mode daemon
+> (`loop-engine slack-listen`) does what §6 was owed for — a real inbound trigger, authenticated,
+> reaching a real `runner.run_new` — **without a tunnel or a routable address**, because the daemon
+> dials *out*. That is exactly the dissolution BL-2's planning pass predicted, and it removes the
+> "sequence it with anything that gives the project a routable host" dependency above: **that host
+> is no longer coming, because nothing needs it.**
+>
+> **What this does and does not change:**
+> - **`trigger/` is parked, not deleted, and §6 is not discharged.** FD1 chose *supersede, not
+>   unify*: `slack_control/` shares no code with `trigger/`, so exercising Slack proves **nothing**
+>   about `trigger/`'s HMAC-verify → parse → dispatch path. The webhook's auth path remains exactly
+>   as unverified as this item says it is.
+> - **The "fine until catastrophic" argument now cuts the other way.** An unverified auth path
+>   matters because it is *public-facing* — but `trigger/` is not currently served anywhere, and now
+>   likely never will be. The honest risk is no longer "unverified auth on a live surface"; it is
+>   **dead code carrying an inbound credential** (`LOOP_ENGINE_WEBHOOK_SECRET`).
+> - **The real decision is therefore no longer "verify it" but "keep or retire it."** Standing up a
+>   tunnel to verify a surface we deliberately superseded is hard to justify; so is leaving a parked
+>   inbound listener and its secret in the tree indefinitely. **Open question for the owner**
+>   (deliberately not decided here): retire `trigger/` + `LOOP_ENGINE_WEBHOOK_SECRET` and close §6
+>   as moot, or keep it as a second path and pay for the verification. **Until that is decided this
+>   item stays open** — "superseded in practice" is not "closed," and quietly dropping it would be
+>   the failure this item exists to prevent.
 
 ---
 

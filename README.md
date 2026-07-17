@@ -81,6 +81,38 @@ Closing the issue without an answers comment aborts the run.
 hatch run loop-engine cost-summary --run-id <run_id>
 ```
 
+### Trigger a run from Slack (`/agent-run`)
+
+`loop-engine slack-listen` runs an inbound trigger daemon over Slack [Socket Mode](https://api.slack.com/apis/socket-mode), so a run can be started from the same channel the notifier already posts into — no public ingress, no tunnel, no inbound port.
+
+**One-time Slack app setup** (operator step):
+
+1. Enable **Socket Mode** on the app, and mint an **app-level token** (`xapp-…`) with the `connections:write` scope. This is a second token, distinct from the bot token — Socket Mode authenticates the *socket* with the app-level token and the *API calls* with the bot token.
+2. Register the `/agent-run` **slash command** (bot scope `commands`). Socket Mode carries slash commands and interactivity, not just Events-API events — no Request URL is needed.
+3. Invite the bot to `LOOP_ENGINE_SLACK_CHANNEL`. **The bot must be a member of that channel**, both to post and to have the command delivered from it.
+
+**Credentials.** Add `LOOP_ENGINE_SLACK_APP_TOKEN` to Infisical (project `loop-engine`, environment `dev`) alongside the existing `LOOP_ENGINE_SLACK_BOT_TOKEN` / `LOOP_ENGINE_SLACK_CHANNEL`. All three are **inherited by the process via `infisical run`** — they are deliberately *not* bounced through `.devcontainer/seed-secrets.sh`, which exists to seed the keyring/`gh`. These are env-var credentials, a distinct class from the keyring-only Anthropic key (same posture as `trigger/`'s `LOOP_ENGINE_WEBHOOK_SECRET`).
+
+> Prefer setting `LOOP_ENGINE_SLACK_CHANNEL` to the channel **ID** (`C0123456789`, via *Copy link* on the channel) rather than a name. A name is resolved at startup by paginating `conversations.list`, which is rate-limited on large workspaces; an ID is used as-is with no API call.
+
+**Run the daemon:**
+
+```bash
+infisical run -- hatch run loop-engine slack-listen
+```
+
+It blocks until interrupted (Ctrl-C / `SIGTERM`) and delegates reconnect/backoff to Slack's `SocketModeClient`. It **fails closed**: if any of `LOOP_ENGINE_SLACK_APP_TOKEN`, `LOOP_ENGINE_SLACK_BOT_TOKEN`, or `LOOP_ENGINE_SLACK_CHANNEL` is unset — or the channel cannot be resolved — it exits non-zero with a message naming what's missing, **before opening any socket**. An inbound trigger surface never starts half-configured.
+
+**Usage, from the configured channel:**
+
+```
+/agent-run --budget 5.00 Add a health-check endpoint to the API
+```
+
+`--budget` is **required** and is a hard cap on cumulative LLM spend for that run — the trigger spends real money, so the cap is always explicit and never silently defaulted. A missing, non-numeric, or non-positive budget is rejected with an ephemeral usage reply and no run is started. Everything after the flag becomes the run's requirements text. Replies are **ephemeral** (visible only to the invoker), so the channel stays usable for chatter and notifications; the run's lifecycle events post to the channel as normal.
+
+Commands from any channel other than `LOOP_ENGINE_SLACK_CHANNEL` are ignored.
+
 ### Library usage
 
 The full programmatic surface is available without the CLI:
