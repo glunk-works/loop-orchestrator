@@ -18,6 +18,7 @@ from loop_engine.core.state import (
 )
 from loop_engine.loops.default.loop import DEFAULT_LOOP, build_default_loop
 from loop_engine.runner import DEFAULT_BUDGET_USD
+from loop_engine.slack_control import run_daemon
 from loop_engine.tools import issue_io
 from loop_engine.tools.issue_io import default_issue_reader
 from loop_engine.tools.llm.client import LLMClient
@@ -331,6 +332,18 @@ def prune_worktrees(
         typer.echo(f"removed {len(removed)} worktree(s): {', '.join(removed) or '(none)'}")
     else:
         raise typer.BadParameter("pass --run-id <id> or --all")
+
+
+@app.command(name="slack-listen")
+def slack_listen() -> None:
+    """Run the Slack inbound trigger daemon (Socket Mode) until interrupted
+    (Ctrl-C / SIGTERM). Not a run-status command -- unrelated to the `run`/
+    `resume` exit-code map above."""
+    try:
+        run_daemon()
+    except RuntimeError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
 
 
 if __name__ == "__main__":

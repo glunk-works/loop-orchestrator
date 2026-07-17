@@ -1,6 +1,10 @@
 from loop_engine.core.notify import EventKind, LifecycleEvent
 from loop_engine.core.state import CURRENT_SCHEMA_VERSION, IssueRef, RunStatus, StageRecord, State
-from loop_engine.tools.slack_io.format import format_event
+from loop_engine.tools.slack_io.format import (
+    format_command_accepted,
+    format_command_rejected,
+    format_event,
+)
 
 
 def _state(**overrides) -> State:
@@ -138,6 +142,28 @@ def test_started_human_input_is_truncated_before_escaping() -> None:
     event = LifecycleEvent(kind=EventKind.STARTED, state=state, budget_usd=1.0)
     text = format_event(event)
     assert "x" * 501 not in text
+    assert "(truncated)" in text
+
+
+def test_format_command_accepted_includes_the_budget() -> None:
+    text = format_command_accepted(5.0)
+    assert "5.00" in text
+    assert "accepted" in text.lower()
+
+
+def test_format_command_rejected_includes_the_reason() -> None:
+    text = format_command_rejected("missing required --budget flag")
+    assert "missing required --budget flag" in text
+    assert "usage error" in text.lower()
+
+
+def test_format_command_rejected_escapes_and_truncates_the_reason() -> None:
+    # The rejection reason can echo back a user-supplied token (e.g. a
+    # malformed --budget value), so it gets the same untrusted-interpolation
+    # treatment as human_input/error in format_event above.
+    text = format_command_rejected("<!channel> bad value & <a|link>" + "x" * 1000)
+    assert "<!channel>" not in text
+    assert "&lt;!channel&gt;" in text
     assert "(truncated)" in text
 
 

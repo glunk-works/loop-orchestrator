@@ -69,3 +69,16 @@ def format_event(event: LifecycleEvent) -> str:
         return f":boom: Run `{run_id}` crashed: {error}"
 
     raise ValueError(f"unhandled EventKind: {event.kind}")
+
+
+def format_command_accepted(budget_usd: float) -> str:
+    """The ephemeral reply to a valid `/agent-run` command."""
+    return f"Run accepted (budget ${budget_usd:.2f})."
+
+
+def format_command_rejected(reason: str) -> str:
+    """The ephemeral reply to a `CommandRejection`. `reason` can echo back a
+    user-supplied token (e.g. an unparsable `--budget` value), so it gets the
+    same untrusted-interpolation treatment as `human_input`/`error` above."""
+    safe_reason = _escape_mrkdwn(_truncate(reason, _MAX_UNTRUSTED_TEXT_CHARS))
+    return f"Usage error: {safe_reason}"
