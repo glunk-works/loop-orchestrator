@@ -425,7 +425,7 @@ def test_engine_injected_mcp_issue_filer_routes_through_provider() -> None:
 
 def test_engine_uninjected_default_filer_names_an_explicit_destination_repo(monkeypatch) -> None:
     """The path `runner.run_new` actually takes: NO `issue_filer` injected, so
-    `_pause_for_issue` falls through to `default_issue_filer`.
+    `_pause_for_escalation` falls through to `default_issue_filer`.
 
     Every other test in this module stubs that default out via the autouse
     fixture, which is precisely why the original R8 fix shipped covering only
@@ -926,7 +926,7 @@ def test_engine_resume_with_carried_findings_clears_counter_and_respects_carried
     other test calls the REAL run_graph_loop with an empty/fresh state, so
     `_prime_resume`'s `if carried_findings:` branch -- the only place
     PAUSED_STAGE_COUNTER/`loop` are read -- never executes. Seed a State
-    carrying the pause counter (as `_pause_for_issue` would have recorded
+    carrying the pause counter (as `_pause_for_escalation` would have recorded
     it) and pass non-empty `initial_findings`, mirroring `cli.py`'s
     `resume --from-issue` shape."""
     received_findings: list[list[str] | None] = []
