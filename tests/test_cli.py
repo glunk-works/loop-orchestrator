@@ -657,3 +657,33 @@ def test_cli_resume_passes_repo_through_to_the_reader(tmp_path, monkeypatch) -> 
 
     assert result.exit_code == 0
     assert seen["repo"] == "acme/managed"
+
+
+def test_cli_slack_listen_runs_the_daemon(monkeypatch) -> None:
+    mock_run_daemon = MagicMock()
+    monkeypatch.setattr("loop_engine.cli.run_daemon", mock_run_daemon)
+
+    result = runner.invoke(app, ["slack-listen"])
+
+    assert result.exit_code == 0
+    assert mock_run_daemon.called
+
+
+def test_cli_slack_listen_with_unset_credentials_exits_non_zero_and_opens_no_socket(
+    monkeypatch,
+) -> None:
+    # slack-listen is not a run-status command -- a missing credential must
+    # surface the daemon's own FD4 fail-closed RuntimeError as a non-zero
+    # exit with its message, never a raw traceback, and never open a socket.
+    def raise_fail_closed() -> None:
+        raise RuntimeError(
+            "LOOP_ENGINE_SLACK_APP_TOKEN must be set; refusing to start the "
+            "Slack daemon half-configured (fail-closed)."
+        )
+
+    monkeypatch.setattr("loop_engine.cli.run_daemon", raise_fail_closed)
+
+    result = runner.invoke(app, ["slack-listen"])
+
+    assert result.exit_code == 1
+    assert "fail-closed" in _plain_output(result)

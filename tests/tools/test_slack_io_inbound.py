@@ -3,7 +3,11 @@ import types
 
 import pytest
 
-from loop_engine.tools.slack_io import SocketModeListener, build_listener_from_env
+from loop_engine.tools.slack_io import (
+    SocketModeListener,
+    build_listener_from_env,
+    resolve_channel_id,
+)
 from loop_engine.tools.slack_io.inbound import _APP_TOKEN_ENV, _BOT_TOKEN_ENV
 
 _FAKE_APP_TOKEN = "xapp-fake-not-a-real-token"  # noqa: S105 -- fixture literal, not a real credential
@@ -160,3 +164,76 @@ def test_socket_mode_listener_connect_and_close_delegate_to_client(monkeypatch) 
 
     listener.close()
     assert client.connected is False
+
+
+class _FakeConversationsWebClient:
+    """Fake `WebClient` exposing only `conversations_list`, paginated over
+    `pages` (a list of channel-list pages) -- installed per-test so
+    `resolve_channel_id`'s name lookup can be exercised without a real
+    connection."""
+
+    pages: list[list[dict]] = [[]]
+
+    def __init__(self, token: str, timeout: int = 5) -> None:
+        self.token = token
+        self.timeout = timeout
+
+    def conversations_list(
+        self, *, types: str, cursor: str | None = None, limit: int = 200
+    ) -> dict:
+        index = 0 if cursor is None else int(cursor)
+        page = self.pages[index] if index < len(self.pages) else []
+        next_cursor = str(index + 1) if index + 1 < len(self.pages) else ""
+        return {"channels": page, "response_metadata": {"next_cursor": next_cursor}}
+
+
+def _install_fake_conversations_client(monkeypatch, pages: list[list[dict]]) -> None:
+    _FakeConversationsWebClient.pages = pages
+    fake_module = types.ModuleType("slack_sdk")
+    fake_module.WebClient = _FakeConversationsWebClient
+    monkeypatch.setitem(sys.modules, "slack_sdk", fake_module)
+
+
+def test_resolve_channel_id_returns_an_already_id_shaped_channel_unchanged(monkeypatch) -> None:
+    # Any attempt to import slack_sdk raises -- proves the already-ID path
+    # never makes an API call at all.
+    monkeypatch.setitem(sys.modules, "slack_sdk", None)
+
+    assert resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="C0123456789") == "C0123456789"
+
+
+def test_resolve_channel_id_strips_a_leading_hash_before_checking_id_shape(monkeypatch) -> None:
+    monkeypatch.setitem(sys.modules, "slack_sdk", None)
+
+    assert resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="#C0123456789") == "C0123456789"
+
+
+def test_resolve_channel_id_looks_up_a_bare_name(monkeypatch) -> None:
+    _install_fake_conversations_client(monkeypatch, pages=[[{"id": "C999", "name": "loop-engine"}]])
+
+    assert resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="loop-engine") == "C999"
+
+
+def test_resolve_channel_id_strips_a_leading_hash_before_a_name_lookup(monkeypatch) -> None:
+    _install_fake_conversations_client(monkeypatch, pages=[[{"id": "C999", "name": "loop-engine"}]])
+
+    assert resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="#loop-engine") == "C999"
+
+
+def test_resolve_channel_id_paginates_across_multiple_pages(monkeypatch) -> None:
+    _install_fake_conversations_client(
+        monkeypatch,
+        pages=[
+            [{"id": "C1", "name": "general"}],
+            [{"id": "C999", "name": "loop-engine"}],
+        ],
+    )
+
+    assert resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="loop-engine") == "C999"
+
+
+def test_resolve_channel_id_raises_when_name_not_found(monkeypatch) -> None:
+    _install_fake_conversations_client(monkeypatch, pages=[[{"id": "C1", "name": "general"}]])
+
+    with pytest.raises(RuntimeError):
+        resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="nonexistent")

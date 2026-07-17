@@ -11,13 +11,24 @@ by default when unconfigured -- `build_listener_from_env()` FAILS CLOSED
 raises rather than returning a no-op listener. Reconnect/backoff is
 delegated entirely to `SocketModeClient` -- this module does not hand-roll
 it.
+
+`resolve_channel_id()` (T4) is the FD3 channel-name-to-ID resolver: Socket
+Mode event payloads carry a channel ID only, so `slack_control/daemon.py`'s
+channel-scope guard needs an ID to compare against even when the operator
+configured `LOOP_ENGINE_SLACK_CHANNEL` as a bare name (the same name-or-ID
+ambiguity `notifier.py` already tolerates for outbound posting).
 """
 
 import os
+import re
 from typing import Any, Callable, Protocol
 
 _APP_TOKEN_ENV = "LOOP_ENGINE_SLACK_APP_TOKEN"  # noqa: S105 -- env var name, not a credential
 _BOT_TOKEN_ENV = "LOOP_ENGINE_SLACK_BOT_TOKEN"  # noqa: S105 -- env var name, not a credential
+
+# Slack channel IDs are uppercase-alnum, starting with C (public), G (private/
+# MPIM), or D (DM) -- distinct in shape from a human-chosen channel name.
+_CHANNEL_ID_RE = re.compile(r"^[CGD][A-Z0-9]{8,}$")
 
 
 class SocketModeRequestLike(Protocol):
@@ -92,3 +103,38 @@ def build_listener_from_env(on_request: RequestHandler) -> SocketModeListener:
 
     client = SocketModeClient(app_token=app_token, web_client=WebClient(token=bot_token, timeout=5))
     return SocketModeListener(client, on_request)
+
+
+def resolve_channel_id(*, bot_token: str, channel: str) -> str:
+    """Resolve `channel` (a bare name, a `#name`, or an already-ID `Cxxxxxxxx`
+    form) to its channel ID, once, at daemon startup (FD3): inbound Socket
+    Mode event payloads carry the ID only, so the channel-scope guard must
+    compare against an ID even when the operator configured a human-readable
+    name -- a naive string compare against a configured name would silently
+    match nothing. Raises `RuntimeError` if a name cannot be resolved; the
+    daemon must fail closed rather than start with a guard that matches no
+    channel. Never logs the bot token.
+    """
+    name = channel[1:] if channel.startswith("#") else channel
+    if _CHANNEL_ID_RE.match(name):
+        return name
+
+    from slack_sdk import WebClient
+
+    client = WebClient(token=bot_token, timeout=5)
+    cursor = None
+    while True:
+        response = client.conversations_list(
+            types="public_channel,private_channel", cursor=cursor, limit=200
+        )
+        for candidate in response.get("channels", []):
+            if candidate.get("name") == name:
+                return candidate["id"]
+        cursor = response.get("response_metadata", {}).get("next_cursor") or None
+        if not cursor:
+            break
+
+    raise RuntimeError(
+        f"could not resolve Slack channel {channel!r} to an id; refusing to "
+        "start the Slack daemon with an unresolved channel guard (fail-closed)."
+    )

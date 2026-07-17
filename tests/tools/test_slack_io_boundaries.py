@@ -146,3 +146,11 @@ def test_boundary_suite_covers_inbound_module() -> None:
         "keyring/write/subprocess/module-scope-import assertions above "
         "would silently stop covering it"
     )
+
+
+def test_boundary_suite_covers_reply_module() -> None:
+    assert (SLACK_IO_DIR / "reply.py") in _slack_io_modules(), (
+        "reply.py (T4, ephemeral replies) is missing from the slack_io "
+        "boundary sweep -- the keyring/write/subprocess/module-scope-import "
+        "assertions above would silently stop covering it"
+    )
