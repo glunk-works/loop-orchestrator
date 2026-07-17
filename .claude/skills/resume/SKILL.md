@@ -1,6 +1,6 @@
 ---
 name: resume
-description: Rehydrate a fresh dev session from .ai/ externalized state — read the cursor, adopt the assigned persona/model, and state the exact pick-up point. Run this at the START of a session working on this repo. Distinct from the `loop-engine resume` CLI subcommand.
+description: Rehydrate a fresh dev session from .ai/ externalized state — read the cursor, adopt the assigned persona/model, and state the exact pick-up point. Then start the next_action unattended IF the cursor is clean and unambiguous (hitl_gate NONE OPEN, sprint_status implementing, model matches, no drift); otherwise state the pick-up point and wait. Fails closed — an open, missing, or unreadable gate always waits. Run this at the START of a session working on this repo. Distinct from the `loop-engine resume` CLI subcommand.
 ---
 
 # /resume — rehydrate a fresh session from externalized state
@@ -11,7 +11,7 @@ without re-reading the whole repo. This is the counterpart to `/handoff`.
 ## Steps
 
 1. **Read the cursor** (in this order, stop reading once you have enough):
-   - `.ai/state.json` — the machine cursor (`current_phase`, `current_sprint_id`, `sprint_status`, `assigned_model`, `assigned_persona`, `last_commit`, `next_action`, `pointers`). If it is missing, fall back to `.ai/next-steps.md` alone.
+   - `.ai/state.json` — the machine cursor (`current_phase`, `current_sprint_id`, `sprint_status`, `assigned_model`, `assigned_persona`, `last_commit`, `next_action`, `hitl_gate`, `pointers`). If it is missing, fall back to `.ai/next-steps.md` alone — and note that a `/resume` running on `next-steps.md` alone can never auto-start (step 6): no cursor, no unattended work.
    - `.ai/next-steps.md` — the human ledger: what was just done, what's next, which model to use, HITL Gate status.
    - The `pointers.sprint_plan` file (the active `sprints/NN_*/sprint_plan.md`) — the task list for the current sprint.
    - `docs/migration_roadmap.md` — read only the **Status table** + the **NEXT ACTION** line, not the whole file, unless the next action needs the decisions log.
@@ -42,7 +42,37 @@ without re-reading the whole repo. This is the counterpart to `/handoff`.
 
 5. **Adopt the assigned persona/model.** If `assigned_model` does not match the model you are running as, say so explicitly and recommend the user `/model` switch before continuing (Architect=Opus for planning/review, Coder=Sonnet for implementation — see `.ai/context/workflow.md`).
 
-6. **State the pick-up point** in 3–6 lines: current phase/sprint, sprint_status, the single next action, any open HITL Gate, the ruleset check result, and the branch-prune result. Then wait for the user (do not silently start large work — especially if a HITL Gate is open).
+6. **State the pick-up point** in 3–6 lines: current phase/sprint, sprint_status, the single next action, any open HITL Gate, the ruleset check result, and the branch-prune result.
+
+   Then **either start the next action or wait**, per the rule below.
+
+   **Auto-start** — begin the `next_action` immediately, no "go" needed, only when **all** hold:
+   - `hitl_gate` is present and reads `NONE OPEN`;
+   - `sprint_status` is `implementing`;
+   - the running model matches `assigned_model` (step 5);
+   - step 2 found no drift — `last_commit` matches HEAD **and** the tree is clean.
+
+   Otherwise **state the pick-up point and wait.** In particular: always wait on
+   `planning` (the planning pass is one question at a time — that dialogue *is* the
+   work), on any open or unreadable gate, on a model mismatch, and on any drift.
+
+   > **Fail closed.** A missing, empty, or unparseable `hitl_gate`, a `state.json` that
+   > won't parse, or a `sprint_status` you can't classify all mean **wait** — never
+   > proceed. "I couldn't tell whether a gate was open" is not "no gate is open"; that
+   > conflation is the BL-11 defect in miniature, same as the ruleset check in step 4.
+
+   Say which branch you took and why in one line (`Auto-starting: gate NONE OPEN,
+   status implementing, cursor clean.` / `Waiting: HITL Gate open on the sprint 41 plan.`)
+   so the choice is visible and you can stop it.
+
+   **Why auto-start is not a lost approval:** the `next_action` was written by the
+   previous session's `/handoff` — which the human reviewed and approved *then*.
+   Re-approving it at the start of the next session approves the same decision twice, and
+   in practice that second approval was a content-free "go" 10 times out of 13 sessions in
+   a single day. The approval that carries real signal is the **`hitl_gate`**, and it is
+   still absolutely enforced. Auto-start removes a rubber stamp, not a gate. It also never
+   crosses a merge or review boundary: `/critic-gate` still proposes and the human still
+   picks, the human still merges, and nothing here posts an Architect Review.
 
    > **If the next action is posting the Architect Review:** the review body must
    > **open with the verbatim two-line header + attestation block** from
