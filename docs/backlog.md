@@ -1615,3 +1615,37 @@ pattern, and belongs on its own PR.
 **Related:** [BL-32] (the audit instrument this is the output of), [BL-15] (the original name-based
 `open()` blind spot the write finding reproduces), BL-2 / sprint 39 (the diff whose critic pass
 surfaced it).
+
+### BL-34 — The CI `test` job's "docs-only" pre-step has a defeated fail-safe: under `bash -e`, a failing `gh api` kills the step instead of falling back to running pytest
+
+*(added 2026-07-17, observed live on PR #115 (BL-2 pass 2, T1) during a GitHub API outage)*
+
+**Why:** the `test` job in `.github/workflows/ci.yml` opens with a "Determine whether this PR is
+docs-only" step whose comment explicitly promises **"Fail SAFE: any detection error or empty result
+runs pytest."** The logic is `changed=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq …)`,
+then `status=$?`, then `if [ "$status" -ne 0 ] || [ -z "$changed" ]; then echo "skip=false"; exit 0`.
+But GitHub runs the step as `/usr/bin/bash -e {0}`, and the in-script `set -uo pipefail` does **not**
+clear the inherited `-e` (errexit). So when `gh api` fails, the failing command substitution in the
+assignment trips errexit and the step exits non-zero (`##[error]Process completed with exit code 1`)
+**before** the `status=$?` fail-safe branch ever runs — the exact opposite of "fail safe." On PR #115
+this made the whole `test` check go **red in ~14s** (no pytest run), which cascaded its `needs:`
+dependents (`secrets-scan`/`dependency-audit`/`sbom`) to `skipped`. Root cause was a transient GitHub
+REST outage returning an HTML 500 (`invalid character '<' looking for beginning of value` from `--jq`),
+so it stays invisible in normal operation — but it means **a GitHub API blip can red a green PR**, and
+worse, the failure *looks* like a real test failure until you read the job log.
+
+**What to do:** make the fail-safe actually fail safe — decouple the `gh api` exit from errexit, e.g.
+`changed=$(gh api … ) || status=$?` (so the assignment's failure is caught, not fatal), or wrap the
+call in `set +e … set -e`, or add explicit `continue-on-error`-style handling. Keep the job's
+**unconditional** `test` check-run guarantee intact (BL-10/BL-12): the step must still emit
+`skip=false` and run pytest on any detection error. Add a regression that simulates a non-zero
+`gh api` (stub it to exit 1) and asserts the step sets `skip=false` and exits 0. Consider whether the
+same `bash -e` + command-substitution pattern hides elsewhere in the workflows.
+
+**Explicitly NOT:** removing the docs-only fast-path (it correctly skips pytest for docs-only PRs and
+that's worth keeping), and not a `test`-check-optionality change — the check stays required and
+unconditional; only its internal fail-safe is broken.
+
+**Related:** BL-10 / BL-18 (the "a job can still report `skipped`" family and the unconditional-`test`
+guarantee this must not break), BL-2 / sprint 40 T1 (the PR whose CI run surfaced it). Aligns with the
+recurring theme in [github-workflow-traps]: *a check red/green for the wrong reason.*
