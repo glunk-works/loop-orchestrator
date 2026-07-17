@@ -1,10 +1,10 @@
-"""The notifier seam's pure contract: the six lifecycle event kinds, the
+"""The notifier seam's pure contract: the seven lifecycle event kinds, the
 event payload, and the `Notifier` protocol `run_graph_loop` emits through.
 
 No `slack_sdk` import here (and none of `tools/slack_io`) — this module is a
-leaf, mirroring how `core/engine` depends only on the `IssueFiler` shape and
-not on `tools/issue_io`'s GitHub/MCP transport. `tools/slack_io` imports the
-contract from here, never the reverse.
+leaf, mirroring how `core/engine` depends only on the `EscalationFiler` shape
+and not on `tools/issue_io`'s/`tools/slack_io`'s concrete transports.
+`tools/slack_io` imports the contract from here, never the reverse.
 """
 
 from dataclasses import dataclass
@@ -20,6 +20,7 @@ class EventKind(StrEnum):
     FAILED_STAGE = "failed_stage"
     BUDGET_EXCEEDED = "budget_exceeded"
     AWAITING_ISSUE = "awaiting_issue"
+    AWAITING_SLACK = "awaiting_slack"
     CRASHED = "crashed"
 
 

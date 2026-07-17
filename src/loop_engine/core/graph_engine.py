@@ -12,12 +12,13 @@ real host run; it remains recoverable at the `pre-phase6-classic` tag.
 """
 
 import logging
+import os
 from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
 from loop_engine.core.engine import (
-    IssueFiler,
+    EscalationFiler,
     Loop,
     StageOutcome,
     _finalize,
@@ -29,6 +30,13 @@ from loop_engine.core.state import RunStatus, State
 from loop_engine.tools.llm.client import LLMClient
 from loop_engine.tools.slack_io import build_notifier_from_env
 
+# Mirrors tools/slack_io/notifier.py's env-var naming exactly -- the same two
+# Slack-transport credentials, reused here to gate the escalation filer
+# instead of the (fail-open) notifier.
+_TRANSPORT_ENV = "LOOP_ENGINE_ESCALATION_TRANSPORT"
+_SLACK_TOKEN_ENV = "LOOP_ENGINE_SLACK_BOT_TOKEN"  # noqa: S105 -- env var name, not a credential
+_SLACK_CHANNEL_ENV = "LOOP_ENGINE_SLACK_CHANNEL"
+
 _logger = logging.getLogger(__name__)
 
 # Our own hard caps (MAX_ESCALATIONS_PER_STAGE, MAX_REPLANS_PER_RUN) already
@@ -37,7 +45,7 @@ _logger = logging.getLogger(__name__)
 # LangGraph's super-step guard. Scaled off the loop length, generously.
 _RECURSION_HEADROOM = 50
 
-# The four terminal `RunStatus` values map 1:1 to an `EventKind`; `RUNNING`
+# The five terminal `RunStatus` values map 1:1 to an `EventKind`; `RUNNING`
 # never maps to one (an explicit dict, not `EventKind(status.value)`, so an
 # unexpected `RUNNING` at this point is a no-emit rather than a raise).
 _TERMINAL_EVENT_KINDS: dict[RunStatus, EventKind] = {
@@ -45,7 +53,41 @@ _TERMINAL_EVENT_KINDS: dict[RunStatus, EventKind] = {
     RunStatus.FAILED_STAGE: EventKind.FAILED_STAGE,
     RunStatus.BUDGET_EXCEEDED: EventKind.BUDGET_EXCEEDED,
     RunStatus.AWAITING_ISSUE: EventKind.AWAITING_ISSUE,
+    RunStatus.AWAITING_SLACK: EventKind.AWAITING_SLACK,
 }
+
+
+def build_escalation_filer_from_env() -> EscalationFiler | None:
+    """The runtime filer selector, mirroring `build_notifier_from_env()`:
+    resolves which escalation transport a pause should use from
+    `LOOP_ENGINE_ESCALATION_TRANSPORT` (unset or `issue` ⇒ the issue path,
+    zero behavior change; `slack` ⇒ the Slack filer).
+
+    Returns `None` for the default `issue` transport rather than eagerly
+    resolving `default_issue_filer` itself -- `_pause_for_escalation`'s own
+    `issue_filer or default_issue_filer` fallback stays the single resolution
+    point for that path, which is also what tests patch (`core.engine.
+    default_issue_filer`) to avoid real GitHub/MCP calls. This function only
+    ever returns a concrete callable for the `slack` transport.
+
+    Fails CLOSED (raises) when `=slack` but the Slack credentials are unset:
+    a missing escalation destination must stop the run at start rather than
+    let it run to a pause with nowhere to post its questions.
+    """
+    transport = os.environ.get(_TRANSPORT_ENV, "issue")
+    if transport != "slack":
+        return None
+    token = os.environ.get(_SLACK_TOKEN_ENV)
+    channel = os.environ.get(_SLACK_CHANNEL_ENV)
+    if not token or not channel:
+        raise RuntimeError(
+            f"{_TRANSPORT_ENV}=slack requires {_SLACK_TOKEN_ENV} and "
+            f"{_SLACK_CHANNEL_ENV} to be set -- refusing to start a run with "
+            "nowhere to post its escalation questions."
+        )
+    from loop_engine.tools.slack_io.escalation import slack_escalation_filer
+
+    return slack_escalation_filer
 
 
 def _safe_emit(notifier: Notifier, event: LifecycleEvent) -> None:
@@ -75,7 +117,9 @@ def _node_name(index: int) -> str:
     return f"stage_{index}"
 
 
-def _make_stage_node(loop: Loop, index: int, llm_client: LLMClient, issue_filer: IssueFiler | None):
+def _make_stage_node(
+    loop: Loop, index: int, llm_client: LLMClient, issue_filer: EscalationFiler | None
+):
     def node(gs: GraphState) -> dict:
         outcome: StageOutcome = execute_stage(
             loop,
@@ -113,7 +157,9 @@ def _next_target(loop: Loop, gs: GraphState) -> str:
     return _node_name(gs["stage_index"])
 
 
-def build_state_graph(loop: Loop, llm_client: LLMClient, issue_filer: IssueFiler | None = None):
+def build_state_graph(
+    loop: Loop, llm_client: LLMClient, issue_filer: EscalationFiler | None = None
+):
     """Compile the stage graph: one node per stage, a completion node, and
     conditional edges that advance, re-enter (blast radius), or terminate."""
     graph = StateGraph(GraphState)
@@ -138,15 +184,18 @@ def run_graph_loop(
     llm_client: LLMClient,
     start_index: int = 0,
     initial_findings: list[str] | None = None,
-    issue_filer: IssueFiler | None = None,
+    issue_filer: EscalationFiler | None = None,
     notifier: Notifier | None = None,
     resuming: bool = False,
 ) -> State:
     """Drive `loop` to a terminal state, returning the final, already-persisted
     `State`."""
     active_notifier = notifier or build_notifier_from_env()
+    active_issue_filer = issue_filer or build_escalation_filer_from_env()
 
-    state = initial_state.model_copy(update={"status": RunStatus.RUNNING, "pending_issue": None})
+    state = initial_state.model_copy(
+        update={"status": RunStatus.RUNNING, "pending_issue": None, "pending_slack": None}
+    )
     state, carried_findings, carried_until = _prime_resume(loop, state, initial_findings)
 
     # A deep snapshot, not the live `state` reference: the CRASHED path must
@@ -164,7 +213,7 @@ def run_graph_loop(
             ),
         )
 
-    compiled = build_state_graph(loop, llm_client, issue_filer)
+    compiled = build_state_graph(loop, llm_client, active_issue_filer)
     init: GraphState = {
         "state": state,
         "stage_index": start_index,

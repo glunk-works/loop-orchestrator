@@ -5,42 +5,37 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Sprint 41 — BL-2 pass 3 of 3 (Slack escalation round-trip) — `awaiting_architect_review`.**
+**Sprint 41 — BL-2 pass 3 of 3 (Slack escalation round-trip) — `awaiting_merge`.**
 Task 1 is merged ([PR #127](https://github.com/glunk-works/loop-engine/pull/127) → `55d6d9d` on `main`).
-Task 2 is implemented, green-gated, critic-passed, and open as
-[PR #128](https://github.com/glunk-works/loop-engine/pull/128). It needs the fresh-session
-`architect-review` CI gate next. Review = **Opus/Architect**.
+Task 2 is implemented, green-gated, critic-passed, **Architect-Reviewed (clean, no blockers)**, and open as
+[PR #128](https://github.com/glunk-works/loop-engine/pull/128) with **all 8 required checks green**. It now
+awaits the **human merge** (the approval). After merge → Task 3.
 
-## Just done (Sonnet coding session, 2026-07-17)
-- Implemented **Task 2** on `sprint/41-bl2-t2-escalation-seam`: generalized the escalation seam —
-  `_pause_for_issue` → `_pause_for_escalation`, added `EscalationFiler`/`EscalationRef = IssueRef | SlackRef`
-  (return-type alias in `core/engine.py` only — finding #12), ref-type dispatch to the correct terminal
-  status/field, `build_escalation_filer_from_env()` (mirrors `build_notifier_from_env`, fails closed on
-  `=slack` with missing Slack creds — finding #10), and `AWAITING_SLACK` wired through `notify.py` /
-  `graph_engine.py` / `cli.py` (exit code **5**). Default (`issue`/unset) transport confirmed byte-for-byte
-  unchanged. Also fixed `tools/slack_io/format.py`'s `format_event` (not an explicit T2 target file, but
-  required — an existing all-kinds coverage test would otherwise hit its `unhandled EventKind` raise).
-- **Green gate:** `hatch run test` (724 passed), `hatch run lint` (clean), `hatch run format` (clean).
-- **`/critic-gate`** ran `architect` only (proposed `security-critic` too but the human picked `architect`
-  alone — T2 has no untrusted-input taint flow yet, that lands in T3/T5). **Verdict: clean**, no blockers.
-  One cosmetic finding (stale `_pause_for_issue` docstring references) fixed. Two informational findings
-  accepted-with-reason, not fixed — see `t2_critic_notes_for_t3` in `.ai/state.json` (the pre-file placeholder
-  snapshot naming gap, and the deliberate forward-reference import of the not-yet-existing Slack filer module).
-- Pushed and opened **[PR #128](https://github.com/glunk-works/loop-engine/pull/128)**
-  (`sprint/41-bl2-t2-escalation-seam` → `main`).
+## Just done (Opus/Architect review session, 2026-07-17)
+- **Posted the fresh-session Architect Review** on [PR #128](https://github.com/glunk-works/loop-engine/pull/128)
+  via `gh pr review --comment` (verbatim `**Opus/Architect HITL review (automated)**` + attestation header).
+  **Verdict: clean, no blockers.** Independently re-ran the affected surface (105 tests pass, lint clean).
+  `architect-review` went **SUCCESS**; all 8 required checks green. No BL-35 stale-red.
+- Two **non-blocking** review notes (in the PR review body, not defects in shipped behavior):
+  **(1)** a Slack pause leaves a contradictory `..._awaiting_issue.json` placeholder beside the real
+  `..._awaiting_slack.json` — structurally unavoidable here; **the T4 `state/*/*.json` scan (findings #1/#9)
+  must dedupe on the awaiting_slack snapshot.** **(2)** CLAUDE.md's exit-codes list still says `0/2/3/4` —
+  add `5` (`AWAITING_SLACK`) in the **T6 docs task** (exit 5 unreachable until Slack goes live).
+- Merged `origin/main` (#129, a docs-cursor sync) into the branch to clear a `.ai/next-steps.md`-only
+  conflict — no `src/` conflict. Re-posted the Architect Review against the new head after the merge push.
 
-## Next — post the Architect Review (Opus, FRESH session)
-`/resume` → `/code-review` the PR #128 diff → post the review with the **verbatim two-line header +
-attestation block** from `.ai/context/workflow.md` (`**Opus/Architect HITL review (automated)**` + the
-fresh-session attestation line) via `gh pr review --comment` (**never `--approve`**). Watch **BL-35**
-(stale-red trap: `BLOCKED` + rollup **FAILURE** ⇒ `gh run rerun` the **old** run, not a new push).
-**HITL Gate: NONE OPEN** — planning is already approved; the live gate here is the CI check itself, not
-a plan decision, which is why `sprint_status` is `awaiting_architect_review` rather than `implementing`
-(so `/resume` waits regardless of model).
+## T2 recap (Sonnet coding session, 2026-07-17)
+- Generalized the escalation seam — `_pause_for_issue` → `_pause_for_escalation`,
+  `EscalationFiler`/`EscalationRef = IssueRef | SlackRef` (return-type alias in `core/engine.py` only —
+  finding #12), ref-type dispatch to the correct terminal status/field, `build_escalation_filer_from_env()`
+  (mirrors `build_notifier_from_env`, fails closed on `=slack` with missing Slack creds — finding #10), and
+  `AWAITING_SLACK` wired through `notify.py` / `graph_engine.py` / `cli.py` (exit code **5**). Default
+  (`issue`/unset) transport confirmed byte-for-byte unchanged. Commits `5c04407`, `bdd00b8`.
 
-After the human merges PR #128: cut a fresh branch off updated `main` for **Task 3** — the Slack escalation
-filer (outbound) + pure question rendering + pure thread-answer parser (`tools/slack_io/escalation.py`,
-findings #5/#6/#7) — Sonnet/Coder's job.
+## Next — after the human merges PR #128: Task 3 (Coder, **Sonnet**)
+Cut a fresh branch off updated `main` for **Task 3** — the Slack escalation filer (outbound) + pure question
+rendering + pure thread-answer parser (`tools/slack_io/escalation.py`, findings #5/#6/#7). Sonnet/Coder's job.
+**HITL Gate: NONE OPEN.**
 
 ## Note for Task 3 (Slack filer)
 When `tools/slack_io/escalation.py` lands, the filer/daemon must resume from the actual `awaiting_slack`-named
@@ -59,20 +54,19 @@ possibly-raising filer call). See `t2_critic_notes_for_t3` in `.ai/state.json` f
 
 ## Gotchas worth remembering
 - **`.ai/state.json` is git-ignored** — **this file is what travels.**
-- **`/resume` waits here regardless of model** — `sprint_status` is `awaiting_architect_review`, not
-  `implementing`, so auto-start does not apply; a fresh session (Opus or Sonnet) states the pick-up point
-  and waits for the review.
+- **`/resume` waits here regardless of model** — `sprint_status` is `awaiting_merge`, not `implementing`,
+  so auto-start does not apply; a fresh session states the pick-up point and waits for the human merge.
 - **Stale-red `architect-review` (BL-35):** every `src/` PR here gets two check-runs on one SHA; `BLOCKED` +
   rollup **FAILURE** = stale red ⇒ `gh run rerun <old_run_id>`; `BLOCKED` + rollup **SUCCESS** = lag, wait.
 - **PR title:** `wc -c` the byte count (≤72) AND re-read the text before `gh pr create/edit`.
-- **Never commit to `main`, never merge, never force-push.**
+- **Never commit to `main`, never merge, never force-push.** (Rebase a stale pushed branch by merging `main` INTO it.)
 - **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** Signing Timeout = answer the host pinentry and retry.
 
 ## Pointers
-- [PR #128](https://github.com/glunk-works/loop-engine/pull/128) — T2, base `main`, awaiting fresh-session `architect-review`.
+- [PR #128](https://github.com/glunk-works/loop-engine/pull/128) — T2, base `main`, Architect-Reviewed clean, all checks green, **awaiting human merge**.
 - [`sprints/41_bl2_slack_escalation/sprint_plan.md`](../sprints/41_bl2_slack_escalation/sprint_plan.md) — the approved plan (6 tasks, FD1–FD6, 12 findings inline). T1/T2 done; T3 next.
 - [`docs/backlog.md`](../docs/backlog.md) — **BL-2** (pass 3 = this sprint; T6 marks it complete), **BL-24**, **BL-35**.
 - [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — Status table + NEXT ACTION (→ BL-2 pass 3; T6 flips to complete).
 
-Committed this session: `5c04407`, `bdd00b8` (Task 2) on `sprint/41-bl2-t2-escalation-seam`, pushed.
-PR #128 open against `main`.
+Committed on `sprint/41-bl2-t2-escalation-seam`: `5c04407`, `bdd00b8` (Task 2), then a merge of `origin/main`
+(#129) to clear the docs-cursor conflict. PR #128 open against `main`, awaiting merge.

@@ -1,5 +1,12 @@
 from loop_engine.core.notify import EventKind, LifecycleEvent
-from loop_engine.core.state import CURRENT_SCHEMA_VERSION, IssueRef, RunStatus, StageRecord, State
+from loop_engine.core.state import (
+    CURRENT_SCHEMA_VERSION,
+    IssueRef,
+    RunStatus,
+    SlackRef,
+    StageRecord,
+    State,
+)
 from loop_engine.tools.slack_io.format import (
     format_command_accepted,
     format_command_rejected,
@@ -78,6 +85,19 @@ def test_awaiting_issue_includes_pending_issue_url_and_number() -> None:
 
 def test_awaiting_issue_degrades_gracefully_when_pending_issue_is_none() -> None:
     event = LifecycleEvent(kind=EventKind.AWAITING_ISSUE, state=_state(pending_issue=None))
+    text = format_event(event)
+    assert "run-1" in text
+
+
+def test_awaiting_slack_includes_pending_slack_channel() -> None:
+    state = _state(pending_slack=SlackRef(channel_id="C123", message_ts="1700000000.000100"))
+    event = LifecycleEvent(kind=EventKind.AWAITING_SLACK, state=state, budget_usd=1.0)
+    text = format_event(event)
+    assert "C123" in text
+
+
+def test_awaiting_slack_degrades_gracefully_when_pending_slack_is_none() -> None:
+    event = LifecycleEvent(kind=EventKind.AWAITING_SLACK, state=_state(pending_slack=None))
     text = format_event(event)
     assert "run-1" in text
 
@@ -167,10 +187,11 @@ def test_format_command_rejected_escapes_and_truncates_the_reason() -> None:
     assert "(truncated)" in text
 
 
-def test_all_six_event_kinds_render_a_non_empty_message() -> None:
+def test_all_seven_event_kinds_render_a_non_empty_message() -> None:
     state_with_extras = _state(
         stage_history=[StageRecord(stage_name="A", tokens_used=1, cost_usd=1.0, completed_at="t1")],
         pending_issue=IssueRef(number=1, url="https://github.com/acme/widgets/issues/1"),
+        pending_slack=SlackRef(channel_id="C123", message_ts="1700000000.000100"),
     )
     for kind in EventKind:
         error = "boom" if kind == EventKind.CRASHED else None

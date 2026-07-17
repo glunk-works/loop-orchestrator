@@ -20,7 +20,7 @@ from loop_engine.core.gates import (
     GateResult,
     new_question,
 )
-from loop_engine.core.state import IssueRef, Question, RunStatus, StageRecord, State
+from loop_engine.core.state import IssueRef, Question, RunStatus, SlackRef, StageRecord, State
 from loop_engine.personas.base import BasePersona
 from loop_engine.tools.artifact_store import has_artifact, publish_artifacts
 from loop_engine.tools.issue_io import default_issue_filer
@@ -37,8 +37,14 @@ from loop_engine.tools.state_io.writer import write_state_snapshot
 # `tools.issue_io.default_issue_filer` (MCP-backed, proven end to end in
 # Sprint 27's V3) is the runtime default. A caller with more context — e.g.
 # `cli.py`, which can bind an explicit destination repo (R8) before it's
-# too late to resolve one — injects its own `issue_filer` instead.
-IssueFiler = Callable[[State, list[Question], str], IssueRef]
+# too late to resolve one — injects its own `issue_filer` instead. The
+# escalation transport is exclusive per run (FD3): a filer returns either an
+# `IssueRef` or a `SlackRef`, never both, and `_pause_for_escalation` below
+# selects the matching terminal status/field from the returned ref's type.
+# `core/` depends only on this protocol and the `State` union field, never on
+# a concrete `tools/issue_io`/`tools/slack_io` transport.
+EscalationRef = IssueRef | SlackRef
+EscalationFiler = Callable[[State, list[Question], str], EscalationRef]
 
 # Hard caps on feedback edges so no cycle can run unboundedly: hitting a cap
 # escalates to the human issue rather than looping again.
@@ -205,23 +211,31 @@ def unresolved_questions(state: State) -> list[Question]:
     return [q for q in state.questions if q.resolution is None]
 
 
-def _pause_for_issue(
+def _pause_for_escalation(
     state: State,
     stage_index: int,
     questions: list[Question],
-    issue_filer: IssueFiler | None = None,
+    issue_filer: EscalationFiler | None = None,
 ) -> State:
     state = state.model_copy(
         update={"counters": {**state.counters, PAUSED_STAGE_COUNTER: stage_index}}
     )
     # F4: persist before filing. A raise inside the filer (e.g. an
-    # unresolvable escalation destination) must leave a resumable
-    # AWAITING_ISSUE snapshot behind rather than discarding the run's work —
-    # the snapshot is written again below once the issue is actually filed.
+    # unresolvable escalation destination) must leave a resumable snapshot
+    # behind rather than discarding the run's work — the snapshot is written
+    # again below once the ref is actually filed/posted. Which terminal
+    # status that final write uses depends on the ref TYPE the filer returns,
+    # which isn't known until it returns — so this placeholder can't
+    # pre-select AWAITING_SLACK for a Slack-bound pause. It uses
+    # AWAITING_ISSUE (the historical, and still the default, terminal status)
+    # and is superseded below once the ref type is known.
     state = _finalize(state, stage_index, RunStatus.AWAITING_ISSUE)
     snapshot_hint = f"state/{state.run_id}/{stage_index:02d}_{RunStatus.AWAITING_ISSUE.value}.json"
-    issue = (issue_filer or default_issue_filer)(state, questions, snapshot_hint)
-    state = state.model_copy(update={"pending_issue": issue})
+    ref = (issue_filer or default_issue_filer)(state, questions, snapshot_hint)
+    if isinstance(ref, SlackRef):
+        state = state.model_copy(update={"pending_slack": ref})
+        return _finalize(state, stage_index, RunStatus.AWAITING_SLACK)
+    state = state.model_copy(update={"pending_issue": ref})
     return _finalize(state, stage_index, RunStatus.AWAITING_ISSUE)
 
 
@@ -268,7 +282,7 @@ def execute_stage(
     carried_findings: list[str],
     carried_until: int,
     llm_client: LLMClient,
-    issue_filer: IssueFiler | None = None,
+    issue_filer: EscalationFiler | None = None,
 ) -> StageOutcome:
     """Run one bounded propose → gate → accept/revise/escalate cycle.
 
@@ -372,14 +386,18 @@ def execute_stage(
 
         if escalations >= MAX_ESCALATIONS_PER_STAGE:
             state = _merge_questions(state, gate_result.questions)
-            paused = _pause_for_issue(state, stage_index, unresolved_questions(state), issue_filer)
+            paused = _pause_for_escalation(
+                state, stage_index, unresolved_questions(state), issue_filer
+            )
             return StageOutcome(paused, stage_index, carried_findings, carried_until, terminal=True)
 
         resolved = _run_resolver_ladder(stage, gate_result.questions, state, llm_client)
         state = _merge_questions(state, resolved)
 
         if unresolved_questions(state):
-            paused = _pause_for_issue(state, stage_index, unresolved_questions(state), issue_filer)
+            paused = _pause_for_escalation(
+                state, stage_index, unresolved_questions(state), issue_filer
+            )
             return StageOutcome(paused, stage_index, carried_findings, carried_until, terminal=True)
 
         # Everything was resolved within the ladder: deliver resolutions
@@ -390,7 +408,7 @@ def execute_stage(
         if reentry < stage_index:
             replans = state.counters.get("replans", 0)
             if replans >= MAX_REPLANS_PER_RUN:
-                paused = _pause_for_issue(state, stage_index, resolved, issue_filer)
+                paused = _pause_for_escalation(state, stage_index, resolved, issue_filer)
                 return StageOutcome(
                     paused, stage_index, carried_findings, carried_until, terminal=True
                 )

@@ -38,6 +38,13 @@ def _issue_line(event: LifecycleEvent) -> str:
     return f"Escalation issue: <{issue.url}|#{issue.number}>"
 
 
+def _slack_line(event: LifecycleEvent) -> str:
+    slack_ref = event.state.pending_slack
+    if slack_ref is None:
+        return "No escalation thread available."
+    return f"Escalation posted to <#{slack_ref.channel_id}> -- reply in that thread to resume."
+
+
 def format_event(event: LifecycleEvent) -> str:
     run_id = event.state.run_id
 
@@ -62,6 +69,9 @@ def format_event(event: LifecycleEvent) -> str:
 
     if event.kind == EventKind.AWAITING_ISSUE:
         return f":raising_hand: Run `{run_id}` is awaiting human input.\n{_issue_line(event)}"
+
+    if event.kind == EventKind.AWAITING_SLACK:
+        return f":raising_hand: Run `{run_id}` is awaiting human input.\n{_slack_line(event)}"
 
     if event.kind == EventKind.CRASHED:
         raw_error = event.error or "unknown error"

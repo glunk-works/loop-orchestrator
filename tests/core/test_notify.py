@@ -16,13 +16,14 @@ def _state() -> State:
     )
 
 
-def test_event_kind_has_exactly_six_members() -> None:
+def test_event_kind_has_exactly_seven_members() -> None:
     assert {kind.value for kind in EventKind} == {
         "started",
         "completed",
         "failed_stage",
         "budget_exceeded",
         "awaiting_issue",
+        "awaiting_slack",
         "crashed",
     }
 
