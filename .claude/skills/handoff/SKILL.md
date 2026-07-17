@@ -23,7 +23,7 @@ handoff point. It does **not** archive — that is `/archive-sprint`, only on co
 3. **Regenerate `.ai/next-steps.md`** (git-tracked — this is the durable human ledger). Keep it to ~20–40 lines, in this shape:
    - **Now:** current phase/sprint + status (one line).
    - **Just done:** 2–5 bullets of what this session accomplished (+ commit hashes).
-   - **Next:** the imperative next action + which model should do it + any open HITL gate.
+   - **Next:** the imperative next action + which model should do it + any open HITL Gate.
    - **Pointers:** the roadmap + active sprint_plan paths (do not copy their content — link to them).
    Regenerate the whole file (it is a cursor, not an append log — history lives in git + the roadmap).
 

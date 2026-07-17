@@ -1,12 +1,12 @@
 ---
 name: critic-gate
-description: Run the QA-critic pass on a coding diff — after the Sonnet green gate, before /handoff to the Architect review. PROPOSES which read-only critic subagents apply by what the diff touches (security-critic / architect on src/, guard-adversary on guard surfaces, mutation-triage / docs-consistency for their sprint types) and waits for the human to confirm or trim before spawning any — it never auto-fans-out. Aggregates findings for the coder to fix, iterates to clean. Defense-in-depth that runs EARLIER — it is explicitly NOT the architect-review CI gate and never satisfies it.
+description: Run the QA-critic pass on a coding diff — after the Sonnet green gate, before /handoff to the Architect Review. PROPOSES which read-only critic subagents apply by what the diff touches (security-critic / architect on src/, guard-adversary on guard surfaces, mutation-triage / docs-consistency for their sprint types) and waits for the human to confirm or trim before spawning any — it never auto-fans-out. Aggregates findings for the coder to fix, iterates to clean. Defense-in-depth that runs EARLIER — it is explicitly NOT the architect-review CI gate and never satisfies it.
 ---
 
-# /critic-gate — the QA-critic pass (Coder-side, before the Architect review)
+# /critic-gate — the QA-critic pass (Coder-side, before the Architect Review)
 
 Goal: catch the cheap, mechanical, boundary-shaped defects **Sonnet-side**, so the
-expensive fresh-session Opus HITL review spends its attention on judgment — and so nothing
+expensive fresh-session Opus Architect Review spends its attention on judgment — and so nothing
 ships green with no critic having looked (the sprint 27 Task 8 failure that created the
 `architect-review` gate). This runs in the **implementation session** after the green gate
 and before `/handoff`.
@@ -14,7 +14,7 @@ and before `/handoff`.
 > **This is NOT the `architect-review` CI gate and must never be presented as satisfying
 > it.** That gate wants a *fresh-session*, human-triggered review with an attestation
 > (`.github/workflows/hitl-review.yml`; `.ai/context/workflow.md`). This pass is
-> defense-in-depth that runs *earlier*. The fresh-session Architect review still happens
+> defense-in-depth that runs *earlier*. The fresh-session Architect Review still happens
 > after `/handoff`, unchanged.
 
 ## Preconditions
@@ -60,7 +60,7 @@ and before `/handoff`.
 
 6. **Report and stop — do not cross into the CI gate.** Summarize: which critics ran, what
    they found, what was fixed, what was accepted-with-reason. Then `/handoff` → fresh Opus
-   session → `/code-review` → post the `architect-review` HITL comment. `/critic-gate` never
+   session → `/code-review` → post the Architect Review comment. `/critic-gate` never
    posts a review, never `--approve`s, never merges.
 
 ## Why propose instead of auto-spawning

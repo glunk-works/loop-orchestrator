@@ -19,7 +19,7 @@ each stage passes a content **gate** (accept / revise / escalate). Today the
 Coder's implementation output is gated only by its own `CoderGate` /
 `RalphCoderGate` (green-test gate) — there is **no dedicated review of the sprint's
 code by an Architect or QA persona** inside the loop. The only architect-level
-review is the *dev-workflow* HITL step (a human Opus session reviewing a diff),
+review is the *dev-workflow* Architect Review (a fresh Opus session reviewing a diff),
 which is external to a running loop.
 
 **Idea:** revise the flow so a completed sprint's code is reviewed by an
@@ -278,10 +278,11 @@ skill / `shared/models.md` for current Opus 4.8 vs Sonnet 5 pricing + `effort`.
 ### BL-6 — Give Claude its own GitHub identity (machine user / GitHub App)
 
 **Why:** the `gh` CLI in this devcontainer authenticates as **`Seuss27`** — the repo
-owner's own account. So when Claude opens a PR and posts an Architect HITL review on
+owner's own account. So when Claude opens a PR and posts an Architect Review on
 it, GitHub renders it as *the owner reviewing their own PR*. Today this is patched by
 convention: every posted review is prefixed `**Opus/Architect HITL review
-(automated)**` so authorship is unambiguous in the text (`.ai/context/workflow.md`).
+(automated)**` (a frozen string — see `.ai/context/workflow.md`) so authorship is
+unambiguous in the text.
 That is a *declared* attribution, not a *real* one.
 
 **Why it eventually matters:** the PR gate exists so that a human merge is the
