@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,15 @@ def _write(run_id: str, name: str, payload: dict) -> Path:
     run_dir.mkdir(parents=True, exist_ok=True)
     path = run_dir / name
     path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def _write_at(run_id: str, name: str, payload: dict, *, mtime: float) -> Path:
+    """Like `_write`, but pins the file's mtime explicitly -- deterministic
+    stand-in for "written at time T", since real wall-clock write order can
+    be sub-resolution-close in a fast test run."""
+    path = _write(run_id, name, payload)
+    os.utime(path, (mtime, mtime))
     return path
 
 
@@ -205,6 +215,54 @@ def test_find_paused_snapshot_by_slack_thread_matches_latest_of_several_awaiting
     )
 
     assert find_paused_snapshot_by_slack_thread(MESSAGE_TS) == match
+
+
+def test_find_paused_snapshot_by_slack_thread_uses_mtime_not_filename_on_backward_reentry() -> None:
+    # Architect/security-critic finding on this PR: a run's stage_index is
+    # the loop STAGE POSITION, not a monotonic write counter, and
+    # blast-radius re-entry (core.engine.reentry_index) can re-enter at an
+    # EARLIER stage than a prior pause. So a run can pause a second time
+    # (chronologically later) at a lower stage index than its first pause,
+    # writing "01_awaiting_slack.json" AFTER "03_awaiting_slack.json" --
+    # picking "highest filename" as latest would pick the stale, higher-
+    # numbered-but-older file, both silently dropping the live thread's
+    # answer and leaving the dead thread able to double-resume.
+    OLD_TS = "1111111111.000000"
+    NEW_TS = "2222222222.000000"
+    old_pause = _write_at(
+        "run-1",
+        "03_awaiting_slack.json",
+        {
+            "schema_version": 5,
+            "run_id": "run-1",
+            "status": "awaiting_slack",
+            "pending_slack": {"channel_id": "C123", "message_ts": OLD_TS},
+            "stage_history": [],
+            "artifacts": {},
+        },
+        mtime=1000.0,
+    )
+    new_pause = _write_at(
+        "run-1",
+        "01_awaiting_slack.json",
+        {
+            "schema_version": 5,
+            "run_id": "run-1",
+            "status": "awaiting_slack",
+            "pending_slack": {"channel_id": "C123", "message_ts": NEW_TS},
+            "stage_history": [],
+            "artifacts": {},
+        },
+        mtime=2000.0,
+    )
+
+    # The live thread (the chronologically later pause, despite the lower
+    # stage-index filename) must still resolve -- not be dropped.
+    assert find_paused_snapshot_by_slack_thread(NEW_TS) == new_pause
+    # The dead thread (the earlier pause, despite the higher-numbered
+    # filename) must NOT resolve -- no double-resume on a stale thread.
+    assert find_paused_snapshot_by_slack_thread(OLD_TS) is None
+    assert old_pause != new_pause
 
 
 def test_load_state_migrates_a_v4_snapshot_and_validates() -> None:

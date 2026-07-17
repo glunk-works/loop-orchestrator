@@ -21,25 +21,35 @@ def find_paused_snapshot_by_slack_thread(message_ts: str) -> Path | None:
     snapshots that must be skipped, not raised on, so one foreign or
     malformed file can never crash the scan. Reads only -- no writes.
 
-    Considers only the **latest** snapshot file per run directory (T4-review
-    finding #1): a resume never rewrites or removes the paused run's own
-    `NN_awaiting_slack.json`, so a plain glob over every file would keep
-    re-matching that stale file's still-`awaiting_slack` status even after a
-    later snapshot in the same directory shows the run has moved on --
-    causing a second thread reply to double-resume the same run. Snapshot
+    Considers only the **latest-written** snapshot file per run directory
+    (T4-review finding #1): a resume never rewrites or removes the paused
+    run's own `NN_awaiting_slack.json`, so a plain glob over every file
+    would keep re-matching that stale file's still-`awaiting_slack` status
+    even after a later snapshot in the same directory shows the run has
+    moved on -- causing a second thread reply to double-resume the same
+    run. "Latest" is decided by **mtime, not filename** -- snapshot
     filenames are `{stage_index:02d}_{stage_name}.json`
-    (`writer.write_state_snapshot`), so a plain lexicographic sort within a
-    run's directory is also a stage-index sort; the last one is the run's
-    current status.
+    (`writer.write_state_snapshot`) where `stage_index` is the *loop stage
+    position*, not a monotonic write counter, and blast-radius re-entry
+    (`core.engine.reentry_index`) can re-enter at an *earlier* stage than a
+    prior pause (an "architecture"/"plan" impact reenters the Architect or
+    Sprint Breakdown). A run can therefore pause a second time at a lower
+    stage index than its first pause, writing a lower-numbered file *after*
+    a higher-numbered one -- a lexicographic "last filename" would pick the
+    stale, numerically-higher-but-chronologically-older file. mtime always
+    reflects actual write order regardless of stage numbering.
     """
     state_dir = Path("state")
     if not state_dir.is_dir():
         return None
     for run_dir in sorted(p for p in state_dir.iterdir() if p.is_dir()):
-        candidates = sorted(run_dir.glob("*.json"))
+        candidates = list(run_dir.glob("*.json"))
         if not candidates:
             continue
-        latest = candidates[-1]
+        try:
+            latest = max(candidates, key=lambda p: p.stat().st_mtime)
+        except OSError:
+            continue
         try:
             payload = json.loads(latest.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):

@@ -292,6 +292,84 @@ def test_second_dispatch_resume_for_same_envelope_while_active_is_a_no_op(monkey
     assert len(calls) == 1
 
 
+def test_second_dispatch_resume_for_same_thread_but_distinct_envelope_is_a_no_op(
+    monkeypatch,
+) -> None:
+    """Architect/security-critic finding on this PR: the paused snapshot
+    stays `awaiting_slack` on disk until the resume actually finishes, so
+    two *distinct* human replies to the same thread (different
+    envelope_ids -- envelope_id dedupe alone would let both through) must
+    still not both dispatch a resume."""
+    entered = threading.Event()
+    release = threading.Event()
+    calls = []
+
+    monkeypatch.setattr("loop_engine.slack_control.dispatch.load_state", lambda path: _fake_state())
+
+    def fake_resume_run(state, resolved_answers, *, resolved_by, budget_usd):
+        calls.append(resolved_by)
+        entered.set()
+        assert release.wait(timeout=5), "test deadlocked waiting for release"
+        return _fake_state()
+
+    monkeypatch.setattr("loop_engine.runner.resume_run", fake_resume_run)
+    monkeypatch.setattr("loop_engine.slack_control.dispatch.send_thread_message", lambda **_: None)
+    dispatcher = SlackRunDispatcher()
+
+    async def main() -> None:
+        await dispatcher.dispatch_resume(
+            **_resume_kwargs(envelope_id="env-first-reply", thread_ts="1700000000.000100")
+        )
+        await asyncio.to_thread(entered.wait, 5)
+        # A distinct envelope_id, same thread -- must still be a no-op while
+        # the first resume for this thread is in flight.
+        await dispatcher.dispatch_resume(
+            **_resume_kwargs(envelope_id="env-second-reply", thread_ts="1700000000.000100")
+        )
+        await asyncio.sleep(0.1)
+        release.set()
+        await asyncio.sleep(0.2)
+
+    asyncio.run(main())
+
+    assert len(calls) == 1
+
+
+def test_dispatch_resume_is_dispatchable_again_for_the_same_thread_after_it_finishes(
+    monkeypatch,
+) -> None:
+    calls = []
+
+    monkeypatch.setattr("loop_engine.slack_control.dispatch.load_state", lambda path: _fake_state())
+    monkeypatch.setattr(
+        "loop_engine.runner.resume_run",
+        lambda state, resolved_answers, *, resolved_by, budget_usd: (
+            calls.append(resolved_by) or _fake_state()
+        ),
+    )
+    monkeypatch.setattr("loop_engine.slack_control.dispatch.send_thread_message", lambda **_: None)
+    dispatcher = SlackRunDispatcher()
+
+    async def main() -> None:
+        await dispatcher.dispatch_resume(
+            **_resume_kwargs(envelope_id="env-a", thread_ts="1700000000.000100")
+        )
+        await asyncio.sleep(0.2)
+        # A second, later reply to the same thread AFTER the first resume
+        # finished (e.g. a re-pause on a new thread wouldn't reuse this
+        # thread_ts in practice, but the dedupe set itself must still
+        # release) is not permanently blocked.
+        await dispatcher.dispatch_resume(
+            **_resume_kwargs(envelope_id="env-b", thread_ts="1700000000.000100")
+        )
+        await asyncio.sleep(0.2)
+
+    asyncio.run(main())
+
+    assert len(calls) == 2
+    assert dispatcher._active_threads == set()
+
+
 def test_dispatch_and_dispatch_resume_serialize_under_the_same_lock(monkeypatch) -> None:
     """A start (`dispatch`) and a resume (`dispatch_resume`) must not race
     the process-global `os.chdir` (BL-8) -- both must be serialized by the

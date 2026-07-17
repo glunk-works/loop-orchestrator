@@ -47,6 +47,16 @@ def _format_outcome(state: State) -> str:
 class SlackRunDispatcher:
     def __init__(self, *, bot_token: str | None = None) -> None:
         self._active: set[str] = set()
+        # Distinct from `_active` (keyed on `envelope_id`, which only
+        # collapses Socket Mode *redelivery* of the same envelope): the
+        # paused snapshot a resume reads from is never flipped out of
+        # `awaiting_slack` until the resume itself finishes (architect/
+        # security-critic finding on T5), so two *distinct* thread replies
+        # -- different envelope_ids -- landing before the first resume
+        # completes would otherwise both scan-match and both dispatch. This
+        # set closes that window at the one point both replies share: the
+        # correlated thread.
+        self._active_threads: set[str] = set()
         self._tasks: set[asyncio.Task] = set()
         self._run_lock = asyncio.Lock()
         self._bot_token = bot_token
@@ -92,12 +102,21 @@ class SlackRunDispatcher:
         """Schedule a paused run's resume (a correlated thread reply) and
         return; do not wait for it to finish. Same `envelope_id` dedupe and
         `_run_lock` serialization as `dispatch` -- a start and a resume must
-        not race the process-global `os.chdir` (BL-8). A raising resume is
-        logged and swallowed: a bad answer must not kill the daemon."""
-        if envelope_id in self._active:
-            logger.info("dispatch_resume skipped, already running for envelope %s", envelope_id)
+        not race the process-global `os.chdir` (BL-8). Also dedupes on
+        `thread_ts`: the paused snapshot stays `awaiting_slack` on disk until
+        the resume actually finishes, so a second, *distinct* reply to the
+        same thread arriving before then would otherwise scan-match and
+        dispatch again. A raising resume is logged and swallowed: a bad
+        answer must not kill the daemon."""
+        if envelope_id in self._active or thread_ts in self._active_threads:
+            logger.info(
+                "dispatch_resume skipped, already running for envelope %s (thread %s)",
+                envelope_id,
+                thread_ts,
+            )
             return
         self._active.add(envelope_id)
+        self._active_threads.add(thread_ts)
         task = asyncio.create_task(
             self._run_resume(
                 snapshot_path=snapshot_path,
@@ -154,3 +173,4 @@ class SlackRunDispatcher:
             logger.exception("resume failed for envelope %s", envelope_id)
         finally:
             self._active.discard(envelope_id)
+            self._active_threads.discard(thread_ts)
