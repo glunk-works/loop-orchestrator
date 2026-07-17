@@ -129,7 +129,7 @@ Propose by what the diff touches — don't offer critics that have nothing to lo
 
 | Diff touches… | propose |
 | --- | --- |
-| any `src/` | **`security-critic`** (taint / trust-boundary) **+ `architect`** (correctness pre-review) |
+| any `src/` | **`security-critic`** (taint / trust-boundary) **and/or `architect`** (correctness pre-review) |
 | a guard surface (new subprocess/write/import/MCP verb) | **also `guard-adversary`** (`isolation: "worktree"`) |
 | a test-validity sprint (BL-23) | **`mutation-triage`** (sharded, N in parallel) |
 | load-bearing docs / roadmap / CLAUDE.md | **`docs-consistency`** |

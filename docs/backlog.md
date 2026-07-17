@@ -1708,3 +1708,89 @@ unconditional; only its internal fail-safe is broken.
 **Related:** BL-10 / BL-18 (the "a job can still report `skipped`" family and the unconditional-`test`
 guarantee this must not break), BL-2 / sprint 40 T1 (the PR whose CI run surfaced it). Aligns with the
 recurring theme in [github-workflow-traps]: *a check red/green for the wrong reason.*
+
+### BL-35 — The `architect-review` gate strands a permanent red check-run on every `src/` PR: its own normal lifecycle blocks the merge it just approved
+
+*(added 2026-07-17, observed live on PR #119 and confirmed retroactively on #107/#115/#117 — 4 of 4 `src/` PRs)*
+
+**Why:** `.github/workflows/hitl-review.yml` fires on **both** `pull_request` (`opened`,
+`synchronize`, `reopened`, `ready_for_review`) and `pull_request_review` (`submitted`, `dismissed`).
+Both triggers are load-bearing and individually correct — without the review trigger, posting the
+review the gate demands could never turn it green without a dummy push. But together they make the
+**normal, intended lifecycle** of every `src/` PR emit *two* check-runs named `architect-review` on
+the same head SHA: the `pull_request` run fails **correctly** (no review exists yet), then the
+`pull_request_review` run passes once the review is posted. The `concurrency` +
+`cancel-in-progress: true` block cannot help — the first run *completed* long before the second is
+created, and `cancel-in-progress` only cancels in-flight runs. The stale red never self-supersedes,
+so the gate blocks the very merge it just approved.
+
+Forensics on **PR #119** (head `d70e9ce`), which is where this was finally run to ground rather than
+waited out. GraphQL returned:
+
+```
+{"isDraft":false,"mergeStateStatus":"BLOCKED","mergeable":"MERGEABLE",
+ "reviewDecision":null,"rollup":"FAILURE"}
+```
+
+- `reviewDecision: null` and the ruleset's `required_approving_review_count: 0` ⇒ **not** an approvals rule.
+- `mergeable: MERGEABLE` ⇒ **not** a conflict; strict-mode/stale-base were both checked and excluded.
+- `BLOCKED` survived **6 polls over ~60s** ⇒ **not** the familiar GitHub re-evaluation lag.
+- `statusCheckRollup: FAILURE` was the blocker: the `03:09:50Z` run (`pull_request`, failed correctly —
+  no review existed) sat beside the `11:19:22Z` run (`pull_request_review`, passed) on the same commit.
+- `gh run rerun <stale_run_id>` → `CLEAN` on the next poll. The rerun is **truthful**: the review
+  genuinely exists at that SHA, so re-evaluating the same condition is honest, not a bypass.
+
+**It is structural, not a one-off.** All four `src/` PRs of sprints 39–40 carry two `architect-review`
+check-runs on their head SHA, and in each the *earlier-created* run id has the *later* `completed_at` —
+the signature of a manual rerun:
+
+| PR | head | rerun completed | note |
+| --- | --- | --- | --- |
+| #107 | `b42e52f` | 14:04:33Z | merged **14:04:51Z** — 18s later |
+| #115 | `13149da5` | 23:54:08Z | matches the session's "poll and rerun" at 23:52 |
+| #117 | `490fb1cc` | 02:22:39Z | |
+| #119 | `d70e9ce` | 11:22:36Z | the forensic case above |
+
+The ruleset (`18847725`) has `bypass_actors: []` and `enforcement: active`, and there is no classic
+branch protection, so **none of these could have merged without the rerun**. This is a 100% tax on code
+PRs — roughly 7 minutes of re-diagnosis on #119 alone, and it recurs every sprint.
+
+**Open uncertainty — do not build a fix on an assumed rule.** GitHub's exact dedupe semantics for
+multiple same-name check-runs on one SHA are **not** pinned down by this evidence, and the record is
+genuinely contradictory: #107 *still* carries a `failure` `architect-review` check-run on its head
+commit and merged anyway, while #119 with one red and one green was hard-blocked. Any fix must be
+verified against the live API rather than reasoned from a presumed latest-per-name rule. Note this also
+**corrects** [github-workflow-traps] item #5, which claimed GitHub "supersedes by latest-run-per-name
+once it catches up" — #119 disproves that: it never self-cleared.
+
+**What to do (options considered 2026-07-17, none chosen — owner deferred):**
+
+1. **Auto-heal.** After the review-triggered run passes, have it `gh run rerun` the stale failing run
+   on the same SHA. Removes the tax with no reliance on human memory. **Cost:** `hitl-review.yml` gains
+   `actions: write` — a permission escalation on the security gate itself, which is the surface you'd
+   least want widened. Weigh that against the tax honestly.
+2. **Codify the workaround in `/pr-checks`.** No CI change, no new permission. Teach the skill the
+   stale-red signature (`BLOCKED` + rollup `FAILURE` + a superseded `architect-review` red on head) and
+   have it offer the rerun. Keeps the one-command tax but removes the re-diagnosis.
+3. **Draft-first.** Open the PR as a draft (the gate's existing `if: draft == false` emits no check-run),
+   post the fresh-session review on the draft, then `gh pr ready` — the gate fires once, finds the
+   review, and goes green first time. No CI or permission change. **Cost:** relies on remembering
+   `--draft`; a forgotten flag silently reinstates the trap.
+
+**Explicitly NOT:**
+- **Do not make the `pull_request` run `skip` for `src/` PRs.** GitHub treats a **skipped** required
+  check as **successful** — that is precisely the BL-10 / BL-18 trap — so this would convert the repo's
+  strongest gate into a green-for-the-wrong-reason hole. The worst available outcome.
+- **Do not add a `paths:` filter** to the `pull_request` trigger. A required check that *never reports*
+  leaves docs-only PRs blocked forever on "Expected"; the always-run + `exit 0` docs exemption exists
+  for exactly this reason.
+- **Do not add a `name:` override** to the job (BL-11 / FD5): it renames the check-run and strands the
+  ruleset's requirement, which `tests/test_ci_config.py` pins against.
+- Not a relaxation of the gate. The `pull_request` run's failure is **correct** and must stay — the
+  defect is that it lingers after being superseded, not that it happens.
+
+**Related:** BL-11 (the ruleset and its required-check contexts), BL-10 / BL-18 (the `skipped` != `failure`
+family this fix must not fall into), BL-6 (a separate machine identity — the real fix for the shared-identity
+constraint that forces the header/attestation design in the first place), BL-25 (whether the backlog belongs
+in GitHub Issues). Aligns with the recurring theme in [github-workflow-traps], inverted: here a check is
+**red for a stale reason** rather than green for a wrong one.
