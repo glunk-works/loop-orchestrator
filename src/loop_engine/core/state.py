@@ -3,7 +3,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CURRENT_SCHEMA_VERSION = 4
+CURRENT_SCHEMA_VERSION = 5
 
 
 def default_artifact_path(run_id: str, key: str) -> str:
@@ -18,6 +18,7 @@ class RunStatus(StrEnum):
     FAILED_STAGE = "failed_stage"
     BUDGET_EXCEEDED = "budget_exceeded"
     AWAITING_ISSUE = "awaiting_issue"
+    AWAITING_SLACK = "awaiting_slack"
 
 
 class StageRecord(BaseModel):
@@ -57,6 +58,13 @@ class IssueRef(BaseModel):
     url: str
 
 
+class SlackRef(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    channel_id: str
+    message_ts: str
+
+
 class State(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -65,6 +73,7 @@ class State(BaseModel):
     status: RunStatus = RunStatus.RUNNING
     questions: list[Question] = Field(default_factory=list)
     pending_issue: IssueRef | None = None
+    pending_slack: SlackRef | None = None
     # Escalation/re-plan counters keyed by edge name (e.g. "escalations:RalphCoderPersona",
     # "replans"); the engine enforces hard caps against these so feedback edges
     # cannot cycle unboundedly.
@@ -87,13 +96,15 @@ def migrate_state_payload(payload: dict[str, Any]) -> dict[str, Any]:
     v1 predates status/questions/pending_issue/counters; v2 predates a
     since-retired disk-ref field carried by v3 only; under `extra="forbid"`
     that field must be popped, not merely versioned past, or a v3 payload
-    fails validation. Raises ValueError for versions this build can't read.
+    fails validation. v4 predates `pending_slack`, added purely additively
+    (defaults to None) in v5. Raises ValueError for versions this build
+    can't read.
     """
     version = payload.get("schema_version")
     if version == CURRENT_SCHEMA_VERSION:
         return payload
-    if version in (1, 2, 3):
-        # An unconditional pop covers all three prior versions (v1/v2 never
+    if version in (1, 2, 3, 4):
+        # An unconditional pop covers all four prior versions (v1/v2/v4 never
         # had the key) — the inline `artifacts` bodies carry forward untouched.
         upgraded = {**payload, "schema_version": CURRENT_SCHEMA_VERSION}
         upgraded.pop(_RETIRED_V3_KEY, None)
