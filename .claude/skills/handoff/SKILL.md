@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Serialize the current dev-session state into .ai/ before switching model or session — check the /critic-gate pass ran on any src/ diff, update .ai/state.json (including hitl_gate, always), regenerate .ai/next-steps.md, and remind to commit. Run this at the END of a session (e.g. Opus planning -> Sonnet coding, or coding -> Opus review). Does NOT archive a sprint.
+description: Serialize the current dev-session state into .ai/ before switching model or session — check the /critic-gate pass ran on any src/ diff, update .ai/state.json (including hitl_gate, always), regenerate .ai/next-steps.md, and commit/push it as its own docs-only PR against main (never merged — human merges). Run this at the END of a session (e.g. Opus planning -> Sonnet coding, or coding -> Opus review). Does NOT archive a sprint.
 ---
 
 # /handoff — externalize state before switching model/session
@@ -42,7 +42,31 @@ handoff point. It does **not** archive — that is `/archive-sprint`, only on co
    - **Pointers:** the roadmap + active sprint_plan paths (do not copy their content — link to them).
    Regenerate the whole file (it is a cursor, not an append log — history lives in git + the roadmap).
 
-5. **Commit reminder.** Run `git status --short`. If the tree is dirty, tell the user what's uncommitted and recommend committing before switching sessions (a `/resume` expects `last_commit` to match HEAD). Do NOT auto-commit unless the user asked. A dirty tree also costs the next session its auto-start — `/resume` treats cursor/HEAD drift as a reason to stop and ask.
+5. **Commit `.ai/next-steps.md` as its own docs-only PR against `main`.** This repo's
+   established convention (every prior `/handoff` has done this — see the
+   `docs(next-steps): sync cursor to ...` commits in `git log`) is that the cursor sync
+   travels as a small, standalone, docs-only PR, separate from whatever code PR this
+   session's work landed on. Do it now, don't just remind:
+   - If the current branch is a code branch (e.g. mid-implementation, or the just-pushed
+     feature branch), do **not** commit the cursor sync there — switch to `main`
+     (`git fetch origin main && git checkout main && git pull`), cut a fresh small branch
+     (e.g. `docs/sync-cursor-<slug>`), and commit `.ai/next-steps.md` there. If a
+     `/handoff` runs directly on `main` with nothing else in flight, committing directly
+     on a fresh branch from `main` is still correct — never commit straight to `main`.
+   - `git add .ai/next-steps.md` (only that file — this step never bundles unrelated
+     dirty state; if other files are also dirty, surface that separately and let the
+     human decide).
+   - Commit, push, and open the PR with `gh pr create --base main`. Docs-only PRs are
+     `architect-review`-exempt per CLAUDE.md, but still need a `pr-title` pass (`wc -c`
+     the title first, ≤72 bytes) and the other required checks.
+   - **Never merge it.** Same rule as every other PR in this repo — the human's merge is
+     the approval. Report the PR URL and stop.
+   - `.ai/state.json` is git-ignored and needs no commit; it already travels with the
+     working tree for this machine.
+   - If something *else* is dirty beyond `.ai/next-steps.md` (leftover from this
+     session's work), don't fold it into the docs PR — surface it and let the human
+     decide; a `/resume` still expects `last_commit` to match HEAD and a clean tree, and
+     unrelated dirty state costs the next session its auto-start.
 
 6. **Report** the new `sprint_status`, the `next_action`, and the recommended next model in 2–3 lines. If the critic pass was skipped by choice (step 1), say so here.
 
