@@ -12,7 +12,7 @@ handoff point. It does **not** archive — that is `/archive-sprint`, only on co
 ## Steps
 
 1. **Determine the new cursor** from what this session did:
-   - `current_phase`, `current_sprint_id`, and `sprint_status` — one of `planning` | `implementing` | `awaiting_hitl_review` | `blocked` | `done`.
+   - `current_phase`, `current_sprint_id`, and `sprint_status` — one of `planning` | `implementing` | `awaiting_architect_review` | `blocked` | `done`.
    - `assigned_model` / `assigned_persona` for the **next** session (Architect=Opus for planning/review, Coder=Sonnet for implementation — see `.ai/context/workflow.md`).
    - `last_commit` = current `git rev-parse --short HEAD`.
    - `next_action` = the single most important next step, phrased as an imperative.
