@@ -208,9 +208,11 @@ def test_cli_resume_from_issue_folds_answers_and_reenters(tmp_path, monkeypatch)
             "comments": [{"body": "```answers\n1: eu-west-1\n```"}],
         },
     )
+    # T4: the fold/reentry/run_graph_loop execution now lives in the shared
+    # runner.resume_run seam, so that's where these collaborators are patched.
     mock_run_graph_loop = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_run_graph_loop)
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_run_graph_loop)
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
 
     fold_result_holder = {}
 
@@ -287,8 +289,8 @@ def test_cli_resume_from_issue_dispatches_the_real_default_through_mcp(
 
     monkeypatch.setattr("loop_engine.tools.mcp.build_issue_provider", lambda: _FakeProvider())
     mock_run_graph_loop = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_run_graph_loop)
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_run_graph_loop)
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
 
     fold_result_holder = {}
 
@@ -345,6 +347,62 @@ def test_cli_resume_from_issue_aborts_cleanly_when_closed_without_answers(
     assert result.exception is None or isinstance(result.exception, SystemExit)
 
 
+def test_cli_resume_from_issue_does_not_relabel_a_deep_value_error_as_bad_parameter(
+    tmp_path, monkeypatch
+) -> None:
+    """A ValueError raised inside the resumed loop itself (e.g. bad env-var
+    config, not "no fold_answers persona") must propagate as a crash (exit 1),
+    not get caught by the resume seam's narrow exception handling and
+    relabeled as typer.BadParameter -- which exits 2, colliding with
+    AWAITING_ISSUE's exit code and misrepresenting a real bug as a usage error."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("loop_engine.cli.resolve_repo_slug", lambda cwd: "acme/repo")
+    paused = State(
+        schema_version=2,
+        run_id="run-1",
+        status=RunStatus.AWAITING_ISSUE,
+        pending_issue=IssueRef(number=17, url="https://github.com/acme/repo/issues/17"),
+        counters={"paused_stage_index": 1},
+        questions=[Question(id="q1", origin_stage="ArchitectureGenerator", text="Which region?")],
+        stage_history=[
+            {
+                "stage_name": "PMGenerator",
+                "tokens_used": 10,
+                "cost_usd": 0.0,
+                "completed_at": "2026-07-02T00:00:00Z",
+            }
+        ],
+        artifacts={"project_spec": "{}"},
+    )
+    snapshot_path = tmp_path / "01_awaiting_issue.json"
+    snapshot_path.write_text(paused.model_dump_json())
+
+    monkeypatch.setattr(
+        "loop_engine.cli.default_issue_reader",
+        lambda n, repo=None: {
+            "state": "OPEN",
+            "url": "https://github.com/acme/repo/issues/17",
+            "body": f"Snapshot: `{snapshot_path}`",
+            "comments": [{"body": "```answers\n1: eu-west-1\n```"}],
+        },
+    )
+    monkeypatch.setattr(
+        type(DEFAULT_LOOP.stages[0].persona), "fold_answers", lambda self, state, llm: state
+    )
+
+    def raising_engine(loop, state, client, **kwargs):
+        raise ValueError("LOOP_ENGINE_RALPH_MAX_ITERS is not an integer")
+
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", raising_engine)
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
+
+    result = runner.invoke(app, ["resume", "--from-issue", "17"])
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, ValueError)
+    assert "RALPH_MAX_ITERS" in str(result.exception)
+
+
 def test_cli_resume_from_issue_folds_answers_via_the_pm_generator(tmp_path, monkeypatch) -> None:
     # Regression for review finding #1: stage 0 is PMGenerator, which must expose
     # fold_answers or every paused run is unresumable (cli.py's resume guard
@@ -381,11 +439,11 @@ def test_cli_resume_from_issue_folds_answers_via_the_pm_generator(tmp_path, monk
         },
     )
     monkeypatch.setattr(
-        "loop_engine.cli.run_graph_loop", MagicMock(return_value=_completed_state())
+        "loop_engine.runner.run_graph_loop", MagicMock(return_value=_completed_state())
     )
     mock_llm_client = MagicMock()
     mock_llm_client.call.return_value = SimpleNamespace(text='{"spec_updates": {}, "impacts": {}}')
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock(return_value=mock_llm_client))
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock(return_value=mock_llm_client))
 
     result = runner.invoke(app, ["resume", "--from-issue", "17"])
 
@@ -559,9 +617,9 @@ def test_cli_resume_from_issue_silently_resumes_a_same_numbered_wrong_repo_issue
             "comments": [{"body": "```answers\n1: eu-west-1\n```"}],
         },
     )
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
     mock_graph = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_graph)
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_graph)
     monkeypatch.setattr(
         type(DEFAULT_LOOP.stages[0].persona), "fold_answers", lambda self, state, llm: state
     )
@@ -607,9 +665,9 @@ def test_cli_resume_snapshot_derives_repo_and_issue_from_pending_issue_not_cwd(
 
     monkeypatch.setattr("loop_engine.cli.default_issue_reader", fake_reader)
     monkeypatch.setattr(
-        "loop_engine.cli.run_graph_loop", MagicMock(return_value=_completed_state())
+        "loop_engine.runner.run_graph_loop", MagicMock(return_value=_completed_state())
     )
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
     monkeypatch.setattr(
         type(DEFAULT_LOOP.stages[0].persona), "fold_answers", lambda self, state, llm: state
     )
@@ -669,9 +727,9 @@ def test_cli_resume_passes_repo_through_to_the_reader(tmp_path, monkeypatch) -> 
 
     monkeypatch.setattr("loop_engine.cli.default_issue_reader", fake_reader)
     monkeypatch.setattr(
-        "loop_engine.cli.run_graph_loop", MagicMock(return_value=_completed_state())
+        "loop_engine.runner.run_graph_loop", MagicMock(return_value=_completed_state())
     )
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
     monkeypatch.setattr(
         type(DEFAULT_LOOP.stages[0].persona), "fold_answers", lambda self, state, llm: state
     )

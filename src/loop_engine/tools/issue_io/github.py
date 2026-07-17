@@ -161,32 +161,3 @@ def parse_issue_answers(issue_data: dict, issue_number: int | None = None) -> di
             "treating the run as aborted by the human."
         )
     return answers
-
-
-def apply_answers_to_questions(
-    questions: list[Question],
-    filed_questions: list[Question],
-    answers: dict[int, str],
-    issue_number: int,
-) -> list[Question]:
-    """Mark filed questions resolved from the human's numbered answers.
-
-    `filed_questions` preserves the numbering used in the issue body; answers
-    referencing numbers outside it are ignored.
-    """
-    resolution_by_id = {
-        filed_questions[number - 1].id: text
-        for number, text in answers.items()
-        if 1 <= number <= len(filed_questions)
-    }
-    return [
-        q.model_copy(
-            update={
-                "resolution": resolution_by_id[q.id],
-                "resolved_by": f"human:{issue_number}",
-            }
-        )
-        if q.id in resolution_by_id and q.resolution is None
-        else q
-        for q in questions
-    ]
