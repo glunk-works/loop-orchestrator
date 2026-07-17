@@ -154,3 +154,12 @@ def test_boundary_suite_covers_reply_module() -> None:
         "boundary sweep -- the keyring/write/subprocess/module-scope-import "
         "assertions above would silently stop covering it"
     )
+
+
+def test_boundary_suite_covers_escalation_module() -> None:
+    assert (SLACK_IO_DIR / "escalation.py") in _slack_io_modules(), (
+        "escalation.py (T3, the Slack escalation filer/renderer/parser) is "
+        "missing from the slack_io boundary sweep -- the "
+        "keyring/write/subprocess/module-scope-import assertions above "
+        "would silently stop covering it"
+    )
