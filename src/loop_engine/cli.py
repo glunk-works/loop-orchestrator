@@ -44,6 +44,10 @@ _EXIT_CODES = {
     RunStatus.COMPLETED: 0,
     RunStatus.AWAITING_ISSUE: 2,
     RunStatus.BUDGET_EXCEEDED: 3,
+    # Distinct from AWAITING_ISSUE's code 2: a Slack pause is resumed by the
+    # daemon via a thread reply (BL-2 pass 3), never `resume --from-issue`, so
+    # a wrapping script must be able to tell the two paused states apart.
+    RunStatus.AWAITING_SLACK: 5,
 }
 
 # A human closing the pending issue without answers is a deliberate, documented
@@ -90,6 +94,12 @@ def _report_outcome(state: State) -> None:
         typer.echo(
             f"Paused on questions for a human — answer on {state.pending_issue.url} "
             f"then run: loop-engine resume --from-issue {state.pending_issue.number}"
+        )
+    elif state.pending_slack is not None:
+        typer.echo(
+            "Paused on questions for a human — reply in the Slack thread "
+            f"(channel {state.pending_slack.channel_id}, ts {state.pending_slack.message_ts}); "
+            "the daemon resumes the run automatically once you answer."
         )
     raise typer.Exit(code=_EXIT_CODES.get(state.status, 1))
 

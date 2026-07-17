@@ -14,6 +14,7 @@ from loop_engine.core.state import (
     IssueRef,
     Question,
     RunStatus,
+    SlackRef,
     State,
 )
 from loop_engine.loops.default.loop import DEFAULT_LOOP
@@ -72,6 +73,28 @@ def test_cli_run_always_drives_the_langgraph_engine(tmp_path, monkeypatch) -> No
 
     assert result.exit_code == 0
     assert mock_graph.called
+
+
+def test_cli_run_awaiting_slack_exits_5_and_points_at_slack_thread(tmp_path, monkeypatch) -> None:
+    # Distinct from AWAITING_ISSUE's exit code 2 (BL-2 pass 3, finding #12):
+    # a Slack pause is resumed by the daemon via a thread reply, never
+    # `resume --from-issue`, so a wrapping script must be able to tell them apart.
+    mock_graph = MagicMock(
+        return_value=_completed_state(
+            status=RunStatus.AWAITING_SLACK,
+            pending_issue=None,
+            pending_slack=SlackRef(channel_id="C123", message_ts="1700000000.000100"),
+        )
+    )
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_graph)
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
+
+    result = runner.invoke(app, ["run"])
+
+    assert result.exit_code == 5
+    output = _plain_output(result)
+    assert "C123" in output
+    assert "1700000000.000100" in output
 
 
 def test_cli_resume_from_skips_already_completed_stages(tmp_path, monkeypatch) -> None:

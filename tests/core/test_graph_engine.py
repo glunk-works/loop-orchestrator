@@ -24,9 +24,9 @@ import pytest
 
 from loop_engine.core.engine import InvalidStateTransitionError, Loop, Stage
 from loop_engine.core.gates import ArtifactGate, GateDecision, GateResult
-from loop_engine.core.graph_engine import run_graph_loop
+from loop_engine.core.graph_engine import build_escalation_filer_from_env, run_graph_loop
 from loop_engine.core.notify import EventKind, LifecycleEvent
-from loop_engine.core.state import IssueRef, RunStatus, StageRecord
+from loop_engine.core.state import IssueRef, RunStatus, SlackRef, StageRecord
 from loop_engine.personas.base import BasePersona
 from loop_engine.tools.llm.client import ToolLoopExceededError
 from tests.core.conftest import absolutize_mutmut_source_paths
@@ -281,6 +281,90 @@ def test_run_graph_loop_maps_each_terminal_status_to_its_event_kind() -> None:
         EventKind.STARTED,
         EventKind.AWAITING_ISSUE,
     ]
+
+
+def test_run_graph_loop_awaiting_slack_maps_to_its_event_kind() -> None:
+    def slack_filer(state, questions, snapshot_path):
+        return SlackRef(channel_id="C123", message_ts="1700000000.000100")
+
+    notifier = _FakeNotifier()
+    loop = Loop(stages=[Stage(persona=QuestionAskingPersona(), gate=ArtifactGate("doc"))])
+
+    final = run_graph_loop(
+        loop,
+        _initial_state("rg-awaiting-slack"),
+        _stub_llm_client(),
+        issue_filer=slack_filer,
+        notifier=notifier,
+    )
+
+    assert final.status is RunStatus.AWAITING_SLACK
+    assert [e.kind for e in notifier.events] == [EventKind.STARTED, EventKind.AWAITING_SLACK]
+
+
+def test_run_graph_loop_clears_stale_pending_slack_from_input_state() -> None:
+    # Mirrors the pending_issue reset above (E1-adjacent): a resumed run must
+    # not carry forward a stale pending_slack from a PRIOR Slack pause, or a
+    # freshly-completed run would still report itself as awaiting a Slack
+    # answer via cli._report_outcome's pending_slack check.
+    from loop_engine.core.gates import ArtifactGate
+
+    class SimplePersona(BasePersona):
+        produces = ("doc",)
+
+        def run(self, state, llm_client, findings=None):
+            return state.model_copy(update={"artifacts": {**state.artifacts, "doc": "done"}})
+
+    stale = _initial_state("rg-stale-slack").model_copy(
+        update={
+            "status": RunStatus.AWAITING_SLACK,
+            "pending_slack": SlackRef(channel_id="C999", message_ts="1"),
+        }
+    )
+    loop = Loop(stages=[Stage(persona=SimplePersona(), gate=ArtifactGate("doc"))])
+
+    final = run_graph_loop(loop, stale, _stub_llm_client())
+
+    assert final.status is RunStatus.COMPLETED
+    assert final.pending_slack is None
+
+
+def test_build_escalation_filer_from_env_unset_returns_none(monkeypatch) -> None:
+    # `_pause_for_escalation`'s own `issue_filer or default_issue_filer`
+    # fallback stays the single resolution point for the issue transport
+    # (and the one tests patch), so this must return None, not eagerly
+    # resolve `default_issue_filer` itself.
+    monkeypatch.delenv("LOOP_ENGINE_ESCALATION_TRANSPORT", raising=False)
+    assert build_escalation_filer_from_env() is None
+
+
+def test_build_escalation_filer_from_env_explicit_issue_returns_none(monkeypatch) -> None:
+    monkeypatch.setenv("LOOP_ENGINE_ESCALATION_TRANSPORT", "issue")
+    assert build_escalation_filer_from_env() is None
+
+
+def test_build_escalation_filer_from_env_slack_missing_token_fails_closed(monkeypatch) -> None:
+    monkeypatch.setenv("LOOP_ENGINE_ESCALATION_TRANSPORT", "slack")
+    monkeypatch.delenv("LOOP_ENGINE_SLACK_BOT_TOKEN", raising=False)
+    monkeypatch.setenv("LOOP_ENGINE_SLACK_CHANNEL", "C123")
+    with pytest.raises(RuntimeError, match="LOOP_ENGINE_ESCALATION_TRANSPORT=slack"):
+        build_escalation_filer_from_env()
+
+
+def test_build_escalation_filer_from_env_slack_missing_channel_fails_closed(monkeypatch) -> None:
+    monkeypatch.setenv("LOOP_ENGINE_ESCALATION_TRANSPORT", "slack")
+    monkeypatch.setenv("LOOP_ENGINE_SLACK_BOT_TOKEN", "xoxb-test")
+    monkeypatch.delenv("LOOP_ENGINE_SLACK_CHANNEL", raising=False)
+    with pytest.raises(RuntimeError, match="LOOP_ENGINE_ESCALATION_TRANSPORT=slack"):
+        build_escalation_filer_from_env()
+
+
+def test_build_escalation_filer_from_env_slack_missing_both_fails_closed(monkeypatch) -> None:
+    monkeypatch.setenv("LOOP_ENGINE_ESCALATION_TRANSPORT", "slack")
+    monkeypatch.delenv("LOOP_ENGINE_SLACK_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("LOOP_ENGINE_SLACK_CHANNEL", raising=False)
+    with pytest.raises(RuntimeError, match="LOOP_ENGINE_ESCALATION_TRANSPORT=slack"):
+        build_escalation_filer_from_env()
 
 
 def test_run_graph_loop_fail_open_a_raising_notifier_never_changes_the_outcome() -> None:

@@ -21,7 +21,7 @@ from loop_engine.core.engine import (
 )
 from loop_engine.core.gates import ArtifactGate, GateDecision, GateResult
 from loop_engine.core.graph_engine import run_graph_loop
-from loop_engine.core.state import IssueRef, Question, RunStatus, StageRecord, State
+from loop_engine.core.state import IssueRef, Question, RunStatus, SlackRef, StageRecord, State
 from loop_engine.personas.base import BasePersona
 from loop_engine.tools.llm.client import (
     BudgetExceededError,
@@ -599,6 +599,51 @@ def test_engine_terminal_snapshot_exists_for_every_status(tmp_path) -> None:
     assert snapshot.status is RunStatus.AWAITING_ISSUE
     assert snapshot.pending_issue is not None
     assert snapshot.questions and snapshot.questions[0].resolution is None
+
+
+# --- Sprint 41 T2 (BL-2 pass 3): transport-agnostic EscalationFiler seam ---
+
+
+def test_engine_slack_ref_pause_finalizes_awaiting_slack_and_sets_pending_slack() -> None:
+    """FD4/finding #12: `_pause_for_escalation` dispatches on the returned
+    ref's TYPE, not on any transport flag -- an injected filer returning a
+    `SlackRef` finalizes AWAITING_SLACK and stores `pending_slack`, never
+    `pending_issue`, even though no real Slack filer exists yet (T3)."""
+
+    def slack_filer(state: State, questions: list[Question], snapshot_hint: str) -> SlackRef:
+        return SlackRef(channel_id="C123", message_ts="1700000000.000100")
+
+    persona = QuestionAskingPersona()
+    loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"))])
+
+    final = run_graph_loop(
+        loop, _initial_state("run-slack"), _stub_llm_client(), issue_filer=slack_filer
+    )
+
+    assert final.status is RunStatus.AWAITING_SLACK
+    assert final.pending_slack == SlackRef(channel_id="C123", message_ts="1700000000.000100")
+    assert final.pending_issue is None
+    assert (Path("state") / "run-slack" / "00_awaiting_slack.json").exists()
+
+
+def test_engine_issue_ref_pause_still_sets_pending_issue_not_pending_slack() -> None:
+    """The inverse of the above: an `IssueRef`-returning filer (the default
+    shape) must never touch `pending_slack`, confirming the ref-type dispatch
+    is genuinely two-way, not just "anything not IssueRef -> Slack"."""
+
+    def issue_filer(state: State, questions: list[Question], snapshot_hint: str) -> IssueRef:
+        return IssueRef(number=7, url="https://github.com/example/repo/issues/7")
+
+    persona = QuestionAskingPersona()
+    loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"))])
+
+    final = run_graph_loop(
+        loop, _initial_state("run-issue-ref"), _stub_llm_client(), issue_filer=issue_filer
+    )
+
+    assert final.status is RunStatus.AWAITING_ISSUE
+    assert final.pending_issue == IssueRef(number=7, url="https://github.com/example/repo/issues/7")
+    assert final.pending_slack is None
 
 
 # --- Sprint 38 T3 (BL-23): landing audit_report.md's `fix` verdicts ---
