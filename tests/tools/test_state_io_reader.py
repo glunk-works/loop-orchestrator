@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from loop_engine.tools.state_io.reader import find_paused_snapshot_by_slack_thread
+from loop_engine.tools.state_io.reader import find_paused_snapshot_by_slack_thread, load_state
 
 MESSAGE_TS = "1700000000.000100"
 
@@ -138,6 +138,94 @@ def test_find_paused_snapshot_by_slack_thread_returns_none_for_an_already_resume
     )
 
     assert find_paused_snapshot_by_slack_thread(MESSAGE_TS) is None
+
+
+def test_find_paused_snapshot_by_slack_thread_ignores_stale_awaiting_slack_file() -> None:
+    # T4-review finding #1: a resume never rewrites or removes the paused
+    # run's own NN_awaiting_slack.json, so it lingers with status still
+    # "awaiting_slack" and the same message_ts. A later snapshot in the same
+    # run directory (the resume's own terminal write) shows the run has
+    # actually moved on -- the scan must trust the LATEST snapshot per run,
+    # not any matching file, or a second thread reply would double-resume.
+    _write(
+        "run-1",
+        "02_awaiting_slack.json",
+        {
+            "schema_version": 5,
+            "run_id": "run-1",
+            "status": "awaiting_slack",
+            "pending_slack": {"channel_id": "C123", "message_ts": MESSAGE_TS},
+            "stage_history": [],
+            "artifacts": {},
+        },
+    )
+    _write(
+        "run-1",
+        "03_completed.json",
+        {
+            "schema_version": 5,
+            "run_id": "run-1",
+            "status": "completed",
+            "pending_slack": {"channel_id": "C123", "message_ts": MESSAGE_TS},
+            "stage_history": [],
+            "artifacts": {},
+        },
+    )
+
+    assert find_paused_snapshot_by_slack_thread(MESSAGE_TS) is None
+
+
+def test_find_paused_snapshot_by_slack_thread_matches_latest_of_several_awaiting_slack() -> None:
+    # The still-current case: the run's latest snapshot IS awaiting_slack
+    # (no resume has happened yet), even though an earlier stage also paused
+    # on a (different, already-answered) Slack thread.
+    _write(
+        "run-1",
+        "01_awaiting_slack.json",
+        {
+            "schema_version": 5,
+            "run_id": "run-1",
+            "status": "awaiting_slack",
+            "pending_slack": {"channel_id": "C123", "message_ts": "1111111111.000000"},
+            "stage_history": [],
+            "artifacts": {},
+        },
+    )
+    match = _write(
+        "run-1",
+        "02_awaiting_slack.json",
+        {
+            "schema_version": 5,
+            "run_id": "run-1",
+            "status": "awaiting_slack",
+            "pending_slack": {"channel_id": "C123", "message_ts": MESSAGE_TS},
+            "stage_history": [],
+            "artifacts": {},
+        },
+    )
+
+    assert find_paused_snapshot_by_slack_thread(MESSAGE_TS) == match
+
+
+def test_load_state_migrates_a_v4_snapshot_and_validates() -> None:
+    path = _write(
+        "run-1",
+        "01_awaiting_issue.json",
+        {
+            "schema_version": 4,
+            "run_id": "run-1",
+            "status": "awaiting_issue",
+            "pending_issue": {"number": 17, "url": "https://github.com/acme/repo/issues/17"},
+            "stage_history": [],
+            "artifacts": {},
+        },
+    )
+
+    state = load_state(path)
+
+    assert state.schema_version == 5
+    assert state.pending_slack is None
+    assert state.run_id == "run-1"
 
 
 def test_find_paused_snapshot_by_slack_thread_writes_nothing() -> None:

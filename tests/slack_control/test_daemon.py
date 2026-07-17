@@ -1,7 +1,9 @@
 import asyncio
 import sys
 import types
+from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -32,9 +34,52 @@ class _FakeListener:
 class _FakeDispatcher:
     def __init__(self) -> None:
         self.received: list[SlackRunCommand] = []
+        self.resumed: list[dict] = []
 
     async def dispatch(self, command: SlackRunCommand) -> None:
         self.received.append(command)
+
+    async def dispatch_resume(self, **kwargs) -> None:
+        self.resumed.append(kwargs)
+
+
+def _message_event_request(
+    envelope_id: str = "env-msg-1",
+    channel: str = _CHANNEL_ID,
+    thread_ts: str | None = "1700000000.000100",
+    text: str = "1: yes",
+    user: str = "U1",
+    bot_id: str | None = None,
+    subtype: str | None = None,
+) -> SimpleNamespace:
+    event = {"channel": channel, "user": user, "text": text}
+    if thread_ts is not None:
+        event["thread_ts"] = thread_ts
+    if bot_id is not None:
+        event["bot_id"] = bot_id
+    if subtype is not None:
+        event["subtype"] = subtype
+    return SimpleNamespace(
+        envelope_id=envelope_id,
+        type="events_api",
+        payload={"event": event, "team_id": "T1"},
+    )
+
+
+def _patch_thread_send(monkeypatch) -> list[dict]:
+    posted: list[dict] = []
+    monkeypatch.setattr(
+        "loop_engine.slack_control.daemon.send_thread_message",
+        lambda **kwargs: posted.append(kwargs),
+    )
+    return posted
+
+
+def _fail_if_scanned(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "loop_engine.slack_control.daemon.find_paused_snapshot_by_slack_thread",
+        lambda thread_ts: pytest.fail("should not scan the state tree for this message"),
+    )
 
 
 def _request(
@@ -178,6 +223,207 @@ def test_shutting_down_event_loop_drops_the_command_without_raising(monkeypatch)
 
     assert dispatcher.received == []
     assert replies == []
+
+
+def test_slash_command_path_is_unaffected_by_the_events_api_branch(monkeypatch) -> None:
+    replies = _patch_reply(monkeypatch)
+    dispatcher = _FakeDispatcher()
+    daemon = _daemon(dispatcher)
+
+    async def main() -> None:
+        daemon._loop = asyncio.get_running_loop()
+        daemon._handle_request(_request(text="--budget 5.00 fix it"))
+        await asyncio.sleep(0.2)
+
+    asyncio.run(main())
+
+    assert len(dispatcher.received) == 1
+    assert len(replies) == 1
+
+
+def test_foreign_channel_message_event_is_dropped_silently(monkeypatch) -> None:
+    posted = _patch_thread_send(monkeypatch)
+    _fail_if_scanned(monkeypatch)
+    dispatcher = _FakeDispatcher()
+    daemon = _daemon(dispatcher)
+
+    daemon._handle_request(_message_event_request(channel="C-some-other-channel"))
+
+    assert dispatcher.resumed == []
+    assert posted == []
+
+
+def test_bot_authored_message_event_is_dropped(monkeypatch) -> None:
+    posted = _patch_thread_send(monkeypatch)
+    _fail_if_scanned(monkeypatch)
+    dispatcher = _FakeDispatcher()
+    daemon = _daemon(dispatcher)
+
+    daemon._handle_request(_message_event_request(bot_id="B1"))
+
+    assert dispatcher.resumed == []
+    assert posted == []
+
+
+@pytest.mark.parametrize("subtype", ["bot_message", "message_changed", "message_deleted"])
+def test_ignored_subtype_message_event_is_dropped(monkeypatch, subtype) -> None:
+    posted = _patch_thread_send(monkeypatch)
+    _fail_if_scanned(monkeypatch)
+    dispatcher = _FakeDispatcher()
+    daemon = _daemon(dispatcher)
+
+    daemon._handle_request(_message_event_request(subtype=subtype))
+
+    assert dispatcher.resumed == []
+    assert posted == []
+
+
+def test_non_thread_message_event_is_dropped(monkeypatch) -> None:
+    posted = _patch_thread_send(monkeypatch)
+    _fail_if_scanned(monkeypatch)
+    dispatcher = _FakeDispatcher()
+    daemon = _daemon(dispatcher)
+
+    daemon._handle_request(_message_event_request(thread_ts=None))
+
+    assert dispatcher.resumed == []
+    assert posted == []
+
+
+def test_thread_reply_with_no_matching_snapshot_is_dropped(monkeypatch) -> None:
+    posted = _patch_thread_send(monkeypatch)
+    dispatcher = _FakeDispatcher()
+    daemon = _daemon(dispatcher)
+    monkeypatch.setattr(
+        "loop_engine.slack_control.daemon.find_paused_snapshot_by_slack_thread",
+        lambda thread_ts: None,
+    )
+
+    daemon._handle_request(_message_event_request())
+
+    assert dispatcher.resumed == []
+    assert posted == []
+
+
+def test_thread_reply_matching_a_paused_snapshot_dispatches_resume(monkeypatch) -> None:
+    posted = _patch_thread_send(monkeypatch)
+    dispatcher = _FakeDispatcher()
+    daemon = _daemon(dispatcher)
+    snapshot_path = Path("state/run-1/02_awaiting_slack.json")
+    fake_state = MagicMock()
+
+    monkeypatch.setattr(
+        "loop_engine.slack_control.daemon.find_paused_snapshot_by_slack_thread",
+        lambda thread_ts: snapshot_path,
+    )
+    monkeypatch.setattr("loop_engine.slack_control.daemon.load_state", lambda path: fake_state)
+    monkeypatch.setattr(
+        "loop_engine.slack_control.daemon.unresolved_questions", lambda state: [MagicMock()]
+    )
+    monkeypatch.setattr(
+        "loop_engine.slack_control.daemon.parse_thread_answers",
+        lambda text, unresolved_count: {1: text},
+    )
+
+    async def main() -> None:
+        daemon._loop = asyncio.get_running_loop()
+        daemon._handle_request(_message_event_request(text="yes please"))
+        await asyncio.sleep(0.2)
+
+    asyncio.run(main())
+
+    assert len(dispatcher.resumed) == 1
+    call = dispatcher.resumed[0]
+    assert call["snapshot_path"] == snapshot_path
+    assert call["resolved_answers"] == {1: "yes please"}
+    assert call["thread_ts"] == "1700000000.000100"
+    assert call["channel_id"] == _CHANNEL_ID
+    assert posted == []
+
+
+def test_thread_reply_unparseable_against_multiple_questions_posts_a_hint(monkeypatch) -> None:
+    posted = _patch_thread_send(monkeypatch)
+    dispatcher = _FakeDispatcher()
+    daemon = _daemon(dispatcher)
+    snapshot_path = Path("state/run-1/02_awaiting_slack.json")
+
+    monkeypatch.setattr(
+        "loop_engine.slack_control.daemon.find_paused_snapshot_by_slack_thread",
+        lambda thread_ts: snapshot_path,
+    )
+    monkeypatch.setattr("loop_engine.slack_control.daemon.load_state", lambda path: MagicMock())
+    monkeypatch.setattr(
+        "loop_engine.slack_control.daemon.unresolved_questions",
+        lambda state: [MagicMock(), MagicMock()],
+    )
+    monkeypatch.setattr(
+        "loop_engine.slack_control.daemon.parse_thread_answers", lambda text, unresolved_count: {}
+    )
+
+    daemon._handle_request(_message_event_request(text="unclear reply"))
+
+    assert dispatcher.resumed == []
+    assert len(posted) == 1
+    assert posted[0]["channel_id"] == _CHANNEL_ID
+    assert posted[0]["thread_ts"] == "1700000000.000100"
+
+
+def test_message_event_with_no_running_loop_is_dropped_without_a_misleading_post(
+    monkeypatch,
+) -> None:
+    posted = _patch_thread_send(monkeypatch)
+    dispatcher = _FakeDispatcher()
+    daemon = _daemon(dispatcher)
+    assert daemon._loop is None
+    snapshot_path = Path("state/run-1/02_awaiting_slack.json")
+
+    monkeypatch.setattr(
+        "loop_engine.slack_control.daemon.find_paused_snapshot_by_slack_thread",
+        lambda thread_ts: snapshot_path,
+    )
+    monkeypatch.setattr("loop_engine.slack_control.daemon.load_state", lambda path: MagicMock())
+    monkeypatch.setattr(
+        "loop_engine.slack_control.daemon.unresolved_questions", lambda state: [MagicMock()]
+    )
+    monkeypatch.setattr(
+        "loop_engine.slack_control.daemon.parse_thread_answers",
+        lambda text, unresolved_count: {1: text},
+    )
+
+    daemon._handle_request(_message_event_request())
+
+    assert dispatcher.resumed == []
+    assert posted == []
+
+
+def test_message_event_shutting_down_event_loop_drops_without_raising(monkeypatch) -> None:
+    posted = _patch_thread_send(monkeypatch)
+    dispatcher = _FakeDispatcher()
+    daemon = _daemon(dispatcher)
+    snapshot_path = Path("state/run-1/02_awaiting_slack.json")
+
+    monkeypatch.setattr(
+        "loop_engine.slack_control.daemon.find_paused_snapshot_by_slack_thread",
+        lambda thread_ts: snapshot_path,
+    )
+    monkeypatch.setattr("loop_engine.slack_control.daemon.load_state", lambda path: MagicMock())
+    monkeypatch.setattr(
+        "loop_engine.slack_control.daemon.unresolved_questions", lambda state: [MagicMock()]
+    )
+    monkeypatch.setattr(
+        "loop_engine.slack_control.daemon.parse_thread_answers",
+        lambda text, unresolved_count: {1: text},
+    )
+
+    async def main() -> None:
+        daemon._loop = asyncio.get_running_loop()
+
+    asyncio.run(main())  # the loop returned by asyncio.run is now closed
+
+    daemon._handle_request(_message_event_request())  # must not raise
+
+    assert dispatcher.resumed == []
+    assert posted == []
 
 
 @pytest.mark.parametrize(
