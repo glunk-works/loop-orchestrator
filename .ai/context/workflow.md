@@ -268,9 +268,23 @@ gate still runs locally before the push.
   `.ai/next-steps.md` + the pointed sprint_plan + roadmap NEXT ACTION, states the exact
   pick-up point, and adopts the assigned persona/model. (Distinct from the
   `loop-engine resume` CLI subcommand — different namespace.)
-- **`/handoff`** — run **before** switching model/session. Serializes the current cursor
-  to `.ai/state.json`, regenerates `.ai/next-steps.md` (what was done, what's next, which
-  model next), and reminds you to commit if the tree is dirty. Does **not** archive.
+  **It may then start the `next_action` unattended** — but only on a clean, unambiguous
+  cursor: `hitl_gate` reading `NONE OPEN`, `sprint_status` `implementing`, the model
+  matching `assigned_model`, and no cursor/HEAD drift. Anything else — a `planning`
+  status, an open gate, an unreadable one, a wrong model, a dirty tree — and it states the
+  pick-up point and waits. The rule **fails closed**: not being able to tell whether a
+  gate is open counts as open. The approval that carries signal is the `hitl_gate`, which
+  is unchanged and still enforced; what auto-start removes is the content-free "go" that
+  re-approved a `next_action` the human already approved at `/handoff` time.
+- **`/handoff`** — run **before** switching model/session. Checks the QA-critic pass ran
+  on any `src/` diff (a prompt, not a block — nothing else in the pipeline points at
+  `/critic-gate`, so `/handoff` is where a forgotten pass gets caught). Serializes the
+  current cursor to `.ai/state.json` — **including `hitl_gate`, always, even when nothing
+  is open**, since `/resume`'s auto-start reads it — regenerates `.ai/next-steps.md` (what
+  was done, what's next, which model next), and reminds you to commit if the tree is
+  dirty. Does **not** archive. Because `/resume` may execute the `next_action` unattended,
+  write it as a bounded imperative you would be content to see carried out without you; if
+  it genuinely needs a decision, open a `hitl_gate` instead.
 - **`/archive-sprint`** — run **only** when a sprint has passed its HITL Gate **and** is committed.
   Moves its `next-steps.md` snapshot into `.ai/archive/`, advances `.ai/state.json` to
   the next sprint, and seeds a fresh `.ai/next-steps.md`.
