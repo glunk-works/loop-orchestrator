@@ -237,3 +237,24 @@ def test_resolve_channel_id_raises_when_name_not_found(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError):
         resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="nonexistent")
+
+
+def test_resolve_channel_id_wraps_a_live_api_error_as_runtime_error(monkeypatch) -> None:
+    # A network/auth/rate-limit failure from the real client (e.g.
+    # slack_sdk's SlackApiError) must surface the same fail-closed way an
+    # unresolvable name does, not as a raw traceback the CLI doesn't catch.
+    class _RaisingWebClient:
+        def __init__(self, token: str, timeout: int = 5) -> None:
+            pass
+
+        def conversations_list(self, *, types: str, cursor=None, limit=200):
+            raise RuntimeError("simulated Slack API outage")
+
+    fake_module = types.ModuleType("slack_sdk")
+    fake_module.WebClient = _RaisingWebClient
+    monkeypatch.setitem(sys.modules, "slack_sdk", fake_module)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="loop-engine")
+
+    assert _FAKE_BOT_TOKEN not in str(exc_info.value)

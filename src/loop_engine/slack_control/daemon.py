@@ -89,10 +89,29 @@ class SlackDaemon:
         result = parse_command(merged)
 
         if isinstance(result, SlackRunCommand):
-            if self._loop is not None:
-                asyncio.run_coroutine_threadsafe(self._dispatcher.dispatch(result), self._loop)
-            else:
+            if self._loop is None:
+                # Unreachable in production -- the listener only connects
+                # inside serve_forever, after _loop is assigned -- but a
+                # direct/test caller could still hit this. Never tell the
+                # user "accepted" for a command that was not actually
+                # dispatched.
                 logger.warning("dropping accepted command: daemon has no running event loop")
+                return
+            coro = self._dispatcher.dispatch(result)
+            try:
+                asyncio.run_coroutine_threadsafe(coro, self._loop)
+            except RuntimeError:
+                # The event loop is shutting down (serve_forever's teardown
+                # race) -- log and drop rather than raise out of a callback
+                # invoked from the Slack SDK's own thread. Close the coroutine
+                # explicitly: run_coroutine_threadsafe never got to schedule
+                # it, so leaving it unawaited would warn/leak.
+                coro.close()
+                logger.warning(
+                    "dropping command for envelope %s: event loop is shutting down",
+                    result.envelope_id,
+                )
+                return
             self._reply(channel_id, user_id, format_command_accepted(result.budget_usd))
         elif isinstance(result, CommandRejection):
             self._reply(channel_id, user_id, format_command_rejected(result.reason))

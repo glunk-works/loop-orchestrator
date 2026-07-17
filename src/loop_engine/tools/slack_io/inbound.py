@@ -122,17 +122,29 @@ def resolve_channel_id(*, bot_token: str, channel: str) -> str:
     from slack_sdk import WebClient
 
     client = WebClient(token=bot_token, timeout=5)
-    cursor = None
-    while True:
-        response = client.conversations_list(
-            types="public_channel,private_channel", cursor=cursor, limit=200
-        )
-        for candidate in response.get("channels", []):
-            if candidate.get("name") == name:
-                return candidate["id"]
-        cursor = response.get("response_metadata", {}).get("next_cursor") or None
-        if not cursor:
-            break
+    try:
+        cursor = None
+        while True:
+            response = client.conversations_list(
+                types="public_channel,private_channel", cursor=cursor, limit=200
+            )
+            for candidate in response.get("channels", []):
+                if candidate.get("name") == name:
+                    return candidate["id"]
+            cursor = response.get("response_metadata", {}).get("next_cursor") or None
+            if not cursor:
+                break
+    except Exception as exc:
+        # A live auth/network/rate-limit failure (e.g. slack_sdk's
+        # SlackApiError) must surface the same way an unresolvable name
+        # does -- a clean fail-closed RuntimeError, not a raw traceback from
+        # an exception type the CLI doesn't know to catch. Never includes
+        # the bot token.
+        raise RuntimeError(
+            f"failed to resolve Slack channel {channel!r} to an id "
+            f"({type(exc).__name__}); refusing to start the Slack daemon "
+            "with an unresolved channel guard (fail-closed)."
+        ) from exc
 
     raise RuntimeError(
         f"could not resolve Slack channel {channel!r} to an id; refusing to "

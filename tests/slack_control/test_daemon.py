@@ -142,6 +142,44 @@ def test_missing_channel_id_or_user_id_skips_the_reply_without_raising(monkeypat
     assert replies == []
 
 
+def test_valid_command_with_no_running_loop_is_dropped_without_a_misleading_reply(
+    monkeypatch,
+) -> None:
+    # Regression: previously an "accepted" reply was sent even when _loop was
+    # None and nothing was actually dispatched (architect finding, PR #119
+    # critic-gate pass) -- never tell the user a run was accepted unless it
+    # was actually scheduled.
+    replies = _patch_reply(monkeypatch)
+    dispatcher = _FakeDispatcher()
+    daemon = _daemon(dispatcher)
+    assert daemon._loop is None
+
+    daemon._handle_request(_request())
+
+    assert dispatcher.received == []
+    assert replies == []
+
+
+def test_shutting_down_event_loop_drops_the_command_without_raising(monkeypatch) -> None:
+    # Regression: architect's shutdown-race finding -- run_coroutine_threadsafe
+    # can raise RuntimeError if the loop is tearing down; _handle_request must
+    # never propagate that out of a callback invoked from the Slack SDK's own
+    # thread.
+    replies = _patch_reply(monkeypatch)
+    dispatcher = _FakeDispatcher()
+    daemon = _daemon(dispatcher)
+
+    async def main() -> None:
+        daemon._loop = asyncio.get_running_loop()
+
+    asyncio.run(main())  # the loop returned by asyncio.run is now closed
+
+    daemon._handle_request(_request())  # must not raise
+
+    assert dispatcher.received == []
+    assert replies == []
+
+
 @pytest.mark.parametrize(
     "missing_env",
     [_APP_TOKEN_ENV, _BOT_TOKEN_ENV, _CHANNEL_ENV],
