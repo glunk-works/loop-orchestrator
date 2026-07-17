@@ -208,9 +208,11 @@ def test_cli_resume_from_issue_folds_answers_and_reenters(tmp_path, monkeypatch)
             "comments": [{"body": "```answers\n1: eu-west-1\n```"}],
         },
     )
+    # T4: the fold/reentry/run_graph_loop execution now lives in the shared
+    # runner.resume_run seam, so that's where these collaborators are patched.
     mock_run_graph_loop = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_run_graph_loop)
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_run_graph_loop)
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
 
     fold_result_holder = {}
 
@@ -287,8 +289,8 @@ def test_cli_resume_from_issue_dispatches_the_real_default_through_mcp(
 
     monkeypatch.setattr("loop_engine.tools.mcp.build_issue_provider", lambda: _FakeProvider())
     mock_run_graph_loop = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_run_graph_loop)
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_run_graph_loop)
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
 
     fold_result_holder = {}
 
@@ -381,11 +383,11 @@ def test_cli_resume_from_issue_folds_answers_via_the_pm_generator(tmp_path, monk
         },
     )
     monkeypatch.setattr(
-        "loop_engine.cli.run_graph_loop", MagicMock(return_value=_completed_state())
+        "loop_engine.runner.run_graph_loop", MagicMock(return_value=_completed_state())
     )
     mock_llm_client = MagicMock()
     mock_llm_client.call.return_value = SimpleNamespace(text='{"spec_updates": {}, "impacts": {}}')
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock(return_value=mock_llm_client))
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock(return_value=mock_llm_client))
 
     result = runner.invoke(app, ["resume", "--from-issue", "17"])
 
@@ -559,9 +561,9 @@ def test_cli_resume_from_issue_silently_resumes_a_same_numbered_wrong_repo_issue
             "comments": [{"body": "```answers\n1: eu-west-1\n```"}],
         },
     )
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
     mock_graph = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_graph)
+    monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_graph)
     monkeypatch.setattr(
         type(DEFAULT_LOOP.stages[0].persona), "fold_answers", lambda self, state, llm: state
     )
@@ -607,9 +609,9 @@ def test_cli_resume_snapshot_derives_repo_and_issue_from_pending_issue_not_cwd(
 
     monkeypatch.setattr("loop_engine.cli.default_issue_reader", fake_reader)
     monkeypatch.setattr(
-        "loop_engine.cli.run_graph_loop", MagicMock(return_value=_completed_state())
+        "loop_engine.runner.run_graph_loop", MagicMock(return_value=_completed_state())
     )
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
     monkeypatch.setattr(
         type(DEFAULT_LOOP.stages[0].persona), "fold_answers", lambda self, state, llm: state
     )
@@ -669,9 +671,9 @@ def test_cli_resume_passes_repo_through_to_the_reader(tmp_path, monkeypatch) -> 
 
     monkeypatch.setattr("loop_engine.cli.default_issue_reader", fake_reader)
     monkeypatch.setattr(
-        "loop_engine.cli.run_graph_loop", MagicMock(return_value=_completed_state())
+        "loop_engine.runner.run_graph_loop", MagicMock(return_value=_completed_state())
     )
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
     monkeypatch.setattr(
         type(DEFAULT_LOOP.stages[0].persona), "fold_answers", lambda self, state, llm: state
     )

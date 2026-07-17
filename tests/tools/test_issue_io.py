@@ -6,7 +6,6 @@ import pytest
 from loop_engine.core.state import Question, State
 from loop_engine.tools.issue_io import (
     IssueClosedWithoutAnswersError,
-    apply_answers_to_questions,
     create_issue,
     parse_issue_answers,
     parse_snapshot_path,
@@ -72,21 +71,6 @@ def test_answers_block_quoted_in_a_reply_does_not_shadow_the_real_one() -> None:
 def test_parse_snapshot_path_round_trips_from_filed_body() -> None:
     _, body, _ = render_question_issue(_state(), _questions(), "state/run-1/01_awaiting_issue.json")
     assert parse_snapshot_path({"body": body}) == "state/run-1/01_awaiting_issue.json"
-
-
-def test_apply_answers_marks_filed_questions_resolved_in_order() -> None:
-    questions = _questions()
-    updated = apply_answers_to_questions(questions, questions, {1: "eu-west-1"}, 17)
-
-    assert updated[0].resolution == "eu-west-1"
-    assert updated[0].resolved_by == "human:17"
-    assert updated[1].resolution is None
-
-
-def test_apply_answers_ignores_out_of_range_numbers() -> None:
-    questions = _questions()
-    updated = apply_answers_to_questions(questions, questions, {5: "nonsense"}, 17)
-    assert all(q.resolution is None for q in updated)
 
 
 def test_gh_output_with_json_body_parses() -> None:

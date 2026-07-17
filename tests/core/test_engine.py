@@ -17,6 +17,7 @@ from loop_engine.core.engine import (
     StageGateFailedError,
     _merge_questions,
     _run_resolver_ladder,
+    apply_resolved_answers,
     reentry_index,
 )
 from loop_engine.core.gates import ArtifactGate, GateDecision, GateResult
@@ -896,6 +897,52 @@ def test_reentry_index_requires_both_impact_present_and_configured() -> None:
     ]
 
     assert reentry_index(loop, 5, resolved) == 5
+
+
+def _paused_questions_state() -> State:
+    return State(
+        schema_version=2,
+        run_id="run-1",
+        stage_history=[],
+        artifacts={},
+        questions=[
+            Question(id="q1", origin_stage="ArchitectureGenerator", text="Which region?"),
+            Question(id="q2", origin_stage="CoderIacPersona", text="OIDC or API keys?"),
+        ],
+    )
+
+
+def test_apply_resolved_answers_marks_filed_questions_resolved_in_order() -> None:
+    state = _paused_questions_state()
+
+    updated, resolved_ids = apply_resolved_answers(state, {1: "eu-west-1"}, "human:17")
+
+    assert updated.questions[0].resolution == "eu-west-1"
+    assert updated.questions[0].resolved_by == "human:17"
+    assert updated.questions[1].resolution is None
+    assert resolved_ids == {"q1"}
+
+
+def test_apply_resolved_answers_ignores_out_of_range_numbers() -> None:
+    state = _paused_questions_state()
+
+    updated, resolved_ids = apply_resolved_answers(state, {5: "nonsense"}, "human:17")
+
+    assert all(q.resolution is None for q in updated.questions)
+    assert resolved_ids == set()
+
+
+def test_apply_resolved_answers_resolved_by_is_provenance_only() -> None:
+    # Finding #4: the Slack transport's resolved_by shape differs from the
+    # issue transport's, and the returned id set must not depend on it.
+    state = _paused_questions_state()
+
+    updated, resolved_ids = apply_resolved_answers(
+        state, {1: "eu-west-1", 2: "OIDC"}, "human:slack:1700000000.000100"
+    )
+
+    assert {q.resolved_by for q in updated.questions} == {"human:slack:1700000000.000100"}
+    assert resolved_ids == {"q1", "q2"}
 
 
 def test_engine_pause_for_issue_passes_correct_snapshot_hint() -> None:

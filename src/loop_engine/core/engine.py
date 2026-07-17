@@ -211,6 +211,36 @@ def unresolved_questions(state: State) -> list[Question]:
     return [q for q in state.questions if q.resolution is None]
 
 
+def apply_resolved_answers(
+    state: State, resolved_answers: dict[int, str], resolved_by: str
+) -> tuple[State, set[str]]:
+    """Mark the filed (unresolved, filing-order) questions resolved from a
+    human's numbered answers. `resolved_answers` maps the 1-based number the
+    questions were filed under (`unresolved_questions` order) to answer text;
+    numbers outside that range are ignored.
+
+    Returns the updated state and the explicit set of question ids this call
+    resolved. `runner.resume_run` re-entry acts on that set directly — never
+    on a `resolved_by` string match — so `resolved_by` stays provenance-only
+    (`human:<issue-number>` for the issue transport, a Slack-side value for
+    the Slack transport) and no control-flow may branch on its exact shape.
+    """
+    filed = unresolved_questions(state)
+    resolution_by_id = {
+        filed[number - 1].id: text
+        for number, text in resolved_answers.items()
+        if 1 <= number <= len(filed)
+    }
+    questions = [
+        q.model_copy(update={"resolution": resolution_by_id[q.id], "resolved_by": resolved_by})
+        if q.id in resolution_by_id and q.resolution is None
+        else q
+        for q in state.questions
+    ]
+    state = state.model_copy(update={"questions": questions})
+    return state, set(resolution_by_id)
+
+
 def _pause_for_escalation(
     state: State,
     stage_index: int,

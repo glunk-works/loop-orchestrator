@@ -12,7 +12,12 @@ import os
 import uuid
 from pathlib import Path
 
-from loop_engine.core.engine import Loop
+from loop_engine.core.engine import (
+    PAUSED_STAGE_COUNTER,
+    Loop,
+    apply_resolved_answers,
+    reentry_index,
+)
 from loop_engine.core.graph_engine import run_graph_loop
 from loop_engine.core.state import CURRENT_SCHEMA_VERSION, State
 from loop_engine.loops.default.loop import DEFAULT_LOOP, build_default_loop
@@ -51,6 +56,59 @@ def run_new(
     with worktree_run(run_id):
         final_state = run_graph_loop(selected_loop, initial_state, llm_client, start_index=0)
     return final_state
+
+
+def resume_run(
+    state: State,
+    resolved_answers: dict[int, str],
+    *,
+    resolved_by: str,
+    budget_usd: float = DEFAULT_BUDGET_USD,
+    loop_name: str = "default",
+) -> State:
+    """Fold a human's numbered answers into a paused run and drive it to its
+    next terminal state -- the single resume-execution path shared by every
+    escalation transport (`cli.resume`'s GitHub-issue round-trip today,
+    `slack_control`'s thread-reply round-trip in T5). Callers differ only in
+    how they read/parse the answers and what `resolved_by` provenance they
+    pass; `resolved_by` is recorded but never branched on here (finding #4).
+    """
+    selected_loop = _resolve_loop(loop_name)
+    pm_persona = selected_loop.stages[0].persona
+    if not hasattr(pm_persona, "fold_answers"):
+        raise ValueError(
+            f"Loop {loop_name!r} has no answer-folding persona at stage 0; cannot resume."
+        )
+
+    state, resolved_ids = apply_resolved_answers(state, resolved_answers, resolved_by)
+    llm_client = LLMClient(budget_usd=budget_usd)
+
+    # fold_answers and the engine both read the run's artifact tree, so run
+    # them inside the run's worktree (reuse the one created on the original run).
+    with worktree_run(state.run_id, reuse=True):
+        state = pm_persona.fold_answers(state, llm_client)
+
+        paused_index = state.counters.get(PAUSED_STAGE_COUNTER, 0)
+        # The explicit ids this call resolved, re-fetched post-fold so
+        # `reentry_index` sees the `impact` fold_answers just classified --
+        # never a `resolved_by` string match (finding #4).
+        resolved = [q for q in state.questions if q.id in resolved_ids]
+        start_index = reentry_index(selected_loop, paused_index, resolved)
+
+        findings = [
+            f"Escalated question: {q.text}\n  Resolution (from human): {q.resolution}"
+            for q in resolved
+            if q.resolution is not None
+        ]
+
+        return run_graph_loop(
+            selected_loop,
+            state,
+            llm_client,
+            start_index=start_index,
+            initial_findings=findings,
+            resuming=True,
+        )
 
 
 def run_in_tree(

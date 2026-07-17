@@ -8,7 +8,6 @@ from loop_engine import runner
 from loop_engine.core.engine import (
     PAUSED_STAGE_COUNTER,
     Loop,
-    reentry_index,
 )
 from loop_engine.core.graph_engine import run_graph_loop
 from loop_engine.core.state import (
@@ -164,8 +163,6 @@ def resume(
     ] = None,
 ) -> None:
     """Resume a run paused on a GitHub issue, folding in the human's answers."""
-    selected_loop = _resolve_loop(loop)
-
     if snapshot is not None:
         # F1a: --snapshot is the unambiguous path. The snapshot's own
         # pending_issue -- recorded at pause time by the process that
@@ -235,50 +232,20 @@ def resume(
         typer.echo(f"Issue #{from_issue} has no answers comment yet; nothing to resume.")
         raise typer.Exit(code=2)
 
-    # Filing order == unresolved order at pause time == unresolved order in
-    # the snapshot (the snapshot was written at filing time).
-    filed = [q for q in state.questions if q.resolution is None]
-    state = state.model_copy(
-        update={
-            "questions": issue_io.apply_answers_to_questions(
-                state.questions, filed, answers, from_issue
-            )
-        }
-    )
-
-    llm_client = LLMClient(budget_usd=budget)
-
-    # PM folds the answers into the spec and classifies each answer's blast
-    # radius, which decides how far back the run re-enters.
-    pm_persona = selected_loop.stages[0].persona
-    if not hasattr(pm_persona, "fold_answers"):
-        raise typer.BadParameter(
-            f"Loop {loop!r} has no answer-folding persona at stage 0; cannot resume from an issue."
-        )
-
-    # fold_answers and the engine both read the run's artifact tree, so run
-    # them inside the run's worktree (reuse the one created on the original run).
-    with worktree_run(state.run_id, reuse=True):
-        state = pm_persona.fold_answers(state, llm_client)
-
-        paused_index = state.counters.get(PAUSED_STAGE_COUNTER, 0)
-        resolved = [q for q in state.questions if q.resolved_by == f"human:{from_issue}"]
-        start_index = reentry_index(selected_loop, paused_index, resolved)
-
-        findings = [
-            f"Escalated question: {q.text}\n  Resolution (from human): {q.resolution}"
-            for q in resolved
-            if q.resolution is not None
-        ]
-
-        final_state = run_graph_loop(
-            selected_loop,
+    # Everything past this point -- applying the answers, folding them via
+    # the stage-0 PM persona, computing re-entry, driving the loop -- is
+    # transport-agnostic and lives in the one shared resume-execution seam
+    # (`resolved_by` is provenance-only; see runner.resume_run's docstring).
+    try:
+        final_state = runner.resume_run(
             state,
-            llm_client,
-            start_index=start_index,
-            initial_findings=findings,
-            resuming=True,
+            answers,
+            resolved_by=f"human:{from_issue}",
+            budget_usd=budget,
+            loop_name=loop,
         )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
     _report_outcome(final_state)
 
 
