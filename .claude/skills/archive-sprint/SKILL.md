@@ -37,7 +37,7 @@ If any precondition fails, STOP and report why — do not archive.
    ```
    Report which branches were pruned (or "none"). Hygiene, not a gate — if the `gh` call fails, skip and say so.
 
-5. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. Remind the user to commit the archival (the tracked `next-steps.md` change + roadmap) if they want it durable.
+5. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. Remind the user to commit the archival (the tracked `next-steps.md` change + roadmap) if they want it durable. If this same session did the sprint's work (so its friction is in context), offer a **`/retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
 
 ## Guardrails
 - Never delete the roadmap history or the sprint_plan files — archival only moves the `.ai/` cursor snapshot; the deep record stays in `docs/` and git.
