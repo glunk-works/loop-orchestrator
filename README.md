@@ -138,6 +138,8 @@ Reply **in the thread** (bare text is accepted only when exactly one question is
 - **Run the daemon from the same checkout the runs start in.** Correlation scans the main-checkout `state/` tree relative to the daemon's working directory; a daemon started elsewhere sees no snapshots to resume.
 - **The bot never answers itself** — its own escalation and outcome posts (and edits/deletes of them) are ignored, so there is no self-trigger loop.
 
+> **Not yet verified live.** The Slack inbound surface (this round-trip and the `/agent-run` command above) is covered by the hermetic test suite but has **not** been exercised against a real Socket Mode session. To run the one-time live smoke, follow [`docs/slack_escalation_live_smoke.md`](docs/slack_escalation_live_smoke.md) (tracked as BL-37).
+
 ### Library usage
 
 The full programmatic surface is available without the CLI:

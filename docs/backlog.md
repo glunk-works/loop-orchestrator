@@ -164,10 +164,15 @@ server.
 >    still importing no `keyring`/`slack_sdk` and writing no files. Threat model: §1's escalation
 >    round-trip boundary.
 >
-> **BL-2 is done — all three passes (notify / command / escalation round-trip) are live.** Remaining
-> Slack-adjacent open decision is **[BL-24]** (retire or verify `trigger/`), which Slack supersedes in
-> practice but does not close. Low-priority review cleanups from the sprint-41 passes are collected in
-> **[BL-36]**; the guard-adversary finding from T5 folds into **[BL-33]**.
+> **BL-2 is done against the sprint plans — all three passes (notify / command / escalation round-trip)
+> shipped and are hermetically verified (780 tests, fakes throughout).** They have **not** yet been
+> exercised **live** end-to-end: the entire Slack *inbound* surface (pass 2's `/agent-run` command and
+> pass 3's round-trip) has only ever run against a fake `WebClient`/listener and synthetic `events_api`
+> envelopes — no real Socket Mode session has fired. That deferred live smoke is tracked in **[BL-37]**
+> (its analog is **[BL-24]**, the never-run-live `trigger/` webhook, which Slack supersedes but does not
+> close). "Complete and hermetically verified" is the honest claim; "proven live" is not yet earned.
+> Remaining Slack-adjacent open decision is **[BL-24]**. Low-priority review cleanups from the sprint-41
+> passes are collected in **[BL-36]**; the guard-adversary finding from T5 folds into **[BL-33]**.
 
 ### BL-3 — Review the prompt-caching implementation (correctness + improvement)
 *(added 2026-07-10, from repo owner; **absorbed `DEFERRED_VERIFICATION.md` §1** in sprint 35 Task 6,
@@ -1879,3 +1884,45 @@ review reasoning is on PRs #131 and #133 (`gh pr view <n> --comments`).
 
 **Related:** [BL-2] (the sprint whose reviews surfaced these), [BL-9] (the other "issue-path cleanup"
 grouping — items here are the Slack-era siblings).
+
+### BL-37 — The Slack inbound surface (command + escalation round-trip) has never been exercised live
+*(added 2026-07-18, T6 — flagged while closing BL-2: "complete and hermetically verified" is not "proven live")*
+
+**Why:** every green check on the Slack **inbound** work is hermetic. Pass 2's `/agent-run` command
+(sprint 40) and pass 3's escalation round-trip (sprint 41) are tested only against a **fake `WebClient`
+and a fake listener**, with **synthetic `events_api`/`slash_commands` envelopes** hand-built in the
+tests. **No real Socket Mode session has ever fired** — not one live `/agent-run`, not one live thread
+reply folded back. The docs describe Slack as "the live inbound path," but that is the *design intent*
+(the surface now meant to be live), not an executed smoke. This is the exact shape of **[BL-24]** — a
+surface verified structurally but never run — one door over.
+
+**What a live smoke catches that the hermetic suite structurally cannot:**
+- **Real `events_api` payload shape.** `daemon.py` reads `payload["event"]["channel"]` / `thread_ts` /
+  `bot_id` / `subtype` / `text`. If a real Slack `message.channels` delivery nests those differently,
+  the daemon silently drops the reply — and every fake in the suite is built to the *assumed* shape, so
+  the suite cannot disprove the assumption. **Highest-value unknown.**
+- **App-config correctness.** Whether the T6 operator step (`message.channels` event subscription +
+  `channels:history` bot scope) actually causes thread replies to be delivered. A missing subscription/
+  scope is invisible to every test and is the single most likely real-world failure.
+- **Connection liveness.** That the daemon's outbound Socket Mode WebSocket stays up and
+  `SocketModeClient` reconnect/backoff behaves under a real connection.
+- **Self-trigger + channel-scope under real payloads** (the bot's own post carries a real `bot_id`; a
+  foreign-channel message carries a real `channel`).
+
+**Why it is NOT a `live-verify` V-run.** That subagent is scoped to disposable-scratch-repo **factory**
+flows (§5 github verbs / §7 maintenance / §8 bootstrap / §1 cost smoke) and **explicitly excludes**
+inbound trigger surfaces (§6 webhook is out for needing live infra). A Slack smoke needs a configured
+Slack app, a long-lived `slack-listen` daemon, a run engineered to actually **pause** on an escalation,
+a **human posting the thread reply**, and real Anthropic spend — an **operator-run manual smoke**, not
+an automatable V-run. Runbook: **`docs/slack_escalation_live_smoke.md`**.
+
+**Shape (not urgent, needs explicit authorization — real money + real Slack side effects):** run the
+runbook once in the same real-key host session as BL-3's caching/§1 cost smoke (they share the scarce
+prerequisite: a real key and real spend). Capture the evidence the runbook lists; record the discharge
+(or any finding) back here. Until then BL-2 stands as **complete + hermetically verified, live smoke
+deferred**.
+
+**Related:** [BL-2] (the surface this verifies), [BL-24] (the analogous never-run-live `trigger/`
+webhook — same "structurally verified, never exercised" shape), [BL-3] (the real-key host session to
+fold this into), [BL-7] (the PM-can't-escalate gap — relevant to *engineering* a run that reaches a
+human escalation).
