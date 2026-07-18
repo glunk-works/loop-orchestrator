@@ -14,6 +14,7 @@ command that archives — do not invoke it for ordinary session switches.
 1. The sprint's HITL Gate is **passed** — the user approved it (ask if unclear — never assume).
 2. The work is **committed** (`git status --short` clean, or only unrelated changes). If dirty, stop and tell the user to commit first.
 3. `docs/migration_roadmap.md` reflects the sprint as done (status row + commit hash recorded). If not, do that first (or flag it).
+4. **Verification ledger — "complete" must not overclaim "verified live."** If this sprint marks a backlog item **complete** (or flips the roadmap to DONE), confirm the docs make the **hermetic-vs-live** distinction explicit and that any verification the hermetic suite structurally *cannot* make is **deferred and tracked**, not silently assumed. This is a real, recurring failure: BL-2 was nearly stamped "all passes live" when the whole Slack inbound surface had only ever run against fakes — a human had to catch it — so it now carries the honest "complete + hermetically verified, live smoke deferred (BL-37)" wording. For any surface with a **live** side the tests can't reach (a real inbound delivery, real spend, a real external API, real infra), state plainly "hermetically verified; live smoke deferred → BL-NN" rather than "done/live/working end-to-end." If you can't point to where the live check is tracked, that tracking is the missing step — add it before archiving. (Its sibling is `docs-consistency` for prose-vs-code drift; this is claim-vs-evidence.)
 
 If any precondition fails, STOP and report why — do not archive.
 
@@ -36,7 +37,7 @@ If any precondition fails, STOP and report why — do not archive.
    ```
    Report which branches were pruned (or "none"). Hygiene, not a gate — if the `gh` call fails, skip and say so.
 
-5. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. Remind the user to commit the archival (the tracked `next-steps.md` change + roadmap) if they want it durable.
+5. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. Remind the user to commit the archival (the tracked `next-steps.md` change + roadmap) if they want it durable. If this same session did the sprint's work (so its friction is in context), offer a **`/retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
 
 ## Guardrails
 - Never delete the roadmap history or the sprint_plan files — archival only moves the `.ai/` cursor snapshot; the deep record stays in `docs/` and git.

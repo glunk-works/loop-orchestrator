@@ -45,6 +45,24 @@ that is a finding, not a pass (a required check that never got created still blo
    - **`mergeStateStatus: BLOCKED` with nothing red or pending** = GitHub re-evaluation
      lag, **not** a problem. Say so and wait — do **not** intervene, re-run, or push.
      (`github-workflow-traps`: BLOCKED-with-nothing-failing is just lag.)
+   - **`BLOCKED` + rollup `FAILURE` + a superseded `architect-review` red on the head SHA**
+     = the **BL-35 stale-red trap**, not lag and not a real failure. Every `src/` PR gets
+     *two* `architect-review` check-runs on one SHA: the `pull_request` run fails correctly
+     (no review yet), then the `pull_request_review` run passes once the review is posted —
+     and the failed one **never self-clears**. Confirm the signature (a `success` **and** a
+     `failure` for `architect-review` on the same commit):
+     ```bash
+     SHA=$(gh pr view <N> --json headRefOid -q .headRefOid)
+     SLUG=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+     gh api "repos/$SLUG/commits/$SHA/check-runs" \
+       --jq '.check_runs[] | select(.name=="architect-review") | {id, conclusion, url: .html_url}'
+     ```
+     If a review is genuinely posted and its own run is green, the fix is to **re-run the
+     stale failed run** — `gh run rerun <old_failed_run_id>` (the run id is in the failed
+     check-run's URL), **never a new push** (a push changes the SHA and re-arms the trap;
+     `github-workflow-traps`). Re-running a stale CI check is **not** merging/approving/
+     force-pushing — it is the one sanctioned action this skill takes on a PR (BL-35
+     option 2), and only for this exact, confirmed signature.
    - **`mergeable: CONFLICTING`** = the PR is out of date / has conflicts and may be
      running **zero** CI silently. A "green" here proves nothing. Flag it and note the
      branch needs a rebase (merge `main` *into* the branch — never force-push; see
@@ -55,15 +73,24 @@ that is a finding, not a pass (a required check that never got created still blo
    - **READY** — all 8 required checks are green (or legitimately docs-only-skipped) **and**
      `mergeable` is not `CONFLICTING`. Tell the user "PR #N is ready to merge — merge it
      yourself; I will not." List the 8 with their states so the readiness is auditable.
-   - **NOT READY (red)** — name every failing check and, for each, the one-line reason
-     from its job log (`gh run view <run-id> --job <job-id> --log` grep'd to the failure).
+   - **STALE-RED (auto-clearable)** — the *only* red is a superseded `architect-review`
+     failure on the head SHA (the BL-35 signature above), the review is posted, and its own
+     run is green. This is not a real failure. Offer to `gh run rerun <old_failed_run_id>`
+     (or, in a `/loop`/scheduled context, do it and re-poll); it clears to READY with no
+     push. Say clearly this is the BL-35 workaround, not a merge.
+   - **NOT READY (red)** — a *genuine* failure (any red that is not the BL-35 stale-red
+     above). Name every failing check and, for each, the one-line reason from its job log
+     (`gh run view <run-id> --job <job-id> --log` grep'd to the failure).
    - **PENDING** — name which checks are still running. If invoked from a `/loop` or a
      scheduled run, reschedule another poll; otherwise tell the user it's still running
      and offer to re-check.
 
-4. **Never act on the PR.** No `gh pr merge`, no `gh pr review --approve`, no
-   `git push --force`. If the user asks you to merge, confirm the verdict is READY and
-   hand it back — the merge click is theirs.
+4. **Never act on the PR** — with one narrow, documented exception. No `gh pr merge`, no
+   `gh pr review --approve`, no `git push --force`, ever. If the user asks you to merge,
+   confirm the verdict is READY and hand it back — the merge click is theirs. The **only**
+   sanctioned write is `gh run rerun <old_failed_run_id>` on a **confirmed** BL-35 stale-red
+   (step 2) — re-running a superseded CI check is not a merge/approve/force-push and does
+   not change the diff or the SHA.
 
 ## Report shape
 

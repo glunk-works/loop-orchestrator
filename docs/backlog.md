@@ -9,6 +9,51 @@ committed to a design yet.
 > in-flight MCP + LangGraph + isolation migration. This file is for *product*
 > ideas beyond it.
 
+## Index
+
+Navigation for a long file — jump to an item rather than scanning. Titles are the
+headers verbatim; **each item's own body is authoritative for its status** (resolved and
+declined items are retained inline, not deleted — several carry live lessons or reference
+material). Keep this list in sync: one line per `### BL-N` header.
+
+- **BL-1** — In-loop code review of the Coder's output (Architect / QA persona + gate)
+- **BL-2** — Slack integration · **COMPLETE** (all 3 passes; hermetic — live smoke deferred, BL-37)
+- **BL-3** — Review the prompt-caching implementation (correctness + improvement)
+- **BL-4** — Ralph loop watcher: progress/liveness detection for runaway inner tool loops
+- **BL-5** — Per-persona model routing + resolution token budget review
+- **BL-6** — Give Claude its own GitHub identity (machine user / GitHub App)
+- **BL-7** — The PM stage has no channel to ask a human a question
+- **BL-8** — Stop using process CWD as an isolation mechanism
+- **BL-9** — Retire the implicit-CWD destination from the issue path's remaining surfaces
+- **BL-10** — A bad PR title permanently starves the heavy CI chain · _resolved (sprint 33)_
+- **BL-11** — None of the "required" checks are actually required · _resolved (sprint 33); holds the canonical ruleset spec_
+- **BL-12** — `main` behind and cannot pass its own ruleset · _resolved (sprint 34)_
+- **BL-13** — Squash-only settings vs. the one-time merge-commit landing · _resolved (sprint 35)_
+- **BL-14** — SHA pins / Dependabot inert off the default branch · _resolved; retained as a live lesson_
+- **BL-15** — AST write/encoding guards classify `open()` by name (alias defeats them)
+- **BL-16** — CI gates verified *required*, never *functional* — a gate can fail open
+- **BL-17** — _RESOLVED:_ `feat/**` is retired
+- **BL-18** — "No `if:`, so nothing can be `skipped`" is the wrong invariant (a failed `needs:` skips too)
+- **BL-19** — _DECLINED:_ keep `gitleaks-action`; do not move to the CLI binary
+- **BL-20** — Dependabot reads a different secret store; missing → empty; re-trigger flips the actor
+- **BL-21** — _RESOLVED:_ `flows/bootstrap` installs a per-repo ruleset, proven live
+- **BL-22** — Review what *triggers* the full test suite (re-proving the same thing)
+- **BL-23** — Audit the tests themselves: still valid, still testing what they claim?
+- **BL-24** — §6: the `trigger/` webhook has never received a real request · _open (Slack supersedes, not closes)_
+- **BL-25** — Should the backlog / defect register live in GitHub Issues?
+- **BL-26** — Factory births repos, but `global-bootstrap` makes a repo *real* — nothing connects them
+- **BL-27** — `global-bootstrap`'s registry still points at the personal account
+- **BL-28** — A factory-scaffolded repo fails its own `ruff check` out of the box
+- **BL-29** — Maintenance escalation against a factory-born repo crashes (missing label)
+- **BL-30** — Maintenance green gate runs `pytest src`, but the scaffold puts tests in `tests/`
+- **BL-31** — MCP server cold-start is a fixed ~5s import penalty per spawn
+- **BL-32** — Static structural guards need an adversarial invariant-injection audit
+- **BL-33** — Boundary-guard AST walkers share BL-15's blind spots (remediation list)
+- **BL-34** — CI `test` docs-only pre-step has a defeated fail-safe under `bash -e` (+ extend skip to audit/sbom)
+- **BL-35** — `architect-review` strands a stale red check-run on every `src/` PR
+- **BL-36** — Low-priority cleanups deferred from the BL-2 sprint-41 reviews
+- **BL-37** — The Slack inbound surface has never been exercised live
+
 ## Open items
 
 ### BL-1 — In-loop code review of the Coder's output (Architect / QA persona + gate)
@@ -1750,6 +1795,22 @@ same `bash -e` + command-substitution pattern hides elsewhere in the workflows.
 **Explicitly NOT:** removing the docs-only fast-path (it correctly skips pytest for docs-only PRs and
 that's worth keeping), and not a `test`-check-optionality change — the check stays required and
 unconditional; only its internal fail-safe is broken.
+
+**Fold in while here — extend the docs-only short-circuit to `dependency-audit` + `sbom` (added
+2026-07-18).** On a docs-only PR **nothing about the dependency set or the SBOM changed**, yet
+`dependency-audit` (`hatch run audit` = pip-audit) and `sbom` (`hatch run sbom` + artifact upload) run
+their full work every time — pure waste, paid on **every** cursor sync / backlog / docs PR (this repo
+opens a lot of them; a single sprint close-out opened two). The **safe** fix is the *same* report-but-skip
+pattern the `test` job already uses: a per-job "is this docs-only?" pre-step, then `if:
+steps.docs_only.outputs.skip != 'true'` on the expensive step, with **no job-level `if:`** so the required
+check still reports green cheaply (never `paths-ignore`/job-`skip` — that strands the required check per
+BL-12 or trips the `skipped`==success trap per BL-10/BL-18). **Do it together with the fail-safe fix
+above, not before it** — copying today's `test` pre-step verbatim would replicate *this very bug* into two
+more jobs. Watch `sbom`'s `upload-artifact` step (guard it too, or let it upload the checked-in
+`sbom.json`, which is current when deps didn't change). Update `tests/test_ci_config.py` to assert the new
+jobs stay unconditional (no job-level `if:`) and that their pre-step is fail-safe. It's a CI change into
+the required-check chain, so it wants its own scoped PR + the fresh-eyes discipline even though it's
+`architect-review`-exempt (non-`src/`).
 
 **Related:** BL-10 / BL-18 (the "a job can still report `skipped`" family and the unconditional-`test`
 guarantee this must not break), BL-2 / sprint 40 T1 (the PR whose CI run surfaced it). Aligns with the

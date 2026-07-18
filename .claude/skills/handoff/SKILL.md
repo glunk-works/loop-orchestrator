@@ -26,7 +26,7 @@ handoff point. It does **not** archive — that is `/archive-sprint`, only on co
    step only stops the pass from being forgotten.
 
 2. **Determine the new cursor** from what this session did:
-   - `current_phase`, `current_sprint_id`, and `sprint_status` — one of `planning` | `implementing` | `awaiting_architect_review` | `blocked` | `done`.
+   - `current_phase`, `current_sprint_id`, and `sprint_status` — one of `planning` | `implementing` | `awaiting_architect_review` | `blocked` | `done`. Before writing `done` (or any "complete"/"landed" claim into `next_action`), apply the **verification-ledger** check (`/archive-sprint` precondition 4): if a surface has a **live** side the hermetic suite can't reach, say "hermetically verified; live smoke deferred → BL-NN," never "done/working end-to-end." Claim only what the evidence covers.
    - `assigned_model` / `assigned_persona` for the **next** session (Architect=Opus for planning/review, Coder=Sonnet for implementation — see `.ai/context/workflow.md`).
    - `last_commit` = current `git rev-parse --short HEAD`.
    - `next_action` = the single most important next step, phrased as an imperative.
@@ -68,7 +68,16 @@ handoff point. It does **not** archive — that is `/archive-sprint`, only on co
      decide; a `/resume` still expects `last_commit` to match HEAD and a clean tree, and
      unrelated dirty state costs the next session its auto-start.
 
-6. **Report** the new `sprint_status`, the `next_action`, and the recommended next model in 2–3 lines. If the critic pass was skipped by choice (step 1), say so here.
+6. **Report** the new `sprint_status`, the `next_action`, and the recommended next model in 2–3 lines. If the critic pass was skipped by choice (step 1), say so here. Then **end with the exact next-session command block** — the human runs the mechanical switch (`/clear` / `/model` / `/resume` are harness commands a skill **cannot** execute), so hand them the literal keystrokes, not a description:
+
+   ```
+   Next session:
+     <new window>            # required if this crosses the review gate; otherwise /clear is fine
+     /model <opus|sonnet>    # per assigned_model
+     /resume
+   ```
+
+   **The review boundary needs a genuinely new session, not `/clear`.** If the `next_action` is posting the Architect Review (any coding→review handoff), say **new window/session** explicitly: `/clear` resets context but does not make the reviewer a *separate invocation*, and the fresh-session review is an **integrity property**, not just context hygiene (CLAUDE.md; BL-6). For a same-person non-review switch (e.g. planning→coding), note that `/clear` → `/model` → `/resume` **in place** is acceptable for context (a new session is what the docs specify, but the integrity concern doesn't apply). Fill in the actual model from `assigned_model` so it's paste-ready.
 
 ## Guardrails
 - Never write secrets into `.ai/next-steps.md` or `.ai/state.json`.
