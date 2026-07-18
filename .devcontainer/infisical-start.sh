@@ -32,8 +32,11 @@ export INFISICAL_TOKEN
 # --env is passed explicitly (rather than relying solely on
 # .infisical.json's defaultEnvironment) so this script always seeds from
 # "dev" even if a developer changes that default locally for other reasons.
-# --path points at where the loop-engine secrets actually live in the
-# project; the default path "/" holds none of them.
+# --path points at where the secrets actually live in the Infisical project;
+# the default path "/" holds none of them. NOTE: `/loop-engine` is the
+# Infisical-side project path, deliberately NOT renamed with the sprint-42
+# repo rename — it names storage in your Infisical project, not this repo.
+# Rename it there first, then update this path, if you want them to match.
 infisical run --projectId="${INFISICAL_PROJECT_ID}" --env=dev --path=/loop-engine \
     -- sh /workspace/.devcontainer/seed-secrets.sh
 

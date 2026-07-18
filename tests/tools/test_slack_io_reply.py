@@ -1,7 +1,7 @@
 import sys
 import types
 
-from loop_engine.tools.slack_io import send_ephemeral_reply
+from loop_orchestrator.tools.slack_io import send_ephemeral_reply
 
 _FAKE_TOKEN = "xoxb-fake-not-a-real-token"  # noqa: S105 -- fixture literal, not a real credential
 

@@ -3,12 +3,12 @@ import types
 
 import pytest
 
-from loop_engine.tools.slack_io import (
+from loop_orchestrator.tools.slack_io import (
     SocketModeListener,
     build_listener_from_env,
     resolve_channel_id,
 )
-from loop_engine.tools.slack_io.inbound import _APP_TOKEN_ENV, _BOT_TOKEN_ENV
+from loop_orchestrator.tools.slack_io.inbound import _APP_TOKEN_ENV, _BOT_TOKEN_ENV
 
 _FAKE_APP_TOKEN = "xapp-fake-not-a-real-token"  # noqa: S105 -- fixture literal, not a real credential
 _FAKE_BOT_TOKEN = "xoxb-fake-not-a-real-token"  # noqa: S105 -- fixture literal, not a real credential
@@ -209,15 +209,15 @@ def test_resolve_channel_id_strips_a_leading_hash_before_checking_id_shape(monke
 
 
 def test_resolve_channel_id_looks_up_a_bare_name(monkeypatch) -> None:
-    _install_fake_conversations_client(monkeypatch, pages=[[{"id": "C999", "name": "loop-engine"}]])
+    _install_fake_conversations_client(monkeypatch, pages=[[{"id": "C999", "name": "loop-orchestrator"}]])
 
-    assert resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="loop-engine") == "C999"
+    assert resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="loop-orchestrator") == "C999"
 
 
 def test_resolve_channel_id_strips_a_leading_hash_before_a_name_lookup(monkeypatch) -> None:
-    _install_fake_conversations_client(monkeypatch, pages=[[{"id": "C999", "name": "loop-engine"}]])
+    _install_fake_conversations_client(monkeypatch, pages=[[{"id": "C999", "name": "loop-orchestrator"}]])
 
-    assert resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="#loop-engine") == "C999"
+    assert resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="#loop-orchestrator") == "C999"
 
 
 def test_resolve_channel_id_paginates_across_multiple_pages(monkeypatch) -> None:
@@ -225,11 +225,11 @@ def test_resolve_channel_id_paginates_across_multiple_pages(monkeypatch) -> None
         monkeypatch,
         pages=[
             [{"id": "C1", "name": "general"}],
-            [{"id": "C999", "name": "loop-engine"}],
+            [{"id": "C999", "name": "loop-orchestrator"}],
         ],
     )
 
-    assert resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="loop-engine") == "C999"
+    assert resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="loop-orchestrator") == "C999"
 
 
 def test_resolve_channel_id_raises_when_name_not_found(monkeypatch) -> None:
@@ -255,6 +255,6 @@ def test_resolve_channel_id_wraps_a_live_api_error_as_runtime_error(monkeypatch)
     monkeypatch.setitem(sys.modules, "slack_sdk", fake_module)
 
     with pytest.raises(RuntimeError) as exc_info:
-        resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="loop-engine")
+        resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="loop-orchestrator")
 
     assert _FAKE_BOT_TOKEN not in str(exc_info.value)

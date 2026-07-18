@@ -3,8 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
-from loop_engine.core.state import Question, State
-from loop_engine.tools.issue_io import (
+from loop_orchestrator.core.state import Question, State
+from loop_orchestrator.tools.issue_io import (
     IssueClosedWithoutAnswersError,
     create_issue,
     parse_issue_answers,
@@ -86,7 +86,7 @@ def test_render_question_issue_matches_filed_issue_body_byte_for_byte() -> None:
         state, questions, "state/run-1/01_awaiting_issue.json"
     )
 
-    with patch("loop_engine.tools.issue_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.issue_io.github._run_gh") as run_gh:
         run_gh.return_value = "https://github.com/acme/repo/issues/17\n"
         create_issue(title, body, label)
         args = run_gh.call_args.args[0]
@@ -97,7 +97,7 @@ def test_render_question_issue_matches_filed_issue_body_byte_for_byte() -> None:
 
 
 def test_create_issue_shells_expected_argv_and_parses_ref() -> None:
-    with patch("loop_engine.tools.issue_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.issue_io.github._run_gh") as run_gh:
         run_gh.return_value = "https://github.com/acme/repo/issues/42\n"
         ref = create_issue("t", "b", "l")
 
@@ -111,7 +111,7 @@ def test_create_issue_shells_expected_argv_and_parses_ref() -> None:
 def test_create_issue_forwards_explicit_repo_as_flag() -> None:
     """R8: an explicit `repo` becomes `--repo`, not left to gh's implicit
     cwd-derived resolution."""
-    with patch("loop_engine.tools.issue_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.issue_io.github._run_gh") as run_gh:
         run_gh.return_value = "https://github.com/acme/repo/issues/42\n"
         create_issue("t", "b", "l", repo="acme/repo")
 
@@ -121,7 +121,7 @@ def test_create_issue_forwards_explicit_repo_as_flag() -> None:
 
 
 def test_read_issue_forwards_explicit_repo_as_flag() -> None:
-    with patch("loop_engine.tools.issue_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.issue_io.github._run_gh") as run_gh:
         run_gh.return_value = json.dumps({"state": "OPEN", "body": "b", "comments": []})
         read_issue(42, repo="acme/repo")
 

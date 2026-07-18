@@ -5,13 +5,13 @@ collaborator faked — no real clone, loop, or push. See
 import pytest
 from pydantic import ValidationError
 
-from loop_engine.core.state import RunStatus, State
-from loop_engine.flows.maintenance import (
+from loop_orchestrator.core.state import RunStatus, State
+from loop_orchestrator.flows.maintenance import (
     MaintenanceRequest,
     MaintenanceStatus,
     run_maintenance,
 )
-from loop_engine.tools.repo_io import PullRef
+from loop_orchestrator.tools.repo_io import PullRef
 
 
 class _FakeRepoIO:
@@ -206,7 +206,7 @@ def test_flow_module_imports_no_keyring_and_writes_no_files_directly() -> None:
 
     module_path = (
         Path(__file__).resolve().parent.parent.parent.parent
-        / "src/loop_engine/flows/maintenance/flow.py"
+        / "src/loop_orchestrator/flows/maintenance/flow.py"
     )
     tree = ast.parse(module_path.read_text())
     disallowed_writes = {"open", "write_text", "write_bytes"}

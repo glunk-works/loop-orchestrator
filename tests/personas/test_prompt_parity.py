@@ -21,7 +21,7 @@ What remains here are the guardrails that still have a live subject:
 import re
 from pathlib import Path
 
-from loop_engine.personas.coder_iac.shared import PROMPT_TEMPLATE as CODER_IAC_TEMPLATE
+from loop_orchestrator.personas.coder_iac.shared import PROMPT_TEMPLATE as CODER_IAC_TEMPLATE
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "prompts"
 _HEADER_RE = re.compile(r"^#{1,6} .+$", re.MULTILINE)

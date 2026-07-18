@@ -6,18 +6,18 @@ from types import SimpleNamespace
 
 import pytest
 
-from loop_engine.core.engine import Loop, Stage
-from loop_engine.core.gates import ArtifactGate
-from loop_engine.core.graph_engine import run_graph_loop
-from loop_engine.core.state import IssueRef, RunStatus, State
-from loop_engine.loops.default.loop import build_default_loop
-from loop_engine.personas.declarative.node import (
+from loop_orchestrator.core.engine import Loop, Stage
+from loop_orchestrator.core.gates import ArtifactGate
+from loop_orchestrator.core.graph_engine import run_graph_loop
+from loop_orchestrator.core.state import IssueRef, RunStatus, State
+from loop_orchestrator.loops.default.loop import build_default_loop
+from loop_orchestrator.personas.declarative.node import (
     ArchitectureGenerator,
     PMGenerator,
     SprintBreakdownGenerator,
 )
-from loop_engine.personas.pm.critic_gate import CriticGate
-from loop_engine.personas.pm.fields import CHECKLIST_FIELDS
+from loop_orchestrator.personas.pm.critic_gate import CriticGate
+from loop_orchestrator.personas.pm.fields import CHECKLIST_FIELDS
 
 
 @pytest.fixture(autouse=True)
@@ -30,7 +30,7 @@ def _stub_issue_filer(monkeypatch):
     def fake_file_issue(state, questions, snapshot_path):
         return IssueRef(number=1, url="https://example/1")
 
-    monkeypatch.setattr("loop_engine.core.engine.default_issue_filer", fake_file_issue)
+    monkeypatch.setattr("loop_orchestrator.core.engine.default_issue_filer", fake_file_issue)
 
 
 _CLEAN = {field: f"value for {field}" for field in CHECKLIST_FIELDS}

@@ -9,7 +9,7 @@ shelling out itself. `tests/tools/test_subprocess_surfaces.py` asserts
 import ast
 from pathlib import Path
 
-FLOWS_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "loop_engine" / "flows"
+FLOWS_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "loop_orchestrator" / "flows"
 
 _DISALLOWED_WRITE_CALLS = {"open", "write_text", "write_bytes"}
 _DISALLOWED_SUBPROCESS_MODULES = {"subprocess"}

@@ -1,7 +1,7 @@
 import ast
 from pathlib import Path
 
-SRC_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "loop_engine"
+SRC_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "loop_orchestrator"
 ALLOWED_MODULE = SRC_DIR / "tools" / "llm" / "client.py"
 
 

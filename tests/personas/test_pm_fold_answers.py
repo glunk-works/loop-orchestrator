@@ -15,10 +15,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from loop_engine.core.state import Question, State
-from loop_engine.personas.declarative.node import PMGenerator
-from loop_engine.personas.pm.fields import CHECKLIST_FIELDS
-from loop_engine.personas.pm.persona import fold_answers
+from loop_orchestrator.core.state import Question, State
+from loop_orchestrator.personas.declarative.node import PMGenerator
+from loop_orchestrator.personas.pm.fields import CHECKLIST_FIELDS
+from loop_orchestrator.personas.pm.persona import fold_answers
 
 
 def _complete_answers() -> dict[str, str]:

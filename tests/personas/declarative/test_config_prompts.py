@@ -10,7 +10,7 @@ headers its output adapter depends on.
 
 import pytest
 
-from loop_engine.personas.declarative.config import (
+from loop_orchestrator.personas.declarative.config import (
     load_named_config,
     load_prompt,
     resolve_prompt_path,

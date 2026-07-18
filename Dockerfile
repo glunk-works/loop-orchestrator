@@ -13,12 +13,12 @@ COPY src/ src/
 RUN pip install --no-cache-dir . cryptography==49.0.0
 
 # Custom encrypted-file keyring backend (containers/keyring_backend/) — lives
-# outside src/loop_engine/ deliberately, wired in purely via keyring's own
-# backend-discovery config below, never imported by loop_engine's own code.
-COPY containers/keyring_backend/cryptfile_backend.py /opt/loop-engine-keyring-backend/cryptfile_backend.py
+# outside src/loop_orchestrator/ deliberately, wired in purely via keyring's own
+# backend-discovery config below, never imported by loop_orchestrator's own code.
+COPY containers/keyring_backend/cryptfile_backend.py /opt/loop-orchestrator-keyring-backend/cryptfile_backend.py
 
 RUN mkdir -p /home/app/.config/python_keyring \
-    && printf '[backend]\ndefault-keyring=cryptfile_backend.EncryptedFileKeyring\nkeyring-path=/opt/loop-engine-keyring-backend\n' \
+    && printf '[backend]\ndefault-keyring=cryptfile_backend.EncryptedFileKeyring\nkeyring-path=/opt/loop-orchestrator-keyring-backend\n' \
         > /home/app/.config/python_keyring/keyringrc.cfg \
     && chown -R app:app /home/app/.config
 
@@ -66,4 +66,4 @@ FROM base AS prod
 
 USER app
 
-ENTRYPOINT ["loop-engine"]
+ENTRYPOINT ["loop-orchestrator"]

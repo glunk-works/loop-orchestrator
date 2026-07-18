@@ -8,7 +8,7 @@ import ast
 from pathlib import Path
 
 SLACK_CONTROL_DIR = (
-    Path(__file__).resolve().parent.parent.parent / "src" / "loop_engine" / "slack_control"
+    Path(__file__).resolve().parent.parent.parent / "src" / "loop_orchestrator" / "slack_control"
 )
 
 _DISALLOWED_WRITE_CALLS = {"open", "write_text", "write_bytes"}

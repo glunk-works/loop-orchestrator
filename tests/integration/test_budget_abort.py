@@ -4,9 +4,9 @@ from unittest.mock import MagicMock
 
 from typer.testing import CliRunner
 
-from loop_engine.cli import app
-from loop_engine.core.state import RunStatus, State
-from loop_engine.personas.pm.fields import CHECKLIST_FIELDS
+from loop_orchestrator.cli import app
+from loop_orchestrator.core.state import RunStatus, State
+from loop_orchestrator.personas.pm.fields import CHECKLIST_FIELDS
 
 runner = CliRunner()
 

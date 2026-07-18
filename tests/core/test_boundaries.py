@@ -1,8 +1,8 @@
 import ast
 from pathlib import Path
 
-CORE_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "loop_engine" / "core"
-ALLOWED_PERSONA_MODULE = "loop_engine.personas.base"
+CORE_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "loop_orchestrator" / "core"
+ALLOWED_PERSONA_MODULE = "loop_orchestrator.personas.base"
 
 
 def _imported_module_names(tree: ast.Module) -> list[str]:
@@ -19,8 +19,8 @@ def test_core_imports_no_concrete_persona_module() -> None:
     for path in CORE_DIR.rglob("*.py"):
         tree = ast.parse(path.read_text(), filename=str(path))
         for module in _imported_module_names(tree):
-            is_persona_import = module == "loop_engine.personas" or module.startswith(
-                "loop_engine.personas."
+            is_persona_import = module == "loop_orchestrator.personas" or module.startswith(
+                "loop_orchestrator.personas."
             )
             if is_persona_import:
                 assert module == ALLOWED_PERSONA_MODULE, (

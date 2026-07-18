@@ -3,8 +3,8 @@ import textwrap
 import pytest
 import yaml
 
-from loop_engine.personas.declarative import config as config_module
-from loop_engine.personas.declarative.config import (
+from loop_orchestrator.personas.declarative import config as config_module
+from loop_orchestrator.personas.declarative.config import (
     GeneratorConfig,
     load_generator_config,
     load_prompt,
@@ -109,7 +109,7 @@ def test_loader_uses_safe_load(monkeypatch, tmp_path) -> None:
 
 
 def test_loader_source_never_calls_unsafe_yaml_load() -> None:
-    source = (repo_root() / "src/loop_engine/personas/declarative/config.py").read_text()
+    source = (repo_root() / "src/loop_orchestrator/personas/declarative/config.py").read_text()
     assert "yaml.safe_load" in source
     assert "yaml.load(" not in source
 

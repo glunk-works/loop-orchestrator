@@ -9,13 +9,13 @@ import shutil
 
 import pytest
 
-from loop_engine.tools.isolation import IsolationUnavailableError
-from loop_engine.tools.mcp import (
+from loop_orchestrator.tools.isolation import IsolationUnavailableError
+from loop_orchestrator.tools.mcp import (
     build_coder_tool_provider,
     container_server_params,
     sandbox_server_params,
 )
-from loop_engine.tools.mcp import provider as provider_module
+from loop_orchestrator.tools.mcp import provider as provider_module
 
 _MODULE = provider_module._CODER_TOOLS_SERVER_MODULE
 
@@ -27,9 +27,9 @@ def _fake_which(present: set[str]):
 @pytest.fixture
 def _docker_available(monkeypatch):
     monkeypatch.setattr(shutil, "which", _fake_which({"docker"}))
-    monkeypatch.delenv("LOOP_ENGINE_CONTAINER_RUNTIME", raising=False)
-    monkeypatch.setenv("LOOP_ENGINE_DEV_IMAGE", "loop-engine-dev:latest")
-    monkeypatch.setenv("LOOP_ENGINE_SANDBOX_UID", "1000:1000")
+    monkeypatch.delenv("LOOP_ORCHESTRATOR_CONTAINER_RUNTIME", raising=False)
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_DEV_IMAGE", "loop-orchestrator-dev:latest")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_SANDBOX_UID", "1000:1000")
 
 
 def test_container_params_exact_argv(_docker_available) -> None:
@@ -55,7 +55,7 @@ def test_container_params_exact_argv(_docker_available) -> None:
         f"{wt}:{wt}:rw",
         "-w",
         wt,
-        "loop-engine-dev:latest",
+        "loop-orchestrator-dev:latest",
         "python",
         "-m",
         _MODULE,
@@ -77,32 +77,32 @@ def test_container_mounts_only_the_worktree(_docker_available) -> None:
 
 def test_container_uses_podman_when_only_podman_present(monkeypatch) -> None:
     monkeypatch.setattr(shutil, "which", _fake_which({"podman"}))
-    monkeypatch.delenv("LOOP_ENGINE_CONTAINER_RUNTIME", raising=False)
-    monkeypatch.setenv("LOOP_ENGINE_DEV_IMAGE", "img:1")
+    monkeypatch.delenv("LOOP_ORCHESTRATOR_CONTAINER_RUNTIME", raising=False)
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_DEV_IMAGE", "img:1")
     assert container_server_params("/wt").command == "podman"
 
 
 def test_container_runtime_override_must_be_supported(monkeypatch) -> None:
     monkeypatch.setattr(shutil, "which", _fake_which({"docker"}))
-    monkeypatch.setenv("LOOP_ENGINE_CONTAINER_RUNTIME", "lxc")
-    monkeypatch.setenv("LOOP_ENGINE_DEV_IMAGE", "img:1")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_CONTAINER_RUNTIME", "lxc")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_DEV_IMAGE", "img:1")
     with pytest.raises(IsolationUnavailableError):
         container_server_params("/wt")
 
 
 def test_container_params_requires_runtime(monkeypatch) -> None:
     monkeypatch.setattr(shutil, "which", _fake_which(set()))
-    monkeypatch.delenv("LOOP_ENGINE_CONTAINER_RUNTIME", raising=False)
-    monkeypatch.setenv("LOOP_ENGINE_DEV_IMAGE", "img:1")
+    monkeypatch.delenv("LOOP_ORCHESTRATOR_CONTAINER_RUNTIME", raising=False)
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_DEV_IMAGE", "img:1")
     with pytest.raises(IsolationUnavailableError, match="no container runtime"):
         container_server_params("/wt")
 
 
 def test_container_params_requires_dev_image(monkeypatch) -> None:
     monkeypatch.setattr(shutil, "which", _fake_which({"docker"}))
-    monkeypatch.delenv("LOOP_ENGINE_CONTAINER_RUNTIME", raising=False)
-    monkeypatch.delenv("LOOP_ENGINE_DEV_IMAGE", raising=False)
-    with pytest.raises(IsolationUnavailableError, match="LOOP_ENGINE_DEV_IMAGE"):
+    monkeypatch.delenv("LOOP_ORCHESTRATOR_CONTAINER_RUNTIME", raising=False)
+    monkeypatch.delenv("LOOP_ORCHESTRATOR_DEV_IMAGE", raising=False)
+    with pytest.raises(IsolationUnavailableError, match="LOOP_ORCHESTRATOR_DEV_IMAGE"):
         container_server_params("/wt")
 
 
@@ -159,14 +159,14 @@ def test_sandbox_params_requires_bwrap(monkeypatch) -> None:
 
 
 def test_provider_selects_container_under_container_mode(monkeypatch, _docker_available) -> None:
-    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "container")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_ISOLATION", "container")
     provider = build_coder_tool_provider(cwd="/wt/run-1")
     assert provider._servers[0].command == "docker"
 
 
 def test_provider_selects_bwrap_under_sandbox_mode(monkeypatch) -> None:
     monkeypatch.setattr(shutil, "which", _fake_which({"bwrap"}))
-    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "sandbox")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_ISOLATION", "sandbox")
     provider = build_coder_tool_provider(cwd="/wt/run-1")
     assert provider._servers[0].command == "bwrap"
 
@@ -174,7 +174,7 @@ def test_provider_selects_bwrap_under_sandbox_mode(monkeypatch) -> None:
 def test_provider_defaults_to_local_subprocess(monkeypatch) -> None:
     import sys
 
-    monkeypatch.delenv("LOOP_ENGINE_ISOLATION", raising=False)
+    monkeypatch.delenv("LOOP_ORCHESTRATOR_ISOLATION", raising=False)
     provider = build_coder_tool_provider(cwd="/wt/run-1")
     assert provider._servers[0].command == sys.executable
 
@@ -183,8 +183,8 @@ def test_container_mode_never_falls_back_to_in_process(monkeypatch) -> None:
     """A missing runtime under container mode raises — it must never silently
     build a provider that would run untrusted code in-process."""
     monkeypatch.setattr(shutil, "which", _fake_which(set()))
-    monkeypatch.delenv("LOOP_ENGINE_CONTAINER_RUNTIME", raising=False)
-    monkeypatch.setenv("LOOP_ENGINE_DEV_IMAGE", "img:1")
-    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "container")
+    monkeypatch.delenv("LOOP_ORCHESTRATOR_CONTAINER_RUNTIME", raising=False)
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_DEV_IMAGE", "img:1")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_ISOLATION", "container")
     with pytest.raises(IsolationUnavailableError):
         build_coder_tool_provider(cwd="/wt/run-1")

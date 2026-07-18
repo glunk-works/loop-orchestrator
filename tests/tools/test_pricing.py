@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from loop_engine.tools.llm.pricing import (
+from loop_orchestrator.tools.llm.pricing import (
     ModelRates,
     UnknownModelError,
     cost_usd,

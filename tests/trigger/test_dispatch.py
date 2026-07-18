@@ -3,8 +3,8 @@ import threading
 import time
 from unittest.mock import MagicMock
 
-from loop_engine.trigger.dispatch import InProcessDispatcher
-from loop_engine.trigger.parse import RunRequest
+from loop_orchestrator.trigger.dispatch import InProcessDispatcher
+from loop_orchestrator.trigger.parse import RunRequest
 
 
 def _request(issue_number: int = 1, repo: str = "acme/widgets", human_input: str = "do it"):
@@ -18,7 +18,7 @@ def test_dispatch_invokes_runner_once_with_request_fields(monkeypatch) -> None:
         calls.append((human_input, budget_usd, loop_name))
         return MagicMock()
 
-    monkeypatch.setattr("loop_engine.runner.run_new", fake_run_new)
+    monkeypatch.setattr("loop_orchestrator.runner.run_new", fake_run_new)
     dispatcher = InProcessDispatcher()
 
     async def main() -> None:
@@ -39,7 +39,7 @@ def test_dispatch_returns_before_the_run_finishes(monkeypatch) -> None:
         assert release.wait(timeout=5), "test deadlocked waiting for release"
         return MagicMock()
 
-    monkeypatch.setattr("loop_engine.runner.run_new", fake_run_new)
+    monkeypatch.setattr("loop_orchestrator.runner.run_new", fake_run_new)
     dispatcher = InProcessDispatcher()
 
     async def main() -> float:
@@ -66,7 +66,7 @@ def test_second_dispatch_for_same_issue_while_active_is_a_no_op(monkeypatch) -> 
         assert release.wait(timeout=5), "test deadlocked waiting for release"
         return MagicMock()
 
-    monkeypatch.setattr("loop_engine.runner.run_new", fake_run_new)
+    monkeypatch.setattr("loop_orchestrator.runner.run_new", fake_run_new)
     dispatcher = InProcessDispatcher()
 
     async def main() -> None:
@@ -89,7 +89,7 @@ def test_issue_can_be_dispatched_again_after_run_completes(monkeypatch) -> None:
         calls.append(human_input)
         return MagicMock()
 
-    monkeypatch.setattr("loop_engine.runner.run_new", fake_run_new)
+    monkeypatch.setattr("loop_orchestrator.runner.run_new", fake_run_new)
     dispatcher = InProcessDispatcher()
 
     async def main() -> None:
@@ -112,7 +112,7 @@ def test_in_flight_task_is_strongly_referenced_and_released_on_completion(monkey
         assert release.wait(timeout=5), "test deadlocked waiting for release"
         return MagicMock()
 
-    monkeypatch.setattr("loop_engine.runner.run_new", fake_run_new)
+    monkeypatch.setattr("loop_orchestrator.runner.run_new", fake_run_new)
     dispatcher = InProcessDispatcher()
 
     async def main() -> None:
@@ -142,7 +142,7 @@ def test_dispatcher_serializes_concurrent_runs_for_different_issues(monkeypatch)
         order.append(f"end:{human_input}")
         return MagicMock()
 
-    monkeypatch.setattr("loop_engine.runner.run_new", fake_run_new)
+    monkeypatch.setattr("loop_orchestrator.runner.run_new", fake_run_new)
     dispatcher = InProcessDispatcher()
 
     async def main() -> None:
@@ -165,11 +165,11 @@ def test_run_failure_is_logged_and_releases_the_dedupe_key(monkeypatch, caplog) 
         calls.append(human_input)
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("loop_engine.runner.run_new", failing_run_new)
+    monkeypatch.setattr("loop_orchestrator.runner.run_new", failing_run_new)
     dispatcher = InProcessDispatcher()
 
     async def main() -> None:
-        with caplog.at_level("ERROR", logger="loop_engine.trigger.dispatch"):
+        with caplog.at_level("ERROR", logger="loop_orchestrator.trigger.dispatch"):
             await dispatcher.dispatch(_request(issue_number=7))
             await asyncio.sleep(0.2)
             await dispatcher.dispatch(_request(issue_number=7))

@@ -12,9 +12,9 @@ assigned **Opus/architect**.
 
 ## Just done (Opus/architect session, 2026-07-18)
 - **Sprint 41 (BL-2 pass 3, Slack escalation round-trip) shipped and archived.** Posted the
-  fresh-session Architect Review on **T5** ([#136](https://github.com/glunk-works/loop-engine/pull/136),
+  fresh-session Architect Review on **T5** ([#136](https://github.com/glunk-works/loop-orchestrator/pull/136),
   APPROVE) and cleared its BL-35 stale-red. Implemented **T6** (docs-only,
-  [#138](https://github.com/glunk-works/loop-engine/pull/138) → squash `36fe931`): marked **BL-2
+  [#138](https://github.com/glunk-works/loop-orchestrator/pull/138) → squash `36fe931`): marked **BL-2
   COMPLETE**, advanced the roadmap, added exit code 5 (`AWAITING_SLACK`) + the round-trip to CLAUDE.md /
   README / modules.md / threat model.
 - **Flagged that BL-2 is complete-but-not-live.** The whole Slack *inbound* surface (pass 2 command +
@@ -23,10 +23,10 @@ assigned **Opus/architect**.
   [`docs/slack_escalation_live_smoke.md`](../docs/slack_escalation_live_smoke.md).
 - Archived sprint 41's cursor to `.ai/archive/41_bl2_slack_escalation-next-steps.md`.
 - **Landed a workflow-friction thread** (owner-requested review of the day's sessions):
-  [#140](https://github.com/glunk-works/loop-engine/pull/140) — `/pr-checks` now auto-clears the
+  [#140](https://github.com/glunk-works/loop-orchestrator/pull/140) — `/pr-checks` now auto-clears the
   BL-35 stale-red, a **verification-ledger** in `/archive-sprint`+`/handoff` blocks "complete"
   overclaiming "live", `/handoff` emits a paste-ready next-session command block, a backlog **Index**,
-  and a new **`/retro`** skill; [#141](https://github.com/glunk-works/loop-engine/pull/141) —
+  and a new **`/retro`** skill; [#141](https://github.com/glunk-works/loop-orchestrator/pull/141) —
   **resolved BL-34** (CI docs-only fail-safe) and made docs-only PRs skip `dependency-audit`+`sbom`.
 - Ran `/retro`: routed one finding to memory ([[feedback-local-green-gate]] — run the full local
   gate, not just pytest, before pushing; #141 format-check red was the trigger).
@@ -36,7 +36,7 @@ No sprint is committed. The owner chooses from `docs/migration_roadmap.md`'s NEX
 - **Product (owner-requested):** BL-1 (in-loop code review of the Coder), BL-3 (prompt-caching review —
   needs a real key + spend), BL-4 (Ralph loop watcher), BL-5 (per-persona model routing; `claude-opus-4-8`
   `RATES` entry is its hard prerequisite).
-- **Decisions:** BL-24 (retire `trigger/` + `LOOP_ENGINE_WEBHOOK_SECRET` as moot vs. keep + verify §6),
+- **Decisions:** BL-24 (retire `trigger/` + `LOOP_ORCHESTRATOR_WEBHOOK_SECRET` as moot vs. keep + verify §6),
   BL-35 (which stale-red `architect-review` fix, if any).
 - **Hardening / deferred verification:** BL-32/BL-33 (adversarial guard audit + one shared hardened
   boundary-guard helper), BL-36 (sprint-41 low-priority review cleanups), **BL-37** (the live Slack smoke).

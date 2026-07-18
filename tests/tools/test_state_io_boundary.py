@@ -3,7 +3,7 @@ from pathlib import Path
 
 from tests.tools._ast_open import is_write_capable, open_call_is_method
 
-SRC_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "loop_engine"
+SRC_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "loop_orchestrator"
 # The two sanctioned file-write-owning modules (Phase 5 sprint 25 added
 # `tools/scaffold` as the second, mirroring how sprint 24 added `tools/git_io`
 # as the fourth sanctioned subprocess surface): `state_io` owns run

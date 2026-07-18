@@ -21,18 +21,18 @@ loop** to post the thread reply, and **real Anthropic spend**. Authorize it deli
 **Credentials + keyring**
 - Real Anthropic key in the OS keyring (the run spends money; the key is keyring-only, never a flag/env var).
 - Slack **bot token** + **app-level token** + **channel** already working from pass 1/2:
-  `LOOP_ENGINE_SLACK_BOT_TOKEN`, `LOOP_ENGINE_SLACK_APP_TOKEN` (`xapp-…`, `connections:write`),
-  `LOOP_ENGINE_SLACK_CHANNEL` (prefer the channel **ID**).
+  `LOOP_ORCHESTRATOR_SLACK_BOT_TOKEN`, `LOOP_ORCHESTRATOR_SLACK_APP_TOKEN` (`xapp-…`, `connections:write`),
+  `LOOP_ORCHESTRATOR_SLACK_CHANNEL` (prefer the channel **ID**).
 
 **New pass-3 Slack app config (the most likely point of failure — do this first, verify it exists)**
 1. **Event Subscriptions → Subscribe to bot events → add `message.channels`.** (Delivered over the same
    Socket Mode connection; no Request URL needed.)
 2. **OAuth & Permissions → Bot Token Scopes → add `channels:history`.**
 3. **Reinstall the app** to the workspace (adding a scope requires reinstall) and confirm the bot is a
-   member of `LOOP_ENGINE_SLACK_CHANNEL`.
+   member of `LOOP_ORCHESTRATOR_SLACK_CHANNEL`.
 
 **Transport selection**
-- `LOOP_ENGINE_ESCALATION_TRANSPORT=slack` in the daemon's *and* the run's environment. (Default is
+- `LOOP_ORCHESTRATOR_ESCALATION_TRANSPORT=slack` in the daemon's *and* the run's environment. (Default is
   `issue`; only `slack` routes escalations to Slack. `build_escalation_filer_from_env()` fails closed if
   `=slack` but the Slack vars are missing — a good pre-flight: a misconfigured run refuses to start.)
 
@@ -74,24 +74,24 @@ and retry — see BL-7 for why the PM stage in particular won't raise it.
 ## 3. Run the smoke
 
 All commands run **from the main checkout** (the correlation scan is CWD-relative — a daemon started
-elsewhere sees no snapshots). Use `infisical run` so the three `LOOP_ENGINE_SLACK_*` vars + the
+elsewhere sees no snapshots). Use `infisical run` so the three `LOOP_ORCHESTRATOR_SLACK_*` vars + the
 transport selector are inherited.
 
 **Terminal A — the daemon:**
 ```bash
-LOOP_ENGINE_ESCALATION_TRANSPORT=slack infisical run -- hatch run loop-engine slack-listen
+LOOP_ORCHESTRATOR_ESCALATION_TRANSPORT=slack infisical run -- hatch run loop-orchestrator slack-listen
 ```
 Confirm it opens the socket and blocks (fails closed with a clear message if any var is missing).
 
 **Terminal B — a run that will pause (same checkout):**
 ```bash
-LOOP_ENGINE_ESCALATION_TRANSPORT=slack infisical run -- \
-  hatch run loop-engine run --input forced_escalation.md --budget 2.00
+LOOP_ORCHESTRATOR_ESCALATION_TRANSPORT=slack infisical run -- \
+  hatch run loop-orchestrator run --input forced_escalation.md --budget 2.00
 ```
 Expected: the run pauses and **exits code 5** (`AWAITING_SLACK`), leaving a snapshot at
 `state/<run_id>/NN_awaiting_slack.json` with `status: awaiting_slack` and a `pending_slack.message_ts`.
 
-**In Slack:** the bot posts the numbered questions into `LOOP_ENGINE_SLACK_CHANNEL`. **Reply in that
+**In Slack:** the bot posts the numbered questions into `LOOP_ORCHESTRATOR_SLACK_CHANNEL`. **Reply in that
 message's thread:**
 ```
 1: Prioritize durability — persist to a replicated store; drop the memory-only constraint.

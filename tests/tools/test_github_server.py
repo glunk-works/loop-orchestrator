@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 from mcp import StdioServerParameters
 
-from loop_engine.tools.mcp import MCPToolProvider
+from loop_orchestrator.tools.mcp import MCPToolProvider
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_SERVER_MODULE = "loop_engine.mcp_servers.github_server"
+_SERVER_MODULE = "loop_orchestrator.mcp_servers.github_server"
 
 
 # Module-scoped: every test here is discovery-only (schema checks against an

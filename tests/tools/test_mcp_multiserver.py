@@ -1,6 +1,6 @@
 """Multi-server discovery + routing through the real `MCPToolProvider`
 (sprint 22a, Task 3 — proves cross-cutting #3 is paid down). Two hermetic,
-offline stdio server fixtures stand in for a `loop_engine.mcp.json` declaring
+offline stdio server fixtures stand in for a `loop_orchestrator.mcp.json` declaring
 more than one server; the coder-tools server itself is exercised separately
 in `test_mcp_provider.py`."""
 
@@ -11,15 +11,15 @@ from pathlib import Path
 import pytest
 from mcp import StdioServerParameters
 
-from loop_engine.tools.mcp import MCPToolError, MCPToolProvider
-from loop_engine.tools.mcp.config import load_mcp_config
+from loop_orchestrator.tools.mcp import MCPToolError, MCPToolProvider
+from loop_orchestrator.tools.mcp.config import load_mcp_config
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.fixture
 def _two_server_config(tmp_path):
-    config_path = tmp_path / "loop_engine.mcp.json"
+    config_path = tmp_path / "loop_orchestrator.mcp.json"
     config_path.write_text(
         json.dumps(
             {

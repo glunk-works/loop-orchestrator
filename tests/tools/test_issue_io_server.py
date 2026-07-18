@@ -12,12 +12,12 @@ from unittest.mock import patch
 import pytest
 from mcp import StdioServerParameters
 
-from loop_engine.core.state import IssueRef
-from loop_engine.mcp_servers import issue_io_server
-from loop_engine.tools.mcp import MCPToolProvider
+from loop_orchestrator.core.state import IssueRef
+from loop_orchestrator.mcp_servers import issue_io_server
+from loop_orchestrator.tools.mcp import MCPToolProvider
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_SERVER_MODULE = "loop_engine.mcp_servers.issue_io_server"
+_SERVER_MODULE = "loop_orchestrator.mcp_servers.issue_io_server"
 
 
 # Module-scoped: every test here is discovery-only (schema checks against an
@@ -57,7 +57,7 @@ def test_read_issue_schema_has_expected_int_param(_provider) -> None:
 
 def test_issue_io_server_module_imports_no_keyring_or_subprocess() -> None:
     source = (
-        Path(__file__).resolve().parents[2] / "src/loop_engine/mcp_servers/issue_io_server.py"
+        Path(__file__).resolve().parents[2] / "src/loop_orchestrator/mcp_servers/issue_io_server.py"
     ).read_text(encoding="utf-8")
     assert "keyring" not in source
     assert "import subprocess" not in source

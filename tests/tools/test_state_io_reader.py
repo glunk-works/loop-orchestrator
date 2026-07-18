@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from loop_engine.tools.state_io.reader import find_paused_snapshot_by_slack_thread, load_state
+from loop_orchestrator.tools.state_io.reader import find_paused_snapshot_by_slack_thread, load_state
 
 MESSAGE_TS = "1700000000.000100"
 

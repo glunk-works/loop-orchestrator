@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from loop_engine.core.coder_gate import RALPH_REGRESSION_PREFIX, RalphCoderGate
-from loop_engine.core.gates import GateDecision
-from loop_engine.core.state import State
-from loop_engine.tools.agent_state import ScratchpadState, write_scratchpad
+from loop_orchestrator.core.coder_gate import RALPH_REGRESSION_PREFIX, RalphCoderGate
+from loop_orchestrator.core.gates import GateDecision
+from loop_orchestrator.core.state import State
+from loop_orchestrator.tools.agent_state import ScratchpadState, write_scratchpad
 from tests.core.conftest import absolutize_mutmut_source_paths
 
 SPRINT_PLANS = json.dumps(
@@ -167,7 +167,7 @@ def test_ralph_gate_verifies_through_sandboxed_provider_under_container(
 ) -> None:
     """Same sandboxed-verification behavior as CoderGate — the Ralph gate no
     longer refuses under container/sandbox isolation."""
-    from loop_engine.tools.mcp import provider as mcp_provider
+    from loop_orchestrator.tools.mcp import provider as mcp_provider
 
     Path("src").mkdir()
     Path("src/test_placeholder.py").write_text("def test_ok():\n    assert True\n")

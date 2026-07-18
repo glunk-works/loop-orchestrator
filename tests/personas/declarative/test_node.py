@@ -5,9 +5,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from loop_engine.core.state import Question, State
-from loop_engine.personas.declarative.config import load_named_config
-from loop_engine.personas.declarative.node import (
+from loop_orchestrator.core.state import Question, State
+from loop_orchestrator.personas.declarative.config import load_named_config
+from loop_orchestrator.personas.declarative.node import (
     ArchitectureGenerator,
     GeneratorNode,
     PMGenerator,

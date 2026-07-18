@@ -6,10 +6,12 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from loop_engine.trigger.app import create_app
-from loop_engine.trigger.parse import RunRequest
+from loop_orchestrator.trigger.app import create_app
+from loop_orchestrator.trigger.parse import RunRequest
 
-TRIGGER_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "loop_engine" / "trigger"
+TRIGGER_DIR = (
+    Path(__file__).resolve().parent.parent.parent / "src" / "loop_orchestrator" / "trigger"
+)
 
 _DISALLOWED_WRITE_CALLS = {"open", "write_text", "write_bytes"}
 _DISALLOWED_SUBPROCESS_MODULES = {"subprocess"}
@@ -108,7 +110,7 @@ class _FakeDispatcher:
 
 
 def test_signed_webhook_reaches_dispatcher_without_a_real_loop(monkeypatch) -> None:
-    monkeypatch.setenv("LOOP_ENGINE_WEBHOOK_SECRET", _SECRET)
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_WEBHOOK_SECRET", _SECRET)
     fake = _FakeDispatcher()
     client = TestClient(create_app(dispatcher=fake))
 

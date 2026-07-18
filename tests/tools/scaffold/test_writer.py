@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from loop_engine.tools.scaffold import write_skeleton
+from loop_orchestrator.tools.scaffold import write_skeleton
 
 
 @pytest.fixture
@@ -56,7 +56,7 @@ def test_write_skeleton_claude_md_is_byte_identical_to_bundled_template(tree):
     from importlib import resources
 
     bundled = (
-        resources.files("loop_engine.tools.scaffold") / "templates" / "CLAUDE.md"
+        resources.files("loop_orchestrator.tools.scaffold") / "templates" / "CLAUDE.md"
     ).read_text()
     assert (tree / "CLAUDE.md").read_text() == bundled
 
@@ -118,7 +118,7 @@ def test_write_skeleton_claude_md_survives_non_utf8_locale_default(tree, ctype_l
     # (rendered output) sides, this fails outright instead of passing
     # regardless. Mirrors test_artifact_store.py's F2 regression shape.
     bundled_bytes = (
-        resources.files("loop_engine.tools.scaffold") / "templates" / "CLAUDE.md"
+        resources.files("loop_orchestrator.tools.scaffold") / "templates" / "CLAUDE.md"
     ).read_bytes()
     assert bundled_bytes.count("—".encode()) > 0
 
@@ -138,7 +138,7 @@ def test_scaffold_writer_imports_no_subprocess_and_no_keyring():
 
     module_path = (
         Path(__file__).resolve().parent.parent.parent.parent
-        / "src/loop_engine/tools/scaffold/writer.py"
+        / "src/loop_orchestrator/tools/scaffold/writer.py"
     )
     tree_ast = ast.parse(module_path.read_text())
     for node in ast.walk(tree_ast):

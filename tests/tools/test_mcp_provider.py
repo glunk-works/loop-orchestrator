@@ -7,8 +7,8 @@ import os
 
 import pytest
 
-from loop_engine.tools.coder_tools import grep, list_files, read_file
-from loop_engine.tools.mcp import (
+from loop_orchestrator.tools.coder_tools import grep, list_files, read_file
+from loop_orchestrator.tools.mcp import (
     CODER_TOOLS_SERVER_NAME,
     GITHUB_SERVER_NAME,
     ISSUE_SERVER_NAME,
@@ -18,7 +18,7 @@ from loop_engine.tools.mcp import (
     build_issue_provider,
     load_mcp_config,
 )
-from loop_engine.tools.mcp import config as mcp_config
+from loop_orchestrator.tools.mcp import config as mcp_config
 
 
 # Module-scoped (not per-test): these tests are read-only/discovery against a
@@ -116,12 +116,12 @@ def test_traversal_path_is_rejected_by_server(_provider) -> None:
 def test_extra_config_server_never_reaches_coder_provider(
     monkeypatch, tmp_path, _seeded_tree
 ) -> None:
-    """Even when `loop_engine.mcp.json` declares a `github`-like server
+    """Even when `loop_orchestrator.mcp.json` declares a `github`-like server
     alongside `coder_tools`, the coder consumer's provider must expose exactly
     the five coder tools — the extra server is never selected/launched. This
     encodes cross-cutting #2's "orchestrator-invoked, not model tools" as an
     enforced invariant before the github server exists (22b)."""
-    config_path = tmp_path / "loop_engine.mcp.json"
+    config_path = tmp_path / "loop_orchestrator.mcp.json"
     config_path.write_text(
         json.dumps(
             {"servers": {"github": {"command": "github-server-not-installed", "args": ["--stdio"]}}}
@@ -135,12 +135,15 @@ def test_extra_config_server_never_reaches_coder_provider(
 
 
 def test_committed_config_declares_github_and_issue_alongside_coder_tools() -> None:
-    """The real, committed repo-root `loop_engine.mcp.json` (22b Task 3, 26
+    """The real, committed repo-root `loop_orchestrator.mcp.json` (22b Task 3, 26
     Task 2) — `load_mcp_config()` with no override reads it for real."""
     servers = load_mcp_config()
     assert set(servers) == {CODER_TOOLS_SERVER_NAME, GITHUB_SERVER_NAME, ISSUE_SERVER_NAME}
-    assert servers[GITHUB_SERVER_NAME].args == ["-m", "loop_engine.mcp_servers.github_server"]
-    assert servers[ISSUE_SERVER_NAME].args == ["-m", "loop_engine.mcp_servers.issue_io_server"]
+    assert servers[GITHUB_SERVER_NAME].args == ["-m", "loop_orchestrator.mcp_servers.github_server"]
+    assert servers[ISSUE_SERVER_NAME].args == [
+        "-m",
+        "loop_orchestrator.mcp_servers.issue_io_server",
+    ]
 
 
 def test_committed_github_stanza_does_not_change_coder_provider_tool_set(_provider) -> None:
@@ -165,7 +168,7 @@ def test_coder_github_and_issue_providers_are_pairwise_disjoint(
     _provider, _github_provider, _issue_provider
 ) -> None:
     """Cross-cutting #2, extended two-way -> three-way (26 Task 5): with the
-    committed `loop_engine.mcp.json` in effect, the model's coder-tool
+    committed `loop_orchestrator.mcp.json` in effect, the model's coder-tool
     provider and the orchestrator's github/issue providers expose exactly
     their own tools each, and no pair of sets intersects."""
     coder_names = {t["name"] for t in _provider.tools}

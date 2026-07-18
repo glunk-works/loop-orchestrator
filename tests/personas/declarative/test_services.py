@@ -5,9 +5,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from loop_engine.core.state import Question, State
-from loop_engine.personas.declarative import services
-from loop_engine.personas.pm.persona import _wrap_untrusted_artifact
+from loop_orchestrator.core.state import Question, State
+from loop_orchestrator.personas.declarative import services
+from loop_orchestrator.personas.pm.persona import _wrap_untrusted_artifact
 
 
 def test_wrap_none_matches_cached_prefix_form() -> None:

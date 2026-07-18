@@ -6,7 +6,7 @@ server among several (sprint 22a, Task 3). Run as:
 
 from mcp.server.fastmcp import FastMCP
 
-mcp = FastMCP("loop-engine-test-greet")
+mcp = FastMCP("loop-orchestrator-test-greet")
 
 
 @mcp.tool()

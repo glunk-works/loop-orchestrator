@@ -1,2 +1,2 @@
-def test_import_loop_engine() -> None:
-    import loop_engine  # noqa: F401
+def test_import_loop_orchestrator() -> None:
+    import loop_orchestrator  # noqa: F401

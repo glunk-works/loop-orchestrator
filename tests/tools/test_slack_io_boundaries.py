@@ -19,10 +19,18 @@ import ast
 from pathlib import Path
 
 SLACK_IO_DIR = (
-    Path(__file__).resolve().parent.parent.parent / "src" / "loop_engine" / "tools" / "slack_io"
+    Path(__file__).resolve().parent.parent.parent
+    / "src"
+    / "loop_orchestrator"
+    / "tools"
+    / "slack_io"
 )
 NOTIFY_MODULE = (
-    Path(__file__).resolve().parent.parent.parent / "src" / "loop_engine" / "core" / "notify.py"
+    Path(__file__).resolve().parent.parent.parent
+    / "src"
+    / "loop_orchestrator"
+    / "core"
+    / "notify.py"
 )
 
 _DISALLOWED_WRITE_CALLS = {"open", "write_text", "write_bytes"}
@@ -126,7 +134,7 @@ def test_slack_io_package_adds_no_subprocess_surface() -> None:
 def test_core_notify_imports_no_slack_sdk() -> None:
     tree = ast.parse(NOTIFY_MODULE.read_text(), filename=str(NOTIFY_MODULE))
     assert not _imports_named_module(tree, "slack_sdk"), "core/notify.py imports slack_sdk"
-    assert not _imports_named_module(tree, "loop_engine.tools.slack_io"), (
+    assert not _imports_named_module(tree, "loop_orchestrator.tools.slack_io"), (
         "core/notify.py imports tools/slack_io -- it must stay a leaf"
     )
 

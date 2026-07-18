@@ -12,7 +12,7 @@ inheriting a bloated context window.
   - `.ai/state.json` (git-ignored) — the machine cursor (`current_sprint_id`, `sprint_status`, `assigned_model`, `last_commit`, `next_action`, `pointers`).
   - `.ai/context/` (git-tracked) — heavy reference loaded on demand (`modules.md`, `conventions.md`, this file).
   - `.ai/archive/` (git-ignored) — retired sprint snapshots.
-- **`.agent/STATE.md` + `.agent/MEMORY.md`** — the loop-engine **product's** runtime Ralph state, written when the engine itself runs. Nothing in the dev workflow writes these.
+- **`.agent/STATE.md` + `.agent/MEMORY.md`** — the loop-orchestrator **product's** runtime Ralph state, written when the engine itself runs. Nothing in the dev workflow writes these.
 
 The deep, authoritative history stays in `docs/migration_roadmap.md`; `.ai/` never
 duplicates it, only points at the current cursor within it.
@@ -267,7 +267,7 @@ gate still runs locally before the push.
 - **`/resume`** — run at the **start** of a session. Reads `.ai/state.json` +
   `.ai/next-steps.md` + the pointed sprint_plan + roadmap NEXT ACTION, states the exact
   pick-up point, and adopts the assigned persona/model. (Distinct from the
-  `loop-engine resume` CLI subcommand — different namespace.)
+  `loop-orchestrator resume` CLI subcommand — different namespace.)
   **It may then start the `next_action` unattended** — but only on a clean, unambiguous
   cursor: `hitl_gate` reading `NONE OPEN`, `sprint_status` `implementing`, the model
   matching `assigned_model`, and no cursor/HEAD drift. Anything else — a `planning`

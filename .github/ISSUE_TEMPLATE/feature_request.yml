@@ -1,5 +1,5 @@
 name: Feature Request
-description: Suggest an idea or enhancement for loop-engine
+description: Suggest an idea or enhancement for loop-orchestrator
 title: "[Feature]: "
 labels: ["feature"]
 body:
@@ -33,7 +33,7 @@ body:
   - type: dropdown
     id: area
     attributes:
-      label: Area of loop-engine this affects
+      label: Area of loop-orchestrator this affects
       options:
         - core (engine/state)
         - personas

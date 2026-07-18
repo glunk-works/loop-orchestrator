@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from loop_engine.tools.git_io import (
+from loop_orchestrator.tools.git_io import (
     GitIOError,
     checkout_branch,
     commit_all,
@@ -127,7 +127,7 @@ def test_git_io_imports_no_keyring():
     from pathlib import Path as P
 
     module_path = P(__file__).resolve().parent.parent.parent.parent / (
-        "src/loop_engine/tools/git_io/local.py"
+        "src/loop_orchestrator/tools/git_io/local.py"
     )
     tree = ast.parse(module_path.read_text())
     for node in ast.walk(tree):
@@ -142,7 +142,7 @@ def test_git_io_makes_no_direct_file_write_call():
     from pathlib import Path as P
 
     module_path = P(__file__).resolve().parent.parent.parent.parent / (
-        "src/loop_engine/tools/git_io/local.py"
+        "src/loop_orchestrator/tools/git_io/local.py"
     )
     tree = ast.parse(module_path.read_text())
     disallowed = {"open", "write_text", "write_bytes"}

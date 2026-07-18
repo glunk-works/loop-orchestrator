@@ -11,6 +11,11 @@
 # picked up on the next container start with no extra logic.
 set -eu
 
+# NOTE: LOOP_ENGINE_KEYRING_PASSPHRASE is an Infisical-injected secret name,
+# deliberately NOT renamed with the sprint-42 repo rename — it is a name in
+# your Infisical project, not a repo-owned env var. Rename it there first if
+# you want it to match the LOOP_ORCHESTRATOR_ prefix.
+#
 # Written first, before anything touches the keyring: client.py's keyring
 # backend reads this file on every get_password()/set_password() call, so
 # the ANTHROPIC_API_KEY seed below would fail with a FileNotFoundError if
@@ -23,7 +28,7 @@ if [ -n "${LOOP_ENGINE_KEYRING_PASSPHRASE:-}" ]; then
 fi
 
 if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-    python -c "import os, keyring; keyring.set_password('loop-engine', 'anthropic_api_key', os.environ['ANTHROPIC_API_KEY'])"
+    python -c "import os, keyring; keyring.set_password('loop-orchestrator', 'anthropic_api_key', os.environ['ANTHROPIC_API_KEY'])"
 fi
 
 if [ -n "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ]; then
