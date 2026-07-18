@@ -54,6 +54,13 @@ jobs:
   test:
     runs-on: ubuntu-latest
     needs: format-check
+    # Expose the docs-only detection so `dependency-audit` and `sbom` can reuse it
+    # (`needs.test.outputs.docs_only`) instead of copying the detection bash — and
+    # its BL-34 fail-safe — into each job. Empty string on a `push` event (the
+    # detection step below is `pull_request`-only), which reads as "not docs-only"
+    # everywhere it is consumed, so a push always runs the full chain.
+    outputs:
+      docs_only: ${{ steps.docs_only.outputs.skip }}
     # Read-only, and only what this job's new step needs beyond the repo
     # default: `pull-requests: read` for the `gh api .../files` call below.
     permissions:
@@ -90,8 +97,16 @@ jobs:
           # this step's exit status. Capture into a variable first, match
           # second -- no pipe, no SIGPIPE, no size-dependent behavior.
           set -uo pipefail
-          changed=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')
-          status=$?
+          # BL-34: GitHub runs this step as `bash -e {0}`, and `set -uo pipefail`
+          # does NOT clear the inherited errexit. A bare `changed=$(gh api …)`
+          # whose command substitution fails would then trip errexit and kill the
+          # step BEFORE the fail-safe branch below runs -- reddening a green docs
+          # PR on a transient API blip (observed on #115). Guarding the assignment
+          # with `|| status=$?` puts it in an `||` list, where errexit is
+          # suppressed, so a gh failure falls through to the fail-safe (run pytest)
+          # instead. `status` is pre-initialised so `set -u` can't trip on it.
+          status=0
+          changed=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename') || status=$?
           if [ "$status" -ne 0 ] || [ -z "$changed" ]; then
             echo "skip=false" >> "$GITHUB_OUTPUT"
             echo "Changed-file detection failed or was empty (exit=$status) -- running pytest (fail safe)."
@@ -137,11 +152,21 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install hatch
+      # Skip the CVE scan on a docs-only PR -- the dependency set is unchanged, so
+      # there is nothing to audit. STEP-level, reusing the test job's detection: the
+      # job itself stays unconditional (no job-level `if:`) so the required
+      # `dependency-audit` check still reports green (BL-10/BL-12). Empty output on a
+      # push ⇒ this runs, as it must.
       - run: hatch run audit
+        if: needs.test.outputs.docs_only != 'true'
 
   sbom:
     runs-on: ubuntu-latest
-    needs: [secrets-scan, dependency-audit]
+    # `test` added to needs (already an upstream dependency via secrets-scan /
+    # dependency-audit) so this job can read its `docs_only` output. The SBOM regen
+    # + upload are skipped on a docs-only PR (deps unchanged), while the job itself
+    # stays unconditional so the required `sbom` check still reports (BL-10/BL-12).
+    needs: [test, secrets-scan, dependency-audit]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
@@ -149,7 +174,9 @@ jobs:
           python-version: "3.12"
       - run: pip install hatch
       - run: hatch run sbom
+        if: needs.test.outputs.docs_only != 'true'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        if: needs.test.outputs.docs_only != 'true'
         with:
           name: sbom
           path: sbom.json
