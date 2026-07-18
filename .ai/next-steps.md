@@ -22,6 +22,14 @@ assigned **Opus/architect**.
   Socket Mode session. Tightened the docs to say so, filed **BL-37**, and wrote the operator runbook
   [`docs/slack_escalation_live_smoke.md`](../docs/slack_escalation_live_smoke.md).
 - Archived sprint 41's cursor to `.ai/archive/41_bl2_slack_escalation-next-steps.md`.
+- **Landed a workflow-friction thread** (owner-requested review of the day's sessions):
+  [#140](https://github.com/glunk-works/loop-engine/pull/140) — `/pr-checks` now auto-clears the
+  BL-35 stale-red, a **verification-ledger** in `/archive-sprint`+`/handoff` blocks "complete"
+  overclaiming "live", `/handoff` emits a paste-ready next-session command block, a backlog **Index**,
+  and a new **`/retro`** skill; [#141](https://github.com/glunk-works/loop-engine/pull/141) —
+  **resolved BL-34** (CI docs-only fail-safe) and made docs-only PRs skip `dependency-audit`+`sbom`.
+- Ran `/retro`: routed one finding to memory ([[feedback-local-green-gate]] — run the full local
+  gate, not just pytest, before pushing; #141 format-check red was the trigger).
 
 ## Next — owner picks the next backlog item, then plan it (Opus)
 No sprint is committed. The owner chooses from `docs/migration_roadmap.md`'s NEXT ACTION list:
@@ -47,7 +55,11 @@ Once selected: run the planning pass (Opus, one question at a time, HITL Gates) 
   claiming the Slack round-trip works end-to-end.
 - **Stale-red `architect-review` (BL-35):** every `src/` PR gets two check-runs on one SHA; `BLOCKED` +
   rollup **FAILURE** = stale red ⇒ `gh run rerun <old_failed_run_id>`; `BLOCKED` + rollup **SUCCESS** = lag, wait.
-- **PR title:** `wc -c` the byte count (≤72) AND re-read the text before `gh pr create/edit`.
+  (`/pr-checks` now detects this and offers the rerun automatically.)
+- **Before pushing code, run the FULL local gate** (lint → format → test), not just `hatch run test` —
+  or use `/ship`, which bakes it in. #141's `format-check` went red on a quoting nit from a tests-only run.
+- **PR title:** `wc -c` the byte count (≤72) AND re-read the text before `gh pr create/edit`
+  (already baked into `/ship` + `/handoff`).
 - **Never commit to `main`, never merge, never force-push.** (Rebase a stale pushed branch by merging `main` INTO it.)
 - **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** Signing Timeout = answer the host pinentry and retry.
 
