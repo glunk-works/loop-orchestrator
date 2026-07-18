@@ -287,6 +287,67 @@ def test_ci_docs_only_short_circuit_fails_safe_on_detection_error_or_empty() -> 
     assert "skip=false" in text[idx : idx + 200]
 
 
+def test_ci_docs_only_detection_is_errexit_safe() -> None:
+    """BL-34: GitHub runs the step as `bash -e {0}`, and the in-script
+    `set -uo pipefail` does NOT clear the inherited errexit. A bare
+    `changed=$(gh api …)` whose command substitution fails then trips errexit and
+    kills the step BEFORE the `[ "$status" -ne 0 ]` fail-safe below can run --
+    reddening a green docs PR on a transient GitHub API blip (observed on #115),
+    the exact opposite of the promised "fail safe". The fix is to guard the
+    assignment in an `||` list, where errexit is suppressed, so a failure falls
+    through to the fail-safe. Pin that guard, and that `status` is pre-initialised
+    (so `set -u` can't trip on the fail-safe read when the guard doesn't fire)."""
+    text = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    # The real assignment line, not the explanatory comment (which references a
+    # `changed=$(gh api …)` shorthand without the "repos/... argument).
+    changed_line = next(
+        line
+        for line in text.splitlines()
+        if 'changed=$(gh api "repos/$REPO/pulls/$PR/files"' in line
+    )
+    assert "|| status=$?" in changed_line, (
+        "the changed=$(gh api …) assignment must be `|| status=$?`-guarded so an "
+        "inherited `bash -e` cannot kill the step before the fail-safe (BL-34)"
+    )
+    assert "\n          status=0\n" in text, (
+        '`status` must be pre-initialised to 0 so the fail-safe\'s `[ "$status" '
+        "-ne 0 ]` read is safe under `set -u` when the guard does not fire"
+    )
+
+
+def test_dependency_audit_and_sbom_reuse_the_docs_only_detection() -> None:
+    """The docs-only saving extends to `dependency-audit` + `sbom` by REUSING the
+    `test` job's detection via `needs.test.outputs.docs_only` -- not by copying the
+    fragile (BL-34) detection bash into each job (a local composite action is not an
+    option: test_all_workflow_actions_are_pinned_to_commit_shas requires a 40-hex
+    SHA on every `uses:`). Both jobs stay UNCONDITIONAL (no job-level `if:`,
+    BL-10/BL-12): only the expensive step is guarded, so the required check still
+    reports. On a code PR or a push the output is not 'true', so the work runs."""
+    cfg = _load_workflow("ci.yml")
+    jobs = cfg["jobs"]
+
+    # test exposes the detection as a job output wired to the detection step.
+    assert jobs["test"].get("outputs", {}).get("docs_only") == (
+        "${{ steps.docs_only.outputs.skip }}"
+    )
+
+    guard = "needs.test.outputs.docs_only"
+    for job_id, run_prefix in (
+        ("dependency-audit", "hatch run audit"),
+        ("sbom", "hatch run sbom"),
+    ):
+        job = jobs[job_id]
+        assert "if" not in job, f"{job_id} must stay unconditional (BL-10/BL-12)"
+        needs = job["needs"]
+        needs_list = [needs] if isinstance(needs, str) else needs
+        assert "test" in needs_list, f"{job_id} must `needs: test` to read docs_only"
+        expensive = [s for s in job["steps"] if s.get("run", "").startswith(run_prefix)]
+        assert len(expensive) == 1, f"{job_id}: expected one {run_prefix!r} step"
+        assert guard in expensive[0].get("if", ""), (
+            f"{job_id}: the {run_prefix!r} step must be docs-only-guarded"
+        )
+
+
 def test_hitl_review_src_detection_does_not_pipe_into_grep_q() -> None:
     """The src/-detection must not pipe a paginating `gh` into `grep -q`.
 

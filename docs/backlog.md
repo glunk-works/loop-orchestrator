@@ -49,7 +49,7 @@ material). Keep this list in sync: one line per `### BL-N` header.
 - **BL-31** — MCP server cold-start is a fixed ~5s import penalty per spawn
 - **BL-32** — Static structural guards need an adversarial invariant-injection audit
 - **BL-33** — Boundary-guard AST walkers share BL-15's blind spots (remediation list)
-- **BL-34** — CI `test` docs-only pre-step has a defeated fail-safe under `bash -e` (+ extend skip to audit/sbom)
+- **BL-34** — CI `test` docs-only pre-step fail-safe + skip audit/sbom on docs PRs · _resolved (2026-07-18); skip path not yet live-verified_
 - **BL-35** — `architect-review` strands a stale red check-run on every `src/` PR
 - **BL-36** — Low-priority cleanups deferred from the BL-2 sprint-41 reviews
 - **BL-37** — The Slack inbound surface has never been exercised live
@@ -1811,6 +1811,19 @@ more jobs. Watch `sbom`'s `upload-artifact` step (guard it too, or let it upload
 jobs stay unconditional (no job-level `if:`) and that their pre-step is fail-safe. It's a CI change into
 the required-check chain, so it wants its own scoped PR + the fresh-eyes discipline even though it's
 `architect-review`-exempt (non-`src/`).
+
+**Resolved 2026-07-18.** The fail-safe now decouples the `gh api` exit from the inherited
+errexit — `status=0; changed=$(gh api …) || status=$?` — so a detection failure falls through to
+`skip=false` (run pytest) instead of killing the step; pinned by
+`test_ci_docs_only_detection_is_errexit_safe`. The folded-in extension landed in the same PR: the
+`test` job now exposes `outputs.docs_only`, and `dependency-audit` + `sbom` reuse it via
+`needs.test.outputs.docs_only` on their expensive step (no copied bash, no local composite action —
+which `test_all_workflow_actions_are_pinned_to_commit_shas` would reject). Both jobs stay
+unconditional, so the required checks still report on docs-only PRs; pinned by
+`test_dependency_audit_and_sbom_reuse_the_docs_only_detection`. **Hermetically pinned; the *skip
+path* is not yet exercised live** — this PR itself is a code PR (touches `.github/`, `tests/`), so its
+own CI runs the full chain; the first docs-only PR after merge is what exercises the skip. Watch that
+first one (verification-ledger).
 
 **Related:** BL-10 / BL-18 (the "a job can still report `skipped`" family and the unconditional-`test`
 guarantee this must not break), BL-2 / sprint 40 T1 (the PR whose CI run surfaced it). Aligns with the
