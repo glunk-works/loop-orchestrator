@@ -26,7 +26,7 @@ handoff point. It does **not** archive — that is `/archive-sprint`, only on co
    step only stops the pass from being forgotten.
 
 2. **Determine the new cursor** from what this session did:
-   - `current_phase`, `current_sprint_id`, and `sprint_status` — one of `planning` | `implementing` | `awaiting_architect_review` | `blocked` | `done`.
+   - `current_phase`, `current_sprint_id`, and `sprint_status` — one of `planning` | `implementing` | `awaiting_architect_review` | `blocked` | `done`. Before writing `done` (or any "complete"/"landed" claim into `next_action`), apply the **verification-ledger** check (`/archive-sprint` precondition 4): if a surface has a **live** side the hermetic suite can't reach, say "hermetically verified; live smoke deferred → BL-NN," never "done/working end-to-end." Claim only what the evidence covers.
    - `assigned_model` / `assigned_persona` for the **next** session (Architect=Opus for planning/review, Coder=Sonnet for implementation — see `.ai/context/workflow.md`).
    - `last_commit` = current `git rev-parse --short HEAD`.
    - `next_action` = the single most important next step, phrased as an imperative.
