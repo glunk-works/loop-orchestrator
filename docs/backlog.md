@@ -132,9 +132,47 @@ server.
 > `envelope_id` (FD6). **Accepted residual risk: channel membership IS the authorization model** —
 > anyone who can post in the channel can spend money and run the Coder (threat model, §1).
 >
-> **Pass 3 — the escalation round-trip — remains open** (route a paused run's questions to Slack and
-> fold the reply back, as an alternative to the GitHub-issue round-trip). It is the last BL-2 pass;
-> the notify (pass 1) and command (pass 2) directions are both live to build on.
+> ### LANDED: pass 3 of 3 — escalation round-trip (sprint 41, 2026-07-18) — **BL-2 COMPLETE**
+> The Slack **escalation round-trip** shipped, closing BL-2. With `LOOP_ENGINE_ESCALATION_TRANSPORT=slack`
+> a paused run posts its questions to `LOOP_ENGINE_SLACK_CHANNEL`; a human replies in the thread with
+> `N: answer` lines (bare text when exactly one question is open); the `slack-listen` daemon folds the
+> reply back through the shared `runner.resume_run` seam and posts the outcome to the thread. Landed
+> across **T1** (`SlackRef` + `pending_slack` + `RunStatus.AWAITING_SLACK` + schema **v4→v5**, #127),
+> **T2** (transport-agnostic `EscalationFiler` seam in `core/engine.py` + `build_escalation_filer_from_env`,
+> default=issue, zero behavior change, #128), **T3** (outbound filer + pure `render_question_message`/
+> `parse_thread_answers`, #131), **T4** (shared `runner.resume_run` + `cli.resume` refactor + the
+> `find_paused_snapshot_by_slack_thread` correlation reader, #133), **T5** (daemon `events_api`
+> message-event handling + `dispatch_resume`, #136), and **T6** (this docs pass).
+>
+> **Postures worth not re-deriving:**
+> 1. **Transport selection is env-driven and fail-closed.** `LOOP_ENGINE_ESCALATION_TRANSPORT` defaults
+>    to `issue` (byte-for-byte the old GitHub-issue path); `=slack` selects the Slack filer, and
+>    `build_escalation_filer_from_env()` **raises at build** if the Slack vars are then unset — a Slack
+>    run refuses to start rather than discover at pause time it has nowhere to post (unlike the notifier's
+>    cosmetic fail-open, a missing escalation post is load-bearing). Exit code **5** (`AWAITING_SLACK`)
+>    joins 0/2/3/4.
+> 2. **Correlation is by mtime, not filename.** `find_paused_snapshot_by_slack_thread` takes the
+>    latest snapshot *per run dir by mtime* — a snapshot filename's `NN_` prefix is the loop **stage
+>    position**, not a write counter, and a blast-radius re-entry can write a lower-numbered file *later*,
+>    so a lexicographic "last filename" would resurrect a stale `awaiting_slack` file and double-resume a
+>    dead thread (found by the T5 critic-gate; regression test pins the backward-reentry shape).
+> 3. **Idempotency on two keys.** `dispatch_resume` dedupes on `envelope_id` (Socket Mode redelivery)
+>    **and** `thread_ts` (distinct replies to a still-`awaiting_slack` thread), sharing `dispatch`'s
+>    `_run_lock`. **The FD3 channel guard applies to `message` events too, before any state read**, and
+>    the bot's own posts are dropped (no self-trigger). No new sink class and no new subprocess surface;
+>    `slack_control/` now reads the state tree (only via `tools/state_io`) and resumes via `runner`,
+>    still importing no `keyring`/`slack_sdk` and writing no files. Threat model: §1's escalation
+>    round-trip boundary.
+>
+> **BL-2 is done against the sprint plans — all three passes (notify / command / escalation round-trip)
+> shipped and are hermetically verified (780 tests, fakes throughout).** They have **not** yet been
+> exercised **live** end-to-end: the entire Slack *inbound* surface (pass 2's `/agent-run` command and
+> pass 3's round-trip) has only ever run against a fake `WebClient`/listener and synthetic `events_api`
+> envelopes — no real Socket Mode session has fired. That deferred live smoke is tracked in **[BL-37]**
+> (its analog is **[BL-24]**, the never-run-live `trigger/` webhook, which Slack supersedes but does not
+> close). "Complete and hermetically verified" is the honest claim; "proven live" is not yet earned.
+> Remaining Slack-adjacent open decision is **[BL-24]**. Low-priority review cleanups from the sprint-41
+> passes are collected in **[BL-36]**; the guard-adversary finding from T5 folds into **[BL-33]**.
 
 ### BL-3 — Review the prompt-caching implementation (correctness + improvement)
 *(added 2026-07-10, from repo owner; **absorbed `DEFERRED_VERIFICATION.md` §1** in sprint 35 Task 6,
@@ -1671,9 +1709,17 @@ module calls; inspect `ImportFrom` alias names; treat an import as deferred only
 siblings and catches the naive/common violations; this is a cross-cutting hardening of the shared
 pattern, and belongs on its own PR.
 
+**Confirmed again on a *sixth* sibling (2026-07-18, from the T5 `guard-adversary` pass on PR #136,
+BL-2 pass 3).** `tests/slack_control/test_boundaries.py` inherits the identical holes: its write-call
+matcher misses `.open()`-as-attribute and aliased-receiver calls, its subprocess denylist omits
+`os.popen`/`os.posix_spawn`/`os.spawn*`, and `importlib.import_module` bypasses the name-based import
+assertions. **Not exploited by PR #136's new code** (out of scope for T5) — this is the same shared
+AST-walker copied into one more file, exactly the "fixing one file leaves the siblings porous" thesis
+above, and the single shared hardened helper this item proposes subsumes it. No separate item needed.
+
 **Related:** [BL-32] (the audit instrument this is the output of), [BL-15] (the original name-based
-`open()` blind spot the write finding reproduces), BL-2 / sprint 39 (the diff whose critic pass
-surfaced it).
+`open()` blind spot the write finding reproduces), BL-2 / sprints 39–41 (the diffs whose critic passes
+surfaced it, most recently `tests/slack_control/test_boundaries.py`).
 
 ### BL-34 — The CI `test` job's "docs-only" pre-step has a defeated fail-safe: under `bash -e`, a failing `gh api` kills the step instead of falling back to running pytest
 
@@ -1794,3 +1840,89 @@ family this fix must not fall into), BL-6 (a separate machine identity — the r
 constraint that forces the header/attestation design in the first place), BL-25 (whether the backlog belongs
 in GitHub Issues). Aligns with the recurring theme in [github-workflow-traps], inverted: here a check is
 **red for a stale reason** rather than green for a wrong one.
+
+### BL-36 — Low-priority cleanups deferred from the BL-2 sprint-41 Architect reviews (escalation round-trip)
+*(added 2026-07-18, T6 — collecting the non-blocking notes from the fresh-session Architect reviews of
+sprint 41's T3 (#131) and T4 (#133) PRs, so they aren't lost now that BL-2 is complete)*
+
+**Why:** each of these was raised as an explicitly **non-blocking** note during a sprint-41 review and
+merged unfixed by design — none blocks correctness, but each is a small quality/robustness improvement
+worth doing when the area is next touched. Grouped rather than filed one-per-item because they are all
+small and share the BL-2 escalation surface.
+
+**Items:**
+
+1. **`_ANSWER_LINE_RE` is duplicated verbatim** across `tools/issue_io/github.py:23` and
+   `tools/slack_io/escalation.py:30` (identical `re.compile(r"^\s*(\d+)\s*[:.)]\s*(.+?)\s*$")`). The two
+   escalation transports parse the human's numbered-answer lines with byte-identical regexes; a shared
+   constant (a small pure `answers` helper both import) would keep them from drifting. Low — they are
+   correct today and both are unit-tested.
+2. **The oversized-digit `int()` guard is missing from the issue path.** `slack_io.parse_thread_answers`
+   wraps `int(match.group(1))` in a `try/except ValueError` so an adversarial huge digit-run (tripping
+   `sys.get_int_max_str_digits`) is treated as a non-matching line, not a crash;
+   `issue_io.parse_issue_answers` (`github.py:153`) does the bare `int(match.group(1))` with no guard. The
+   issue body is less adversarial than a Slack reply (it comes back through `gh`), so this is lower-risk,
+   but the asymmetry is worth closing — ideally by item 1's shared helper, which would carry the guard to
+   both.
+3. **No aggregate message-length cap on the Slack escalation post.** `render_question_message` caps each
+   question's length, but a run paused on *many* questions could still assemble a body past Slack's
+   ~40k-char `chat.postMessage` limit. A total-length cap (truncate-with-elision past N questions/chars)
+   would make the post robust to a pathological question count. Low — real pauses carry a handful of
+   questions.
+4. **`cli.resume` lost its early `--loop` validation** (T4-review note). After the T4 refactor to call
+   `runner.resume_run`, an unknown `--loop` name now fails **late** with a raw `KeyError` after the issue
+   read, rather than early with a clean message. Restore an upfront validation of the loop name (or have
+   `_resolve_loop` raise a typed error the CLI renders as `typer.BadParameter`).
+5. **`_resolve_loop` / the named-loop registry is duplicated** across `cli.py:32` and `runner.py:40`
+   (T4-review note). Both define their own `_resolve_loop`; the two should share one source of truth
+   (lift it into `runner` or a small `loops` helper and have `cli` import it) so the loop registry can't
+   diverge between the CLI and the programmatic entrypoints.
+
+**Notes / where to look:** `src/loop_engine/tools/slack_io/escalation.py`,
+`src/loop_engine/tools/issue_io/github.py`, `src/loop_engine/cli.py`, `src/loop_engine/runner.py`. Full
+review reasoning is on PRs #131 and #133 (`gh pr view <n> --comments`).
+
+**Related:** [BL-2] (the sprint whose reviews surfaced these), [BL-9] (the other "issue-path cleanup"
+grouping — items here are the Slack-era siblings).
+
+### BL-37 — The Slack inbound surface (command + escalation round-trip) has never been exercised live
+*(added 2026-07-18, T6 — flagged while closing BL-2: "complete and hermetically verified" is not "proven live")*
+
+**Why:** every green check on the Slack **inbound** work is hermetic. Pass 2's `/agent-run` command
+(sprint 40) and pass 3's escalation round-trip (sprint 41) are tested only against a **fake `WebClient`
+and a fake listener**, with **synthetic `events_api`/`slash_commands` envelopes** hand-built in the
+tests. **No real Socket Mode session has ever fired** — not one live `/agent-run`, not one live thread
+reply folded back. The docs describe Slack as "the live inbound path," but that is the *design intent*
+(the surface now meant to be live), not an executed smoke. This is the exact shape of **[BL-24]** — a
+surface verified structurally but never run — one door over.
+
+**What a live smoke catches that the hermetic suite structurally cannot:**
+- **Real `events_api` payload shape.** `daemon.py` reads `payload["event"]["channel"]` / `thread_ts` /
+  `bot_id` / `subtype` / `text`. If a real Slack `message.channels` delivery nests those differently,
+  the daemon silently drops the reply — and every fake in the suite is built to the *assumed* shape, so
+  the suite cannot disprove the assumption. **Highest-value unknown.**
+- **App-config correctness.** Whether the T6 operator step (`message.channels` event subscription +
+  `channels:history` bot scope) actually causes thread replies to be delivered. A missing subscription/
+  scope is invisible to every test and is the single most likely real-world failure.
+- **Connection liveness.** That the daemon's outbound Socket Mode WebSocket stays up and
+  `SocketModeClient` reconnect/backoff behaves under a real connection.
+- **Self-trigger + channel-scope under real payloads** (the bot's own post carries a real `bot_id`; a
+  foreign-channel message carries a real `channel`).
+
+**Why it is NOT a `live-verify` V-run.** That subagent is scoped to disposable-scratch-repo **factory**
+flows (§5 github verbs / §7 maintenance / §8 bootstrap / §1 cost smoke) and **explicitly excludes**
+inbound trigger surfaces (§6 webhook is out for needing live infra). A Slack smoke needs a configured
+Slack app, a long-lived `slack-listen` daemon, a run engineered to actually **pause** on an escalation,
+a **human posting the thread reply**, and real Anthropic spend — an **operator-run manual smoke**, not
+an automatable V-run. Runbook: **`docs/slack_escalation_live_smoke.md`**.
+
+**Shape (not urgent, needs explicit authorization — real money + real Slack side effects):** run the
+runbook once in the same real-key host session as BL-3's caching/§1 cost smoke (they share the scarce
+prerequisite: a real key and real spend). Capture the evidence the runbook lists; record the discharge
+(or any finding) back here. Until then BL-2 stands as **complete + hermetically verified, live smoke
+deferred**.
+
+**Related:** [BL-2] (the surface this verifies), [BL-24] (the analogous never-run-live `trigger/`
+webhook — same "structurally verified, never exercised" shape), [BL-3] (the real-key host session to
+fold this into), [BL-7] (the PM-can't-escalate gap — relevant to *engineering* a run that reaches a
+human escalation).

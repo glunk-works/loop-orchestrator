@@ -113,6 +113,33 @@ It blocks until interrupted (Ctrl-C / `SIGTERM`) and delegates reconnect/backoff
 
 Commands from any channel other than `LOOP_ENGINE_SLACK_CHANNEL` are ignored.
 
+### Answer an escalation from Slack (the round-trip)
+
+When a run exhausts its resolver ladder on a question nobody could answer, it **pauses and escalates to a human**. By default that escalation is a filed GitHub issue (resumed with `loop-engine resume --from-issue <N>`). Set **`LOOP_ENGINE_ESCALATION_TRANSPORT=slack`** to route it to Slack instead: the paused run posts its numbered questions into `LOOP_ENGINE_SLACK_CHANNEL`, a human answers **in that thread**, and the same `slack-listen` daemon folds the reply back and resumes the run — no `gh`, no issue.
+
+**One-time Slack app setup** (operator step, in addition to the `/agent-run` setup above):
+
+1. Subscribe the app to the **`message.channels`** event (Events API — delivered over the same Socket Mode connection; no Request URL needed).
+2. Grant the bot the **`channels:history`** scope, so it can receive the thread replies. Re-install the app if you add a scope.
+
+No new credentials — the round-trip reuses the three `LOOP_ENGINE_SLACK_*` env vars already configured. `LOOP_ENGINE_ESCALATION_TRANSPORT` defaults to `issue`; only `slack` changes behavior, and when it is set the run **fails closed at startup** if `LOOP_ENGINE_SLACK_BOT_TOKEN` / `LOOP_ENGINE_SLACK_CHANNEL` are missing (a run that cannot post its questions must refuse to start rather than discover that at pause time).
+
+**Usage.** When a run pauses, the bot posts something like:
+
+```
+🙋 Run <run_id> needs input:
+1. [architecture] Should the cache be write-through or write-back?
+2. [architecture] What is the eviction policy under memory pressure?
+Reply in this thread with one numbered line per question, e.g. `1: your answer`.
+```
+
+Reply **in the thread** (bare text is accepted only when exactly one question is open; otherwise number your lines). The daemon resumes the run and posts the outcome back into the same thread (`Run completed.` / a failure reason / `More questions came up — see the new thread for this run.` when the resume re-escalates). Two operational notes:
+
+- **Run the daemon from the same checkout the runs start in.** Correlation scans the main-checkout `state/` tree relative to the daemon's working directory; a daemon started elsewhere sees no snapshots to resume.
+- **The bot never answers itself** — its own escalation and outcome posts (and edits/deletes of them) are ignored, so there is no self-trigger loop.
+
+> **Not yet verified live.** The Slack inbound surface (this round-trip and the `/agent-run` command above) is covered by the hermetic test suite but has **not** been exercised against a real Socket Mode session. To run the one-time live smoke, follow [`docs/slack_escalation_live_smoke.md`](docs/slack_escalation_live_smoke.md) (tracked as BL-37).
+
 ### Library usage
 
 The full programmatic surface is available without the CLI:
