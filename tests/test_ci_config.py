@@ -310,7 +310,7 @@ def test_ci_docs_only_detection_is_errexit_safe() -> None:
         "inherited `bash -e` cannot kill the step before the fail-safe (BL-34)"
     )
     assert "\n          status=0\n" in text, (
-        "`status` must be pre-initialised to 0 so the fail-safe's `[ \"$status\" "
+        '`status` must be pre-initialised to 0 so the fail-safe\'s `[ "$status" '
         "-ne 0 ]` read is safe under `set -u` when the guard does not fire"
     )
 
