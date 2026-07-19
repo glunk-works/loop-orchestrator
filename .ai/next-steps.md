@@ -1,64 +1,63 @@
 # Next steps — dev-workflow cursor
 
 Thin, live cursor for whoever picks up this repo next. Points into the deep record
-(`docs/bounty_loop_architecture.md`, `docs/backlog.md`, the PRs) — it does not copy them.
+(`docs/bounty_loop_architecture.md`, the sprint plan, the PRs) — it does not copy them.
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**PIVOTED — building the SECOND loop.** The autonomous dev loop (`loops/default`) is paused.
-Active initiative: **`loops/bounty/`** — an AI bug-bounty / vuln-detection → reporting
-pipeline that drives the **`bounty-infra`** repo as its scan substrate. Architecture is set
-and **merged** ([`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md),
-PR #146). `sprint_status: planning`, assigned **Opus/architect**. **Next: the Phase 0 planning
-pass.** HEAD `335ba56`, tree clean.
+**Bounty loop — Phase 0, sprint 43 (BL-5 model routing). Plan APPROVED → implementing.**
+The second loop (`loops/bounty/`) is the active initiative; the dev loop (`loops/default`)
+stays paused. Phase 0 was decomposed this pass into **three sprints** (43 routing · 44
+`tools/inventory_db`+schema · 45 scope validator + ingestion seam). `sprint_status:
+implementing`, assigned **Sonnet/coder**. Owner approved the Phase 0 sprint-plan HITL Gate
+2026-07-19.
 
-## Just done (Opus/architect session, 2026-07-19)
-- **Closed out sprint 42** — posted the fresh-session Architect Review on #143 (rename), cleared
-  the BL-35 stale-red, owner merged; cursor synced (#145).
-- **Pivoted to the bounty loop.** Ingested the owner's six-doc Gemini sketch (guidelines, not
-  rules), located the substrate (`bounty-infra` built; `appsec-triage-agent` an empty stub),
-  and locked **four decisions** with the owner: `loops/bounty/` in-repo · report-only MVP ·
-  JSON snapshots + Postgres inventory · Claude Opus/Haiku (lands BL-5).
-- **Authored + merged `docs/bounty_loop_architecture.md`** (#146) — the reference-of-record:
-  staged-persona pipeline over `State`, the two-store split + inventory schema, the structural
-  scope-validation and exploitation-gating invariants, compute topology (§7, owner-accepted
-  for now), phased roadmap, threat-model delta.
-- **Reviewed `bounty-infra`** (security / IaC / best-practices) — filed **issues #6–#16**
-  (4 High / 7 Medium) on that repo, rendered an
-  [artifact](https://claude.ai/code/artifact/35f7f616-166e-499c-b532-b4269698dee9), and folded
-  H2 (#7, no scope check) + M4 (#13, triage prompt-injection) into Phase 0 as the shared fixes.
+## Just done (Opus/architect planning session, 2026-07-19)
+- **Ran the Phase 0 planning pass** (one-question-at-a-time, HITL micro-gates). Locked six
+  decisions **P0-D1…D6** — all recorded in the sprint 43 plan's Context + the roadmap:
+  three-sprint split (D1); `schema_version` bump **deferred to Phase 1** (D2, YAGNI — no
+  bounty `State` field yet); sprint 43 = "enabler + one seam" (D3); sprint 44 Postgres =
+  hermetic + deferred live-verify, psycopg3 sync, env-var DSN (D4); idempotent `.sql` DDL,
+  no Alembic yet (D5); sprint 45 `tools/scope` pure validator + structured-extraction
+  ingestion seam (D6).
+- **Authored + self-critiqued `sprints/43_bl5_model_routing/sprint_plan.md`** — grounded
+  every task in real file:line anchors; tightened T2 to a **de-duplication only** (no
+  speculative override plumbing — consistent with D2) and carved `.ai/` ownership out of
+  T4 (that's `/handoff`'s file), after an owner-requested critic pass.
+- Verified the true Phase-0 blocker: `pricing.RATES` has only `claude-sonnet-5`, so Opus/
+  Haiku raise `UnknownModelError` and disable the budget cap. Sourced exact list pricing
+  (Opus 4.8 $5/$25, Haiku 4.5 $1/$5; cache-write ×1.25, cache-read ×0.1) from the
+  `claude-api` reference.
 
-## Next — run the Phase 0 planning pass (Opus/architect, WAIT-then-dialogue)
-`/resume` **waits** here (planning is a one-question-at-a-time dialogue — that *is* the work;
-never auto-start). **Read `docs/bounty_loop_architecture.md` first** (§8 = the roadmap). Break
-**Phase 0** into a `sprints/NN_*/sprint_plan.md`:
-1. Land **BL-5** per-persona routing (Opus deep-inspection/report, Haiku bulk triage; needs
-   Haiku in pricing RATES) — also benefits the dev loop.
-2. Stand up **`tools/inventory_db`** (sole Postgres-owning module) + the §4 schema
-   (`targets`/`assets`/`endpoints`/`findings` + run linkage).
-3. Build the **structural scope validator** (§5) — out-of-scope target rejected at the tool
-   boundary, analog of `_validate_clone_dest`.
-4. Build the **ingestion-sanitization seam** for scanner output (§10 prompt-injection defense).
-5. Bump `State.schema_version` 5 → 6 + extend `migrate_state_payload`.
-
-The next HITL Gate is the human's approval of that Phase 0 sprint plan.
+## Next — implement sprint 43 (Sonnet/coder)
+Read [`sprints/43_bl5_model_routing/sprint_plan.md`](../sprints/43_bl5_model_routing/sprint_plan.md).
+Cut `sprint/43-bl5-model-routing` from `main`; land tasks as separate PRs based on `main`:
+1. **T1** — `RATES += claude-opus-4-8 + claude-haiku-4-5` with **cost-asserting** tests in
+   `tests/tools/test_pricing.py` (copy the `claude-sonnet-5` cases). The real unblock;
+   lands first, own PR.
+2. **T2** — de-dup the two `DEFAULT_MODEL` literals into one shared constant (recommended
+   home: `tools/llm`); **no** `model` param added; value stays `claude-sonnet-5`. Own PR.
+3. **T3** — review resolver `max_tokens: 2048` (raise only if a resolution could exceed
+   ~1500 output tokens).
+4. **T4** — docs (backlog BL-5, roadmap §8/§9); **not** `.ai/*`.
+Each `src/`-touching PR needs a **fresh-session `architect-review`** (`/handoff` → new
+session → `/resume` → `/code-review` → post the verbatim header). Run `/critic-gate` after
+the green gate, before that handoff.
+**Next HITL Gate:** none open now; the sprint-completion Gate is the owner's merges of the
+sprint 43 PRs.
 
 ## Gotchas worth remembering
-- **`.ai/state.json` is git-ignored** — **this file is what travels.**
-- **This is a context-refresh handoff, not a model switch** — Phase 0 planning stays
-  Opus/architect, so `/clear` → `/model opus` → `/resume` in place is fine (no new window
-  needed; that's only for the review-integrity boundary).
-- The bounty loop's **invariants are non-negotiable**: scope validation is structural code
-  (never the LLM's job); active exploitation gates through the existing escalation ladder.
-- **Two paused dev-loop docs PRs are already merged** (#145, #146). Backlog items behind the
-  pivot: BL-1/3/4, BL-24/32/33/36/37.
+- **`.ai/state.json` is git-ignored** — this file (`next-steps.md`) is what travels.
+- **Planning→coding is not a review boundary** — `/clear` → `/model sonnet` → `/resume`
+  in place is fine for the coder. The *review* handoff (later) needs a genuinely new session.
+- The prior "pivot cursor" commit `d21badb` was **never merged** (no PR); this handoff's
+  docs PR supersedes it — don't resurrect that branch.
 - **Before pushing code, run the FULL local gate** (lint → format → test) or `/ship`. **PR
   title ≤72 bytes** — `wc -c` first. **Never commit to `main`, merge, or force-push.**
-- **GPG:** never run `.devcontainer/gpg-forward.sh` in a Cursor session; Timeout = answer the
-  host pinentry and retry.
+- Bounty invariants are non-negotiable (sprints 44/45): scope validation is structural
+  code, never the LLM's job; active exploitation gates through the escalation ladder.
 
 ## Pointers
-- [`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md) — the bounty loop's reference-of-record. **Read first.**
-- `glunk-works/bounty-infra` — the scan substrate; review issues #6–#16.
-- [`docs/backlog.md`](../docs/backlog.md) — BL-5 is Phase 0's enabler; paused dev-loop items behind it.
-- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — the migration (done); unrelated to this initiative.
+- [`sprints/43_bl5_model_routing/sprint_plan.md`](../sprints/43_bl5_model_routing/sprint_plan.md) — the active sprint. **Read first.**
+- [`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md) — the bounty loop's reference-of-record (§8 roadmap, §9 decisions).
+- [`docs/backlog.md`](../docs/backlog.md) — BL-5 is this sprint; paused dev-loop items behind the pivot.
