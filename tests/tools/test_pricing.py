@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from loop_orchestrator.tools.llm.pricing import (
+    DEFAULT_MODEL,
     ModelRates,
     UnknownModelError,
     cost_usd,
@@ -107,6 +108,13 @@ def test_model_rates_rejects_negative_rates() -> None:
             cache_write_usd_per_mtok=3.75,
             cache_read_usd_per_mtok=0.30,
         )
+
+
+def test_default_model_is_claude_sonnet_5() -> None:
+    # The canonical fallback for non-declarative call sites (Ralph coder's
+    # _run_increment, PM's fold_answers) must stay the priced Sonnet model —
+    # a change here silently re-routes both, so pin the value directly.
+    assert DEFAULT_MODEL == "claude-sonnet-5"
 
 
 def test_model_rates_rejects_extra_fields() -> None:

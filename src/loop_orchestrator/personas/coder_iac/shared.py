@@ -21,7 +21,6 @@ _SEARCH_REPLACE_RE = re.compile(
 )
 _FENCED_CODE_RE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
 
-DEFAULT_MODEL = "claude-sonnet-5"
 # One sprint's implementation report (full file contents included) is large;
 # the old 1024 default guaranteed silent truncation, and both 8192 and a
 # subsequent 16000 proved insufficient for a real document in practice
