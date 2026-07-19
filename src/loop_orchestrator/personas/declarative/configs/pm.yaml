@@ -30,4 +30,8 @@ resolver:
   document_var: project_spec
   prompt_file: prompts/00_pm_resolution_prompt.md
   resolved_by: pm
-  max_tokens: 2048
+  # Resolution emits one JSON verdict per escalated question in a single call,
+  # and truncation is all-or-nothing (a cut-off JSON fails to parse and returns
+  # the whole batch unresolved). 4096 gives headroom for a large multi-question
+  # batch; raising the ceiling costs nothing (billing is per emitted token).
+  max_tokens: 4096
