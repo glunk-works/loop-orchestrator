@@ -36,6 +36,18 @@ RATES: dict[str, ModelRates] = {
         cache_write_usd_per_mtok=3.75,
         cache_read_usd_per_mtok=0.30,
     ),
+    "claude-opus-4-8": ModelRates(
+        input_usd_per_mtok=5.00,
+        output_usd_per_mtok=25.00,
+        cache_write_usd_per_mtok=6.25,
+        cache_read_usd_per_mtok=0.50,
+    ),
+    "claude-haiku-4-5": ModelRates(
+        input_usd_per_mtok=1.00,
+        output_usd_per_mtok=5.00,
+        cache_write_usd_per_mtok=1.25,
+        cache_read_usd_per_mtok=0.10,
+    ),
 }
 
 
