@@ -21,10 +21,10 @@ import logging
 
 from loop_orchestrator.core.state import State
 from loop_orchestrator.personas.pm.fields import CHECKLIST_FIELDS
+from loop_orchestrator.tools.llm.pricing import DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "claude-sonnet-5"
 EXTRACTION_MAX_TOKENS = 4096
 
 FOLD_ANSWERS_PROMPT_TEMPLATE = (

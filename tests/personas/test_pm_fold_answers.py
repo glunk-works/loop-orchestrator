@@ -19,6 +19,7 @@ from loop_orchestrator.core.state import Question, State
 from loop_orchestrator.personas.declarative.node import PMGenerator
 from loop_orchestrator.personas.pm.fields import CHECKLIST_FIELDS
 from loop_orchestrator.personas.pm.persona import fold_answers
+from loop_orchestrator.tools.llm.pricing import DEFAULT_MODEL
 
 
 def _complete_answers() -> dict[str, str]:
@@ -68,6 +69,16 @@ def test_fold_answers_updates_spec_and_classifies_impact() -> None:
         == "EU data residency."
     )
     assert result.questions[0].impact == "architecture"
+
+
+def test_fold_answers_calls_the_shared_canonical_default_model() -> None:
+    # Regression guard for the DEFAULT_MODEL de-duplication (sprint 43 T2):
+    # fold_answers must resolve to the one shared constant, not a stray literal.
+    client = _mock_client({"spec_updates": {}, "impacts": {"q1": "task"}})
+
+    fold_answers(_answered_state(), client)
+
+    assert client.call.call_args.kwargs["model"] == DEFAULT_MODEL == "claude-sonnet-5"
 
 
 def test_pm_generator_delegates_fold_answers_to_the_module_function() -> None:

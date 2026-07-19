@@ -10,6 +10,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 _TOKENS_PER_MTOK = 1_000_000
 
+# The single canonical fallback model for non-declarative call sites (the
+# Ralph coder's module-level _run_increment, the PM's module-level
+# fold_answers) that have no persona config in scope to name one explicitly.
+# Declarative personas keep naming their own model via GeneratorConfig.model —
+# this constant does not compete with that seam.
+DEFAULT_MODEL = "claude-sonnet-5"
+
 
 class UnknownModelError(KeyError):
     """No pricing entry for the requested model.

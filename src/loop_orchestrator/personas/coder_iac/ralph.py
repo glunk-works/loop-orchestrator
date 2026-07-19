@@ -29,7 +29,6 @@ from loop_orchestrator.core.state import Question, State
 from loop_orchestrator.personas.agile_sprint_breakdown.manifest import TaskEntry
 from loop_orchestrator.personas.base import BasePersona
 from loop_orchestrator.personas.coder_iac.shared import (
-    DEFAULT_MODEL,
     MAX_TOKENS,
     PROMPT_TEMPLATE,
     _CoderToolBackend,
@@ -44,6 +43,7 @@ from loop_orchestrator.tools.agent_state import (
     write_scratchpad,
 )
 from loop_orchestrator.tools.llm.client import ToolLoopExceededError
+from loop_orchestrator.tools.llm.pricing import DEFAULT_MODEL
 from loop_orchestrator.tools.state_io.writer import write_artifact
 
 logger = logging.getLogger(__name__)

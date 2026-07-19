@@ -21,6 +21,7 @@ from loop_orchestrator.tools.agent_state import (
     write_scratchpad,
 )
 from loop_orchestrator.tools.llm.client import ToolLoopExceededError
+from loop_orchestrator.tools.llm.pricing import DEFAULT_MODEL
 
 
 def _prompt_of(client: MagicMock) -> str:
@@ -126,6 +127,15 @@ def test_run_completes_exactly_one_task_and_checks_it_off() -> None:
     reports = json.loads(result.artifacts["implementation_reports"])
     # Exactly the first sprint has a report; nothing else touched.
     assert set(reports) == {"/sprints/01_foundation/sprint_plan.md"}
+
+
+def test_run_increment_calls_the_shared_canonical_default_model() -> None:
+    # Regression guard for the DEFAULT_MODEL de-duplication (sprint 43 T2):
+    # _run_increment must resolve to the one shared constant, not a stray literal.
+    client = _llm("Implemented CI.")
+    RalphCoderPersona().run(_state(), client)
+
+    assert client.run_tool_loop.call_args.kwargs["model"] == DEFAULT_MODEL == "claude-sonnet-5"
 
 
 def test_run_appends_one_memory_entry_per_increment() -> None:
