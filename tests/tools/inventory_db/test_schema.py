@@ -6,19 +6,23 @@ column types.
 """
 
 from importlib import resources
+from typing import get_args
+
+from loop_orchestrator.tools.inventory_db.models import ValidationStatus
 
 SQL = resources.files("loop_orchestrator.tools.inventory_db").joinpath("inventory.sql").read_text()
 
+# Comment lines stripped before splitting on ";", so a statement that happens
+# to follow a comment block (e.g. the first, right after the file header)
+# isn't dropped whole by a check keyed on the chunk's leading characters.
+_CODE_ONLY = "\n".join(line for line in SQL.splitlines() if not line.strip().startswith("--"))
+
 
 def test_all_statements_are_idempotent_creates() -> None:
-    statements = [s.strip() for s in SQL.split(";") if s.strip() and not s.strip().startswith("--")]
-    assert statements
+    statements = [s.strip() for s in _CODE_ONLY.split(";") if s.strip()]
+    assert len(statements) == 4
     for statement in statements:
-        # Strip leading SQL comment lines before checking the statement start.
-        body = "\n".join(
-            line for line in statement.splitlines() if not line.strip().startswith("--")
-        ).strip()
-        assert body.upper().startswith("CREATE TABLE IF NOT EXISTS"), statement
+        assert statement.upper().startswith("CREATE TABLE IF NOT EXISTS"), statement
 
 
 def test_four_tables_present() -> None:
@@ -47,6 +51,13 @@ def test_findings_run_id_is_soft_ref_no_fk() -> None:
 
 def test_validation_status_check_constraint() -> None:
     assert "CHECK (validation_status IN ('unverified', 'ai_verified', 'human_verified'))" in SQL
+
+
+def test_validation_status_check_matches_model_literal() -> None:
+    # Guards against the CHECK's allowed set and the Pydantic Literal's
+    # allowed set (models.ValidationStatus) silently drifting apart -- they
+    # are two independently-edited artifacts that must stay in lockstep.
+    assert set(get_args(ValidationStatus)) == {"unverified", "ai_verified", "human_verified"}
 
 
 def test_array_and_jsonb_columns() -> None:
