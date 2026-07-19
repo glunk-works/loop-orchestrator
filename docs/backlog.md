@@ -299,6 +299,31 @@ progress guard this mirrors at a different level).
 ### BL-5 — Per-persona model routing + resolution token budget review
 *(added 2026-07-11, from repo owner)*
 
+**Status: in progress — sprint 43** (`sprints/43_bl5_model_routing/`, the bounty
+loop's Phase-0 enabler; **not archived/done** until the sprint closes). Scope this
+sprint was locked to **"enabler + one seam"** (P0-D3), and delivered so far:
+- **RATES priced for Opus + Haiku** — `claude-opus-4-8` ($5/$25, cache $6.25/$0.50)
+  and `claude-haiku-4-5` ($1/$5, cache $1.25/$0.10) added to `tools/llm/pricing.py`
+  with computed-cost tests (T1, #149). The `UnknownModelError` budget-cap guard is
+  intact, so those models are now *priceable and routable*.
+- **One canonical default model** — the two duplicated `DEFAULT_MODEL =
+  "claude-sonnet-5"` constants collapsed into a single `tools/llm/pricing.py`
+  definition imported by both non-declarative call sites; value unchanged (T2, #152).
+- **Resolver `max_tokens` reviewed (question b, below)** — raised the resolver cap
+  `2048 → 4096` in `architecture.yaml`/`pm.yaml` (T3, #154). Deciding factor: the
+  resolution parser (`personas/resolution.py`) reads the whole batch as one JSON
+  blob, so an overflow truncation fails to parse and returns the **entire** batch
+  unresolved; with no cap on batch size, a heavy batch can cross the old ceiling.
+  4096 matches PM's existing extraction budget and costs nothing (per-emitted-token
+  billing).
+
+**Deferred (out of this sprint, by owner decision):** re-routing the **paused dev
+loop's** personas (Architect→Opus etc.) is left as a one-line `model:` YAML change
+for when that loop resumes — this sprint made Opus/Haiku *priceable and selectable*,
+not *routed* (question a stays open as an experiment). Per-persona override plumbing
+for the non-declarative call sites is deferred until a consumer exists (no `model`
+parameter was threaded through `_run_increment`/`fold_answers`).
+
 Today **every persona runs `claude-sonnet-5`** — both the classic hardcoded
 `DEFAULT_MODEL` constants (`personas/*/persona.py`) and the declarative configs
 (`personas/declarative/configs/{pm,architecture,sprint_breakdown}.yaml`, all

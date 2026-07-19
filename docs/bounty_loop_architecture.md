@@ -147,7 +147,7 @@ existing coder/github/issue tool sets.
 
 | Phase | Scope | Status |
 |---|---|---|
-| **0 — Enablers** | Land **BL-5** per-persona model routing (Opus deep-inspection/report, Haiku triage; needs Haiku in pricing RATES). Stand up `tools/inventory_db` + the Postgres schema (§4) + the **scope validator** (§5) + an **ingestion-sanitization seam** for scanner output first. Bump `State.schema_version` → 6 for the bounty loop's fields. These two seams are the concrete fixes for validated gaps in `bounty-infra`'s current scanner — no structural scope check (`bounty-infra#7`) and target-derived fields fed straight into the triage LLM (`bounty-infra#13`) — built once here and shared. | **not started** |
+| **0 — Enablers** | Land **BL-5** per-persona model routing (Opus deep-inspection/report, Haiku triage; needs Haiku in pricing RATES). Stand up `tools/inventory_db` + the Postgres schema (§4) + the **scope validator** (§5) + an **ingestion-sanitization seam** for scanner output first. These two seams are the concrete fixes for validated gaps in `bounty-infra`'s current scanner — no structural scope check (`bounty-infra#7`) and target-derived fields fed straight into the triage LLM (`bounty-infra#13`) — built once here and shared. **Decomposed into three sprints (P0-D1): 43 (BL-5 routing) → 44 (`inventory_db` + §4 schema) → 45 (scope validator §5 + ingestion seam §10).** The `State.schema_version` → 6 bump is **deferred to Phase 1** (P0-D2) — it ships with the first bounty `State` field, not with pure non-`State` infra. | **in progress — sprint 43 (BL-5 routing) landing** |
 | **1 — Recon + Surface-Mapping** | `workflow_dispatch` seam on `bounty-infra`; wrap recon as scope-validated MCP tools; IDP parser → typed `assets`/`endpoints`. Stages 1–2. | not started |
 | **2 — Scan + Triage** | `nuclei` MCP tool; Triage persona (Haiku) dedup/FP-filter/severity vs inventory, gated. Absorbs + upgrades `bounty-infra`'s one-pass Gemini triage. Stage 3. | not started |
 | **3 — Deep-Inspection** | Ralph-style agentic persona; secure security-tool MCP servers; passive autonomous, active gated (§6). Stage 4. | not started |
@@ -168,6 +168,22 @@ Owner-confirmed forks (2026-07-19):
 - **D4 — Models:** Claude-only — Opus (deep-inspection/report), Haiku (bulk triage) — which
   lands **BL-5** per-persona routing. Not multi-provider; `bounty-infra`'s in-substrate Gemini
   triage is superseded by the Haiku Triage stage.
+
+Phase-0 planning-pass decisions (2026-07-19, owner-confirmed via HITL micro-gates; **locked** —
+a future pass must not re-open them):
+
+- **P0-D1 — Phase 0 splits into three sprints**, smallest reviewable PRs, one concern each:
+  **43** (BL-5 per-persona model routing — the enabler; also benefits the paused dev loop) →
+  **44** (`tools/inventory_db` + the §4 Postgres schema — the sole DB-connection owner) →
+  **45** (the two security invariants: the structural scope validator §5 + the ingestion-
+  sanitization seam §10). Sequencing is load-bearing: 43 is independent; 45 needs 44's
+  `targets` rules-of-engagement.
+- **P0-D2 — `State.schema_version` 5→6 bump deferred to Phase 1.** Phase 0 is pure non-`State`
+  infra (routing, DB module, validators); no bounty `Stage` reads a new `State` field until
+  Phase 1's Recon stage. Bumping now would ship an empty-schema version with an empty
+  `migrate_state_payload` branch — churn. The bump lands in Phase 1 with the field it exists
+  for. (Sprints 44/45 each get their own `sprint_plan.md`; P0-D3..D6 are recorded in
+  `sprints/43_bl5_model_routing/sprint_plan.md` for those passes.)
 
 Design-authority overrides of the Gemini sketch:
 
