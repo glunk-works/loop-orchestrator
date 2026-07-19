@@ -1,10 +1,12 @@
 """Cross-run asset/finding inventory (bounty loop, §4) -- the module that
-will own the sole Postgres connection (T2 lands `PsycopgInventory`). This
-sprint (T1) ships the hermetic core only: the schema DDL (`inventory.sql`),
-the domain models, the write-only `InventoryRepository` Protocol, and the
-`InMemoryInventory` fake. No `psycopg` import, no dependency change.
+owns the sole Postgres connection. T1 shipped the hermetic core: the schema
+DDL (`inventory.sql`), the domain models, the write-only
+`InventoryRepository` Protocol, and the `InMemoryInventory` fake. T2 adds
+the real driver: `PsycopgInventory` (the sole `psycopg` importer, pinned by
+`tests/tools/inventory_db/test_boundary.py`) and `build_inventory_from_env()`.
 """
 
+from loop_orchestrator.tools.inventory_db.factory import build_inventory_from_env
 from loop_orchestrator.tools.inventory_db.memory import InMemoryInventory, InventoryError
 from loop_orchestrator.tools.inventory_db.models import (
     Asset,
@@ -17,6 +19,7 @@ from loop_orchestrator.tools.inventory_db.models import (
     TargetId,
     ValidationStatus,
 )
+from loop_orchestrator.tools.inventory_db.psycopg_impl import PsycopgInventory
 from loop_orchestrator.tools.inventory_db.repository import InventoryRepository
 
 __all__ = [
@@ -29,7 +32,9 @@ __all__ = [
     "InMemoryInventory",
     "InventoryError",
     "InventoryRepository",
+    "PsycopgInventory",
     "Target",
     "TargetId",
     "ValidationStatus",
+    "build_inventory_from_env",
 ]

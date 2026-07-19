@@ -5,6 +5,7 @@ no-FK soft reference, the `validation_status` CHECK, and the array/JSONB
 column types.
 """
 
+import re
 from importlib import resources
 from typing import get_args
 
@@ -57,7 +58,15 @@ def test_validation_status_check_matches_model_literal() -> None:
     # Guards against the CHECK's allowed set and the Pydantic Literal's
     # allowed set (models.ValidationStatus) silently drifting apart -- they
     # are two independently-edited artifacts that must stay in lockstep.
-    assert set(get_args(ValidationStatus)) == {"unverified", "ai_verified", "human_verified"}
+    # T2 architect-review note: this must actually parse the CHECK's value
+    # list from the SQL rather than compare the Literal against a second
+    # hardcoded constant, or a CHECK-only value add ships silently (the
+    # hardcoded constant would just be edited to match and both "sides"
+    # would agree with each other while disagreeing with the real CHECK).
+    match = re.search(r"CHECK \(validation_status IN \(([^)]*)\)\)", SQL)
+    assert match is not None, "no validation_status CHECK constraint found in inventory.sql"
+    check_values = {v.strip().strip("'") for v in match.group(1).split(",")}
+    assert check_values == set(get_args(ValidationStatus))
 
 
 def test_array_and_jsonb_columns() -> None:
