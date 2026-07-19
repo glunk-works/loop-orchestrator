@@ -1,70 +1,68 @@
 # Next steps — dev-workflow cursor
 
 Thin, live cursor for whoever picks up this repo next. Points into the deep record
-(`docs/backlog.md`, `docs/migration_roadmap.md`, the sprint plan) — it does not copy them.
+(`docs/backlog.md`, `docs/migration_roadmap.md`, the PR) — it does not copy them.
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Between sprints — BL-2 is COMPLETE, no next sprint committed.** The migration is long done and
-post-migration work is backlog-driven. The next unit is the **owner's pick** from the backlog; until
-one is selected there is no sprint plan and no work to auto-start. `sprint_status: planning`,
-assigned **Opus/architect**.
+**Sprint 42 — package rename `loop-engine` → `loop-orchestrator` — code done, on PR #143,
+awaiting the fresh-session Architect Review.** `sprint_status: awaiting_architect_review`,
+assigned **Opus/architect**. Branch `sprint/42-rename-loop-orchestrator`, head `bd52975`.
 
-## Just done (Opus/architect session, 2026-07-18)
-- **Sprint 41 (BL-2 pass 3, Slack escalation round-trip) shipped and archived.** Posted the
-  fresh-session Architect Review on **T5** ([#136](https://github.com/glunk-works/loop-engine/pull/136),
-  APPROVE) and cleared its BL-35 stale-red. Implemented **T6** (docs-only,
-  [#138](https://github.com/glunk-works/loop-engine/pull/138) → squash `36fe931`): marked **BL-2
-  COMPLETE**, advanced the roadmap, added exit code 5 (`AWAITING_SLACK`) + the round-trip to CLAUDE.md /
-  README / modules.md / threat model.
-- **Flagged that BL-2 is complete-but-not-live.** The whole Slack *inbound* surface (pass 2 command +
-  pass 3 round-trip) is hermetically verified (780 tests, fakes) but has **never** run against a real
-  Socket Mode session. Tightened the docs to say so, filed **BL-37**, and wrote the operator runbook
-  [`docs/slack_escalation_live_smoke.md`](../docs/slack_escalation_live_smoke.md).
-- Archived sprint 41's cursor to `.ai/archive/41_bl2_slack_escalation-next-steps.md`.
-- **Landed a workflow-friction thread** (owner-requested review of the day's sessions):
-  [#140](https://github.com/glunk-works/loop-engine/pull/140) — `/pr-checks` now auto-clears the
-  BL-35 stale-red, a **verification-ledger** in `/archive-sprint`+`/handoff` blocks "complete"
-  overclaiming "live", `/handoff` emits a paste-ready next-session command block, a backlog **Index**,
-  and a new **`/retro`** skill; [#141](https://github.com/glunk-works/loop-engine/pull/141) —
-  **resolved BL-34** (CI docs-only fail-safe) and made docs-only PRs skip `dependency-audit`+`sbom`.
-- Ran `/retro`: routed one finding to memory ([[feedback-local-green-gate]] — run the full local
-  gate, not just pytest, before pushing; #141 format-check red was the trigger).
+## Just done (Opus/architect session, 2026-07-18/19)
+- **Resumed onto drift:** the cursor said "between sprints, await backlog pick," but reality
+  was a `sprint/42` rename branch one commit ahead of main with **open PR
+  [#143](https://github.com/glunk-works/loop-orchestrator/pull/143)** the cursor never knew about.
+- **Ran `/code-review` (high effort) on #143.** Verdict: clean mechanical rename — full suite
+  **787 passed**; the two behavioral seams are correct (the `env_compat` `LOOP_ENGINE_*` →
+  `LOOP_ORCHESTRATOR_*` fallback wired into *every* consumer; the keyring `loop-engine` →
+  `loop-orchestrator` service-name fallback in `_resolve_api_key`); pyproject, the
+  `loop_orchestrator.mcp.json` config + module paths, README, and the SBOM self-component all
+  updated. **No correctness bugs** — only stale-reference findings.
+- **Fixed 2 of those findings** (commit `bd52975`, signed valid, pushed to the sprint/42 branch):
+  the stale `.claude/` runbooks — `live-verify.md`'s `hatch run loop-engine run` (a **dead
+  console script** post-rename) → `loop-orchestrator`, and `ship/SKILL.md`'s `loop-engine/*`
+  machine-label namespace → `loop-orchestrator/*` (the emitter now writes
+  `loop-orchestrator/needs-human`). All 9 `.claude/` files clean.
+- **Did NOT post the Architect Review** — deliberately. This session authored `bd52975` (now
+  part of the PR diff) *and* ran the review, so posting the "*this session did not author the
+  diff*" attestation would be a **knowing false statement** (`workflow.md`). The gate must come
+  from a genuinely fresh session.
 
-## Next — owner picks the next backlog item, then plan it (Opus)
-No sprint is committed. The owner chooses from `docs/migration_roadmap.md`'s NEXT ACTION list:
-- **Product (owner-requested):** BL-1 (in-loop code review of the Coder), BL-3 (prompt-caching review —
-  needs a real key + spend), BL-4 (Ralph loop watcher), BL-5 (per-persona model routing; `claude-opus-4-8`
-  `RATES` entry is its hard prerequisite).
-- **Decisions:** BL-24 (retire `trigger/` + `LOOP_ENGINE_WEBHOOK_SECRET` as moot vs. keep + verify §6),
-  BL-35 (which stale-red `architect-review` fix, if any).
-- **Hardening / deferred verification:** BL-32/BL-33 (adversarial guard audit + one shared hardened
-  boundary-guard helper), BL-36 (sprint-41 low-priority review cleanups), **BL-37** (the live Slack smoke).
+## Review findings (for the fresh reviewer — re-derive, don't just copy)
+1. **FIXED in bd52975** — `.claude/agents/live-verify.md` executable command + `ship/SKILL.md`
+   label namespace (above).
+2. *(low confidence, not fixed)* — `containers/keyring_backend/cryptfile_backend.py` reads
+   `LOOP_ORCHESTRATOR_KEYRING_FILE` / `..._PASSPHRASE_FILE` with a **hard cut** (no env_compat
+   fallback — the standalone backend can't import the shim). Only risk: a live container that
+   overrides these via the legacy `LOOP_ENGINE_*` names → falls through to the `/run/secrets/…`
+   default. No tracked config sets the legacy name (dev sets the new one; prod uses defaults).
+3. *(minor, not fixed)* — `sbom.json` regenerated in an env missing `mutmut`, dropping 5 real
+   transitive components (`glob2`, `junit-xml`, `parso`, `pony`, `toml`). Non-blocking: the
+   `sbom` CI job regenerates + uploads, never `git diff`s; direction is arguably more-correct.
+4. **Explicitly NOT findings** — the ~40 `loop-engine` refs in `sprints/*/sprint_plan.md`,
+   `docs/project_spec.json`, `requirements.md` are legitimately **historical**; and the Infisical
+   `--path=/loop-engine` + secret name `LOOP_ENGINE_KEYRING_PASSPHRASE` are external-store
+   identifiers deliberately preserved (with comments added in the PR).
 
-Once selected: run the planning pass (Opus, one question at a time, HITL Gates) → write the sprint plan.
-**`/resume` must WAIT here** — `planning` + no plan + unselected unit — never auto-start.
-
-## Open decisions left for the owner (do not silently resolve)
-- **BL-24 — retire or verify `trigger/`.** Slack supersedes it in practice but proves nothing about its
-  HMAC path. **Still open.**
-- **BL-35 — which stale-red fix, if any.** File-don't-fix stands; manual `gh run rerun` is the workaround.
+## Next — post the fresh-session Architect Review on #143 (Opus, NEW session)
+`new window → /model opus → /resume → /code-review #143 → post`. Body must OPEN with the
+verbatim two-line header + attestation (paste, do not reword — literal `contains()` match).
+`gh pr review --comment` only, never `--approve`. After posting, watch the **BL-35 stale-red**
+(two `architect-review` runs on one SHA; `BLOCKED` + rollup FAILURE ⇒ `gh run rerun <old id>`).
+The human's **merge** of #143 is the approval — Claude never merges.
 
 ## Gotchas worth remembering
 - **`.ai/state.json` is git-ignored** — **this file is what travels.**
-- **BL-2 is "complete + hermetically verified," NOT "proven live"** — see BL-37 / the runbook before
-  claiming the Slack round-trip works end-to-end.
-- **Stale-red `architect-review` (BL-35):** every `src/` PR gets two check-runs on one SHA; `BLOCKED` +
-  rollup **FAILURE** = stale red ⇒ `gh run rerun <old_failed_run_id>`; `BLOCKED` + rollup **SUCCESS** = lag, wait.
-  (`/pr-checks` now detects this and offers the rerun automatically.)
-- **Before pushing code, run the FULL local gate** (lint → format → test), not just `hatch run test` —
-  or use `/ship`, which bakes it in. #141's `format-check` went red on a quoting nit from a tests-only run.
-- **PR title:** `wc -c` the byte count (≤72) AND re-read the text before `gh pr create/edit`
-  (already baked into `/ship` + `/handoff`).
-- **Never commit to `main`, never merge, never force-push.** (Rebase a stale pushed branch by merging `main` INTO it.)
-- **Never run `.devcontainer/gpg-forward.sh` in a Cursor session.** Signing Timeout = answer the host pinentry and retry.
+- **The rename left `.agent/` runtime state, historical sprint plans, and external-store IDs
+  (Infisical path / secret names) intentionally on the old name** — do not "finish" those.
+- **Before pushing code, run the FULL local gate** (lint → format → test), not just tests —
+  or use `/ship`. **PR title ≤72 bytes** — `wc -c` first.
+- **Never commit to `main`, never merge, never force-push.**
+- **GPG:** never run `.devcontainer/gpg-forward.sh` in a Cursor session. Signing Timeout =
+  answer the host pinentry and retry (hit once this session; retry succeeded).
 
 ## Pointers
-- [`docs/backlog.md`](../docs/backlog.md) — **BL-2 COMPLETE**; the open items list above.
-- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — Status table + NEXT ACTION (the candidate list).
-- [`docs/slack_escalation_live_smoke.md`](../docs/slack_escalation_live_smoke.md) — the BL-37 live-smoke runbook.
-- `.ai/archive/41_bl2_slack_escalation-next-steps.md` — the retired sprint-41 cursor.
+- [PR #143](https://github.com/glunk-works/loop-orchestrator/pull/143) — the rename, head `bd52975`, awaiting the Architect Review.
+- [`docs/backlog.md`](../docs/backlog.md) — open items for the post-#143 owner pick (BL-1/3/4/5, BL-24/35, BL-32/33/36/37).
+- [`docs/migration_roadmap.md`](../docs/migration_roadmap.md) — migration long done; this rename is post-migration hygiene.
