@@ -23,7 +23,7 @@ dependencies = [
   "pydantic==2.13.4",
   "anthropic==0.116.0",
   "keyring==25.7.0",
-  "typer==0.26.8",
+  "typer==0.27.0",
   # Orchestration substrate: the engine runs as a LangGraph StateGraph (behind
   # the LOOP_ORCHESTRATOR_ENGINE=langgraph flag during the migration).
   "langgraph==1.2.9",
