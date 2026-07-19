@@ -5,58 +5,56 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Bounty loop — Phase 0, sprint 43 (BL-5 model routing). T1+T2 merged; T3 shipped → PR #154
-awaiting fresh-session architect-review (Opus/architect). T4 (docs) is the last task.**
-The second loop (`loops/bounty/`) is the active initiative; the dev loop (`loops/default`)
-stays paused. `sprint_status: awaiting_architect_review`, assigned **Opus/architect**.
+**Bounty loop — Phase 0, sprint 44 (`tools/inventory_db` + the §4 Postgres schema).
+`sprint_status: planning`, assigned Opus/architect.** Sprint 43 (BL-5 model routing) is
+complete and archived. The second loop (`loops/bounty/`) is the active initiative; the dev
+loop (`loops/default`) stays paused.
 
-## Just done (this session, 2026-07-19)
-- **T2 fresh-session Architect Review** — reviewed PR #152 (DEFAULT_MODEL de-dup):
-  verified single canonical constant, no stale `shared.DEFAULT_MODEL` importer, no import
-  cycle (pricing stays a pydantic-only leaf), value unchanged + still priced in RATES,
-  both call sites pinned by tests. No blocking findings; posted via `gh pr review --comment`.
-  Cleared the **BL-35 stale-red** trap (`gh run rerun` the old `pull_request` run). **Owner
-  merged #152** (69c0205).
-- **T3 — resolver `max_tokens` review + change.** Reviewed the resolver `max_tokens: 2048`
-  in `architecture.yaml`/`pm.yaml`. Conclusion: **raise 2048 → 4096**. Deciding factor is
-  the failure shape — `apply_resolution_response` parses the whole batch as one JSON blob,
-  so a response that overflows the cap fails to parse and returns the **entire batch
-  unresolved** (all questions escalate up, pass wasted); with **no cap on batch size**, a
-  plausible heavy batch (~12–15 substantive resolutions) crosses ~1500–2000 output tokens.
-  Raising the ceiling is zero-cost (billing is per emitted token) and matches PM's existing
-  `EXTRACTION_MAX_TOKENS = 4096`. Shipped as **PR #154** (`sprint/43-t3-resolver-max-tokens`,
-  commit `8dcbde8`); full local gate green (lint, format, 796 tests); both configs validated
-  at 4096. No `/critic-gate` pass — the diff is config-value-only (no logic/import/surface),
-  nothing for a critic to bite on (choice on the record).
+The sprint-44 plan does **not exist yet** — the next action is the planning pass, then
+writing `sprints/44_inventory_db/sprint_plan.md`.
 
-## Next — post the fresh-session Architect Review on PR #154 (Opus/architect, NEW session)
-Run `/code-review` on PR #154 (branch `sprint/43-t3-resolver-max-tokens`,
-https://github.com/glunk-works/loop-orchestrator/pull/154) and post it via
-`gh pr review --comment` (never `--approve`). The review body **must open with the verbatim
-two-line header** from `.ai/context/workflow.md`: `**Opus/Architect HITL review (automated)**`
-then `*Fresh-session review: this session did not author the diff.*` — paste verbatim, the
-`architect-review` check matches by literal `contains()`. After a clean review **and** the
-owner's merge of #154: **T4** (docs-only — `docs/backlog.md` BL-5 status, `docs/bounty_loop_architecture.md`
-§8/§9 P0-D1/P0-D2, sprint 43 described **in-progress not done**; **do NOT touch `.ai/*`**).
-After T4 merges, sprint 43 is complete → `/archive-sprint`.
-**Next HITL Gate:** none open now; the sprint-completion Gate is the owner's merges of all
-four sprint 43 PRs (T1/T2 merged; T3 #154 open; T4 not yet opened).
+## Just done (2026-07-19)
+- **Sprint 43 (BL-5 model routing) — COMPLETE and archived.** All four PRs merged:
+  T1 pricing RATES += Opus 4.8 / Haiku 4.5 (#149), T2 one canonical `DEFAULT_MODEL`
+  in `tools/llm/pricing.py` (#152), T3 resolver `max_tokens` 2048→4096 (#154), T4 docs
+  (#156, `main` @ `720e8aa`). Sprint-43 cursor snapshotted to
+  `.ai/archive/43_bl5_model_routing-next-steps.md`.
+
+## Next — plan sprint 44 (Opus/architect)
+Run the planning pass for **`tools/inventory_db` + the §4 Postgres schema** (the
+`targets`/`assets`/`endpoints`/`findings` tables + run linkage), the sole
+Postgres-connection-owning module. One question at a time, HITL micro-gates, then write
+`sprints/44_inventory_db/sprint_plan.md`.
+
+**Pre-locked decisions — do NOT re-litigate** (recorded in
+`sprints/43_bl5_model_routing/sprint_plan.md`, ratified 2026-07-19):
+- **P0-D4** — Postgres tested **hermetically** against a fake/in-memory impl (**no Docker
+  in CI**). The real **psycopg3 (sync)** + DDL path is a marked integration test that
+  **skips when no DSN is set**, discharged via the `live-verify`/deferred-verification
+  posture. DSN via env var `LOOP_ORCHESTRATOR_INVENTORY_DSN`, **not keyring**.
+- **P0-D5** — the §4 schema ships as an idempotent versioned `.sql` applied via
+  `CREATE ... IF NOT EXISTS` in `inventory_db`'s bootstrap — **no Alembic** until the first
+  schema *evolution*.
+- **P0-D2** — `schema_version` 5→6 stays deferred to **Phase 1** (ships with the first
+  bounty `State` field, not with pure infra).
+
+**Next HITL Gate:** none open now; the sprint-44 plan's micro-gates open during the
+planning dialogue.
 
 ## Gotchas worth remembering
 - **`.ai/state.json` is git-ignored** — this file (`next-steps.md`) is what travels.
-- **This review must run in a genuinely fresh session** — `/model opus` mid-session is not
-  enough (doesn't clear context); the sequence is new window → `/model opus` → `/resume` →
-  `/code-review` → post. The T3 diff was authored this session, so a fresh session that
-  authored none of it must post the review.
-- **BL-35 stale-red trap on every `src/` PR** — `architect-review` fires on both
-  `pull_request` and `pull_request_review`, so a pre-review red can linger next to the
-  post-review green; BLOCKED + rollup FAILURE ⇒ `gh run rerun` the OLD run.
+- **`tools/inventory_db` will be a new enforced module boundary** — the *only* module that
+  opens a Postgres connection, mirroring how `tools/llm/client.py` is the sole `keyring`
+  importer. Plan its static-test boundary alongside the schema.
+- **Any `src/`-touching PR needs a fresh-session `architect-review`** — `/handoff` → new
+  session → `/model opus` → `/resume` → `/code-review` → post the verbatim-header review.
+  Watch the **BL-35 stale-red** trap (BLOCKED + rollup FAILURE ⇒ `gh run rerun` the OLD run).
 - **PR title ≤72 bytes** — `wc -c` first. **Never commit to `main`, merge, or force-push.**
-- Bounty invariants are non-negotiable (sprints 44/45): scope validation is structural
-  code, never the LLM's job; active exploitation gates through the escalation ladder.
+- Bounty invariants are non-negotiable (sprint 45): scope validation is structural code,
+  never the LLM's job; active exploitation gates through the escalation ladder.
 
 ## Pointers
-- [`sprints/43_bl5_model_routing/sprint_plan.md`](../sprints/43_bl5_model_routing/sprint_plan.md) — the active sprint (T4 remains after T3's review). **Read first.**
-- [`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md) — the bounty loop's reference-of-record (§8 roadmap, §9 decisions).
-- [`docs/backlog.md`](../docs/backlog.md) — BL-5 is this sprint; paused dev-loop items behind the pivot.
-- PR #154 — https://github.com/glunk-works/loop-orchestrator/pull/154
+- [`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md) — the bounty loop's reference-of-record (§8 roadmap incl. the P0-D1 three-sprint decomposition, §9 decisions log P0-D1..D6). **Read first.**
+- `sprints/44_inventory_db/sprint_plan.md` — **to be written** by the sprint-44 planning pass.
+- [`sprints/43_bl5_model_routing/sprint_plan.md`](../sprints/43_bl5_model_routing/sprint_plan.md) — the prior sprint; carries the recorded P0-D4/P0-D5/P0-D6 decisions for sprints 44/45.
+- [`docs/backlog.md`](../docs/backlog.md) — paused dev-loop items behind the bounty pivot.
