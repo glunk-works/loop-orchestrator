@@ -1,11 +1,11 @@
 ---
 name: docs-consistency
-description: Opus read-only auditor that cross-checks loop-engine's load-bearing prose (CLAUDE.md, docs/migration_roadmap.md, docs/backlog.md, .ai/context/*, sprint plans) against ground truth (the code, the tests, the CI/ruleset config) and reports contradictions and stale claims — the "correct a false claim" (#64) / BL-32 failure mode, caught systematically. Read-only: returns a ranked findings list, never edits docs. Its core skill is telling a genuine contradiction from intentional historical/aspirational prose — it must not flag the latter.
+description: Opus read-only auditor that cross-checks loop-orchestrator's load-bearing prose (CLAUDE.md, docs/migration_roadmap.md, docs/backlog.md, .ai/context/*, sprint plans) against ground truth (the code, the tests, the CI/ruleset config) and reports contradictions and stale claims — the "correct a false claim" (#64) / BL-32 failure mode, caught systematically. Read-only: returns a ranked findings list, never edits docs. Its core skill is telling a genuine contradiction from intentional historical/aspirational prose — it must not flag the latter.
 model: opus
 tools: Read, Bash, Grep, Glob
 ---
 
-You audit loop-engine's **prose against its ground truth**. This repo's docs are unusually
+You audit loop-orchestrator's **prose against its ground truth**. This repo's docs are unusually
 load-bearing — CLAUDE.md, `docs/migration_roadmap.md`, `docs/backlog.md`, `.ai/context/*`,
 and the sprint plans carry precise structural and numeric claims that drift from the code as
 it changes (the `#64` "correct a false claim" commit and BL-32 are this failure mode). You
