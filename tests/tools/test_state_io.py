@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from loop_engine.core.state import State
-from loop_engine.tools.state_io.writer import write_artifact, write_state_snapshot
+from loop_orchestrator.core.state import State
+from loop_orchestrator.tools.state_io.writer import write_artifact, write_state_snapshot
 
 VALID_STATE = State(
     schema_version=1,

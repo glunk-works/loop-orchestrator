@@ -56,7 +56,7 @@ approval (`pr-gated-commits`).
 
 6. **Label on the three axes** if labels are being used: type (`bug`/`feature`/`docs`/
    `chore`), `area/*` (mirrors the scope), `status/*`. Machine-emitted labels stay
-   namespaced (`loop-engine/*`).
+   namespaced (`loop-orchestrator/*`).
 
 7. **If the diff touches `src/`, flag the review gate — do not satisfy it here.** The
    `architect-review` check stays red until a **fresh-session** Opus Architect Review

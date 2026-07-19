@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from loop_engine.slack_control.command import SlackRunCommand
-from loop_engine.slack_control.daemon import (
+from loop_orchestrator.slack_control.command import SlackRunCommand
+from loop_orchestrator.slack_control.daemon import (
     _APP_TOKEN_ENV,
     _BOT_TOKEN_ENV,
     _CHANNEL_ENV,
@@ -69,7 +69,7 @@ def _message_event_request(
 def _patch_thread_send(monkeypatch) -> list[dict]:
     posted: list[dict] = []
     monkeypatch.setattr(
-        "loop_engine.slack_control.daemon.send_thread_message",
+        "loop_orchestrator.slack_control.daemon.send_thread_message",
         lambda **kwargs: posted.append(kwargs),
     )
     return posted
@@ -77,7 +77,7 @@ def _patch_thread_send(monkeypatch) -> list[dict]:
 
 def _fail_if_scanned(monkeypatch) -> None:
     monkeypatch.setattr(
-        "loop_engine.slack_control.daemon.find_paused_snapshot_by_slack_thread",
+        "loop_orchestrator.slack_control.daemon.find_paused_snapshot_by_slack_thread",
         lambda thread_ts: pytest.fail("should not scan the state tree for this message"),
     )
 
@@ -114,7 +114,7 @@ def _daemon(dispatcher: _FakeDispatcher | None = None) -> SlackDaemon:
 def _patch_reply(monkeypatch) -> list[dict]:
     replies: list[dict] = []
     monkeypatch.setattr(
-        "loop_engine.slack_control.daemon.send_ephemeral_reply",
+        "loop_orchestrator.slack_control.daemon.send_ephemeral_reply",
         lambda **kwargs: replies.append(kwargs),
     )
     return replies
@@ -295,7 +295,7 @@ def test_thread_reply_with_no_matching_snapshot_is_dropped(monkeypatch) -> None:
     dispatcher = _FakeDispatcher()
     daemon = _daemon(dispatcher)
     monkeypatch.setattr(
-        "loop_engine.slack_control.daemon.find_paused_snapshot_by_slack_thread",
+        "loop_orchestrator.slack_control.daemon.find_paused_snapshot_by_slack_thread",
         lambda thread_ts: None,
     )
 
@@ -313,15 +313,17 @@ def test_thread_reply_matching_a_paused_snapshot_dispatches_resume(monkeypatch) 
     fake_state = MagicMock()
 
     monkeypatch.setattr(
-        "loop_engine.slack_control.daemon.find_paused_snapshot_by_slack_thread",
+        "loop_orchestrator.slack_control.daemon.find_paused_snapshot_by_slack_thread",
         lambda thread_ts: snapshot_path,
     )
-    monkeypatch.setattr("loop_engine.slack_control.daemon.load_state", lambda path: fake_state)
     monkeypatch.setattr(
-        "loop_engine.slack_control.daemon.unresolved_questions", lambda state: [MagicMock()]
+        "loop_orchestrator.slack_control.daemon.load_state", lambda path: fake_state
     )
     monkeypatch.setattr(
-        "loop_engine.slack_control.daemon.parse_thread_answers",
+        "loop_orchestrator.slack_control.daemon.unresolved_questions", lambda state: [MagicMock()]
+    )
+    monkeypatch.setattr(
+        "loop_orchestrator.slack_control.daemon.parse_thread_answers",
         lambda text, unresolved_count: {1: text},
     )
 
@@ -348,16 +350,19 @@ def test_thread_reply_unparseable_against_multiple_questions_posts_a_hint(monkey
     snapshot_path = Path("state/run-1/02_awaiting_slack.json")
 
     monkeypatch.setattr(
-        "loop_engine.slack_control.daemon.find_paused_snapshot_by_slack_thread",
+        "loop_orchestrator.slack_control.daemon.find_paused_snapshot_by_slack_thread",
         lambda thread_ts: snapshot_path,
     )
-    monkeypatch.setattr("loop_engine.slack_control.daemon.load_state", lambda path: MagicMock())
     monkeypatch.setattr(
-        "loop_engine.slack_control.daemon.unresolved_questions",
+        "loop_orchestrator.slack_control.daemon.load_state", lambda path: MagicMock()
+    )
+    monkeypatch.setattr(
+        "loop_orchestrator.slack_control.daemon.unresolved_questions",
         lambda state: [MagicMock(), MagicMock()],
     )
     monkeypatch.setattr(
-        "loop_engine.slack_control.daemon.parse_thread_answers", lambda text, unresolved_count: {}
+        "loop_orchestrator.slack_control.daemon.parse_thread_answers",
+        lambda text, unresolved_count: {},
     )
 
     daemon._handle_request(_message_event_request(text="unclear reply"))
@@ -378,15 +383,17 @@ def test_message_event_with_no_running_loop_is_dropped_without_a_misleading_post
     snapshot_path = Path("state/run-1/02_awaiting_slack.json")
 
     monkeypatch.setattr(
-        "loop_engine.slack_control.daemon.find_paused_snapshot_by_slack_thread",
+        "loop_orchestrator.slack_control.daemon.find_paused_snapshot_by_slack_thread",
         lambda thread_ts: snapshot_path,
     )
-    monkeypatch.setattr("loop_engine.slack_control.daemon.load_state", lambda path: MagicMock())
     monkeypatch.setattr(
-        "loop_engine.slack_control.daemon.unresolved_questions", lambda state: [MagicMock()]
+        "loop_orchestrator.slack_control.daemon.load_state", lambda path: MagicMock()
     )
     monkeypatch.setattr(
-        "loop_engine.slack_control.daemon.parse_thread_answers",
+        "loop_orchestrator.slack_control.daemon.unresolved_questions", lambda state: [MagicMock()]
+    )
+    monkeypatch.setattr(
+        "loop_orchestrator.slack_control.daemon.parse_thread_answers",
         lambda text, unresolved_count: {1: text},
     )
 
@@ -403,15 +410,17 @@ def test_message_event_shutting_down_event_loop_drops_without_raising(monkeypatc
     snapshot_path = Path("state/run-1/02_awaiting_slack.json")
 
     monkeypatch.setattr(
-        "loop_engine.slack_control.daemon.find_paused_snapshot_by_slack_thread",
+        "loop_orchestrator.slack_control.daemon.find_paused_snapshot_by_slack_thread",
         lambda thread_ts: snapshot_path,
     )
-    monkeypatch.setattr("loop_engine.slack_control.daemon.load_state", lambda path: MagicMock())
     monkeypatch.setattr(
-        "loop_engine.slack_control.daemon.unresolved_questions", lambda state: [MagicMock()]
+        "loop_orchestrator.slack_control.daemon.load_state", lambda path: MagicMock()
     )
     monkeypatch.setattr(
-        "loop_engine.slack_control.daemon.parse_thread_answers",
+        "loop_orchestrator.slack_control.daemon.unresolved_questions", lambda state: [MagicMock()]
+    )
+    monkeypatch.setattr(
+        "loop_orchestrator.slack_control.daemon.parse_thread_answers",
         lambda text, unresolved_count: {1: text},
     )
 

@@ -1,5 +1,5 @@
 {
-  "name": "loop-engine",
+  "name": "loop-orchestrator",
   "build": {
     "dockerfile": "../Dockerfile",
     "context": "..",
@@ -27,8 +27,8 @@
   "containerEnv": {
     "INFISICAL_CLIENT_ID": "${localEnv:INFISICAL_CLIENT_ID}",
     "INFISICAL_CLIENT_SECRET": "${localEnv:INFISICAL_CLIENT_SECRET}",
-    "LOOP_ENGINE_KEYRING_PASSPHRASE_FILE": "/home/app/.infisical/keyring_passphrase",
-    "LOOP_ENGINE_KEYRING_FILE": "/home/app/.infisical/keyring_data.enc"
+    "LOOP_ORCHESTRATOR_KEYRING_PASSPHRASE_FILE": "/home/app/.infisical/keyring_passphrase",
+    "LOOP_ORCHESTRATOR_KEYRING_FILE": "/home/app/.infisical/keyring_data.enc"
   },
   "postCreateCommand": "git config --global --add safe.directory /workspace && mkdir -p ~/.ssh && echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' >> ~/.ssh/known_hosts && chmod 700 ~/.ssh && chmod 600 ~/.ssh/known_hosts && hatch env create",
   "postStartCommand": "sh /workspace/.devcontainer/poststart.sh",

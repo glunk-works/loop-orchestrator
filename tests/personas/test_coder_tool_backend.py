@@ -9,7 +9,7 @@ structural rather than conditional: tool execution *only* happens in the MCP
 server subprocess, so there is no unsandboxed fallback left to refuse.
 """
 
-from loop_engine.personas.coder_iac.shared import _CoderToolBackend
+from loop_orchestrator.personas.coder_iac.shared import _CoderToolBackend
 
 
 class _FakeProvider:
@@ -33,7 +33,7 @@ def test_backend_resolves_to_mcp_with_no_env_configuration(monkeypatch) -> None:
     # No flag is consulted any more: MCP is the tool path unconditionally.
     fake = _FakeProvider()
     monkeypatch.setattr(
-        "loop_engine.personas.coder_iac.shared.build_coder_tool_provider",
+        "loop_orchestrator.personas.coder_iac.shared.build_coder_tool_provider",
         lambda cwd=None: fake,
     )
 
@@ -46,7 +46,7 @@ def test_backend_resolves_to_mcp_with_no_env_configuration(monkeypatch) -> None:
 def test_mcp_backend_opens_provider_once_and_closes(monkeypatch) -> None:
     fake = _FakeProvider()
     monkeypatch.setattr(
-        "loop_engine.personas.coder_iac.shared.build_coder_tool_provider",
+        "loop_orchestrator.personas.coder_iac.shared.build_coder_tool_provider",
         lambda cwd=None: fake,
     )
 

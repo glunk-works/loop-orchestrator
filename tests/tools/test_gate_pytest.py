@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from loop_engine.tools.coder_tools.run_tests import PYTEST_NO_TESTS_COLLECTED
-from loop_engine.tools.mcp import provider as mcp_provider
-from loop_engine.tools.mcp.provider import MCPToolError, run_gate_pytest
+from loop_orchestrator.tools.coder_tools.run_tests import PYTEST_NO_TESTS_COLLECTED
+from loop_orchestrator.tools.mcp import provider as mcp_provider
+from loop_orchestrator.tools.mcp.provider import MCPToolError, run_gate_pytest
 
 
 class _FakeProvider:

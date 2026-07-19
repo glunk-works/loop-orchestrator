@@ -3,15 +3,15 @@ import types
 
 import pytest
 
-from loop_engine.core.state import CURRENT_SCHEMA_VERSION, Question, RunStatus, State
-from loop_engine.tools.slack_io import (
+from loop_orchestrator.core.state import CURRENT_SCHEMA_VERSION, Question, RunStatus, State
+from loop_orchestrator.tools.slack_io import (
     SlackEscalationConfigError,
     parse_thread_answers,
     render_question_message,
     send_thread_message,
     slack_escalation_filer,
 )
-from loop_engine.tools.slack_io.escalation import _CHANNEL_ENV, _TOKEN_ENV
+from loop_orchestrator.tools.slack_io.escalation import _CHANNEL_ENV, _TOKEN_ENV
 
 _FAKE_TOKEN = "xoxb-fake-not-a-real-token"  # noqa: S105 -- fixture literal, not a real credential
 

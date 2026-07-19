@@ -6,7 +6,7 @@ set. Run as: `python -m tests.tools.fixtures.echo_server`.
 
 from mcp.server.fastmcp import FastMCP
 
-mcp = FastMCP("loop-engine-test-echo")
+mcp = FastMCP("loop-orchestrator-test-echo")
 
 
 @mcp.tool()

@@ -1,11 +1,11 @@
 import json
 
-from loop_engine.core.gates import (
+from loop_orchestrator.core.gates import (
     ArtifactGate,
     GateDecision,
     extract_open_questions,
 )
-from loop_engine.core.state import Question, State
+from loop_orchestrator.core.state import Question, State
 
 
 def _state(artifacts: dict[str, str], questions: list[Question] | None = None) -> State:

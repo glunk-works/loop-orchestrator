@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "loop-engine"
+name = "loop-orchestrator"
 version = "0.1.0"
 description = "A loop persona framework"
 readme = "README.md"
@@ -25,17 +25,17 @@ dependencies = [
   "keyring==25.7.0",
   "typer==0.26.8",
   # Orchestration substrate: the engine runs as a LangGraph StateGraph (behind
-  # the LOOP_ENGINE_ENGINE=langgraph flag during the migration).
+  # the LOOP_ORCHESTRATOR_ENGINE=langgraph flag during the migration).
   "langgraph==1.2.9",
   # Model Context Protocol: coder tools are re-fronted as stdio MCP servers
   # (mcp_servers/) and discovered/dispatched by the LLM client behind the
-  # LOOP_ENGINE_TOOLS=mcp flag during the migration.
+  # LOOP_ORCHESTRATOR_TOOLS=mcp flag during the migration.
   "mcp==1.28.1",
   # Runtime (not just dev) dependency: the agentic Coder's run_tests tool and
   # the Coder stage's evidence gate execute pytest via subprocess.
   "pytest==9.1.1",
   # Declarative persona config format (GeneratorNode, behind the
-  # LOOP_ENGINE_PERSONAS=declarative flag). Loaded with yaml.safe_load only —
+  # LOOP_ORCHESTRATOR_PERSONAS=declarative flag). Loaded with yaml.safe_load only —
   # never yaml.load — so an in-repo config can never instantiate code.
   "PyYAML==6.0.3",
   # Trigger surface — GitHub webhook ASGI app; uvicorn/hosting deferred.
@@ -47,15 +47,15 @@ dependencies = [
 ]
 
 [project.scripts]
-loop-engine = "loop_engine.cli:app"
+loop-orchestrator = "loop_orchestrator.cli:app"
 
 [project.urls]
-Documentation = "https://github.com/glunk-works/loop-engine#readme"
-Issues = "https://github.com/glunk-works/loop-engine/issues"
-Source = "https://github.com/glunk-works/loop-engine"
+Documentation = "https://github.com/glunk-works/loop-orchestrator#readme"
+Issues = "https://github.com/glunk-works/loop-orchestrator/issues"
+Source = "https://github.com/glunk-works/loop-orchestrator"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/loop_engine"]
+packages = ["src/loop_orchestrator"]
 # No force-include needed: hatchling's default `packages` file selection
 # already ships non-`.py` files under the package tree (verified by building
 # a wheel and inspecting it — `tools/scaffold/templates/` lands intact,
@@ -77,7 +77,7 @@ dependencies = [
   # fast as before, since worker-spinup overhead would dominate a 1-test run.
   "pytest-xdist==3.8.0",
   # Sprint 38 Task 1 (BL-23): mutation testing, scoped to core/ (see
-  # [tool.mutmut] below). Dev/test-only -- src/loop_engine/ never imports it.
+  # [tool.mutmut] below). Dev/test-only -- src/loop_orchestrator/ never imports it.
   # 3.x's coverage-tracking trampoline re-resolves `source_paths` against the
   # live process cwd on its one-time stats-collection pass, which collides
   # with several tests/core/ files' `_isolated_cwd` fixtures (a real chdir --
@@ -101,7 +101,7 @@ lint = "ruff check ."
 format = "ruff format ."
 sbom = "cyclonedx-py environment -o sbom.json"
 # Scans the hatch env's installed packages — the same closure sbom covers.
-# --skip-editable excludes only loop-engine itself (a local dev-mode install
+# --skip-editable excludes only loop-orchestrator itself (a local dev-mode install
 # that isn't on PyPI and can't be audited); every third-party dependency is
 # still checked against the OSV/PyPI advisory databases.
 audit = "pip-audit --skip-editable {args}"
@@ -118,13 +118,13 @@ mutate-show = "mutmut show {args}"
 [tool.mutmut]
 # source_paths must cover the whole src/ tree (mutmut copies exactly this set
 # into mutants/ and nothing else is importable there) so that core/'s imports
-# of sibling packages (e.g. loop_engine.tools) still resolve. only_mutate is
+# of sibling packages (e.g. loop_orchestrator.tools) still resolve. only_mutate is
 # what actually scopes mutation to core/ -- everything else under src/ is
 # copied into mutants/ unmodified.
 source_paths = ["src"]
-only_mutate = ["src/loop_engine/core/*.py"]
+only_mutate = ["src/loop_orchestrator/core/*.py"]
 pytest_add_cli_args_test_selection = ["tests/core"]
-# loop_engine/__init__.py eagerly builds DEFAULT_LOOP at import time, which
+# loop_orchestrator/__init__.py eagerly builds DEFAULT_LOOP at import time, which
 # constructs every persona and validates its prompt files exist via a
 # repo-root marker walk (nearest pyproject.toml -- which lands on mutants/
 # once mutmut copies that marker file in). Without this, every tests/core/

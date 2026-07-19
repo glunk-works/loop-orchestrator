@@ -302,7 +302,7 @@
       "version": "0.116.0"
     },
     {
-      "bom-ref": "anyio==4.14.1",
+      "bom-ref": "anyio==4.14.2",
       "description": "High-level concurrency and networking framework on top of asyncio or Trio",
       "externalReferences": [
         {
@@ -335,9 +335,9 @@
         }
       ],
       "name": "anyio",
-      "purl": "pkg:pypi/anyio@4.14.1",
+      "purl": "pkg:pypi/anyio@4.14.2",
       "type": "library",
-      "version": "4.14.1"
+      "version": "4.14.2"
     },
     {
       "bom-ref": "arrow==1.4.0",
@@ -640,13 +640,13 @@
       "version": "8.4.2"
     },
     {
-      "bom-ref": "coverage==7.15.1",
+      "bom-ref": "coverage==7.15.2",
       "description": "Code coverage measurement for Python",
       "externalReferences": [
         {
           "comment": "from packaging metadata Project-URL: Documentation",
           "type": "documentation",
-          "url": "https://coverage.readthedocs.io/en/7.15.1"
+          "url": "https://coverage.readthedocs.io/en/7.15.2"
         },
         {
           "comment": "from packaging metadata Project-URL: Issues",
@@ -689,9 +689,9 @@
           "value": "toml"
         }
       ],
-      "purl": "pkg:pypi/coverage@7.15.1",
+      "purl": "pkg:pypi/coverage@7.15.2",
       "type": "library",
-      "version": "7.15.1"
+      "version": "7.15.2"
     },
     {
       "bom-ref": "cryptography==49.0.0",
@@ -999,7 +999,7 @@
       "version": "0.139.0"
     },
     {
-      "bom-ref": "filelock==3.29.7",
+      "bom-ref": "filelock==3.31.0",
       "description": "A platform independent file lock.",
       "externalReferences": [
         {
@@ -1032,9 +1032,9 @@
         }
       ],
       "name": "filelock",
-      "purl": "pkg:pypi/filelock@3.29.7",
+      "purl": "pkg:pypi/filelock@3.31.0",
       "type": "library",
-      "version": "3.29.7"
+      "version": "3.31.0"
     },
     {
       "bom-ref": "fqdn==1.5.1",
@@ -1058,29 +1058,6 @@
       "purl": "pkg:pypi/fqdn@1.5.1",
       "type": "library",
       "version": "1.5.1"
-    },
-    {
-      "bom-ref": "glob2==0.7",
-      "description": "Version of the glob module that can capture patterns and supports recursive wildcards",
-      "externalReferences": [
-        {
-          "comment": "from packaging metadata: Home-page",
-          "type": "website",
-          "url": "http://github.com/miracle2k/python-glob2/"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "acknowledgement": "declared",
-            "name": "License :: OSI Approved :: BSD License"
-          }
-        }
-      ],
-      "name": "glob2",
-      "purl": "pkg:pypi/glob2@0.7",
-      "type": "library",
-      "version": "0.7"
     },
     {
       "bom-ref": "h11==0.16.0",
@@ -1346,7 +1323,7 @@
       "version": "6.1.2"
     },
     {
-      "bom-ref": "jaraco.functools==4.5.0",
+      "bom-ref": "jaraco.functools==4.6.0",
       "description": "Functools like those found in stdlib",
       "externalReferences": [
         {
@@ -1364,9 +1341,9 @@
         }
       ],
       "name": "jaraco.functools",
-      "purl": "pkg:pypi/jaraco.functools@4.5.0",
+      "purl": "pkg:pypi/jaraco.functools@4.6.0",
       "type": "library",
-      "version": "4.5.0"
+      "version": "4.6.0"
     },
     {
       "bom-ref": "jeepney==0.9.0",
@@ -1601,35 +1578,6 @@
       "purl": "pkg:pypi/jsonschema-specifications@2025.9.1",
       "type": "library",
       "version": "2025.9.1"
-    },
-    {
-      "bom-ref": "junit-xml==1.9",
-      "description": "Creates JUnit XML test result documents that can be read by tools such as Jenkins",
-      "externalReferences": [
-        {
-          "comment": "from packaging metadata: Home-page",
-          "type": "website",
-          "url": "https://github.com/kyrus/python-junit-xml"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "acknowledgement": "declared",
-            "id": "MIT"
-          }
-        },
-        {
-          "license": {
-            "acknowledgement": "declared",
-            "name": "License :: Freely Distributable"
-          }
-        }
-      ],
-      "name": "junit-xml",
-      "purl": "pkg:pypi/junit-xml@1.9",
-      "type": "library",
-      "version": "1.9"
     },
     {
       "bom-ref": "keyring==25.7.0",
@@ -1913,7 +1861,7 @@
       "version": "0.4.2"
     },
     {
-      "bom-ref": "langsmith==0.10.2",
+      "bom-ref": "langsmith==0.10.6",
       "description": "Client library to connect to the LangSmith Observability and Evaluation Platform.",
       "externalReferences": [
         {
@@ -1941,9 +1889,9 @@
         }
       ],
       "name": "langsmith",
-      "purl": "pkg:pypi/langsmith@0.10.2",
+      "purl": "pkg:pypi/langsmith@0.10.6",
       "type": "library",
-      "version": "0.10.2"
+      "version": "0.10.6"
     },
     {
       "bom-ref": "lark==1.3.1",
@@ -2053,7 +2001,7 @@
       "version": "2.1.0"
     },
     {
-      "bom-ref": "loop-engine==0.1.0",
+      "bom-ref": "loop-orchestrator==0.1.0",
       "description": "A loop persona framework",
       "externalReferences": [
         {
@@ -2064,17 +2012,17 @@
         {
           "comment": "from packaging metadata Project-URL: Documentation",
           "type": "documentation",
-          "url": "https://github.com/glunk-works/loop-engine#readme"
+          "url": "https://github.com/glunk-works/loop-orchestrator#readme"
         },
         {
           "comment": "from packaging metadata Project-URL: Issues",
           "type": "issue-tracker",
-          "url": "https://github.com/glunk-works/loop-engine/issues"
+          "url": "https://github.com/glunk-works/loop-orchestrator/issues"
         },
         {
           "comment": "from packaging metadata Project-URL: Source",
           "type": "other",
-          "url": "https://github.com/glunk-works/loop-engine"
+          "url": "https://github.com/glunk-works/loop-orchestrator"
         }
       ],
       "licenses": [
@@ -2085,7 +2033,7 @@
           }
         }
       ],
-      "name": "loop-engine",
+      "name": "loop-orchestrator",
       "type": "library",
       "version": "0.1.0"
     },
@@ -2461,29 +2409,6 @@
       "version": "26.2"
     },
     {
-      "bom-ref": "parso==0.8.7",
-      "description": "A Python Parser",
-      "externalReferences": [
-        {
-          "comment": "from packaging metadata: Home-page",
-          "type": "website",
-          "url": "https://github.com/davidhalter/parso"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "acknowledgement": "declared",
-            "id": "MIT"
-          }
-        }
-      ],
-      "name": "parso",
-      "purl": "pkg:pypi/parso@0.8.7",
-      "type": "library",
-      "version": "0.8.7"
-    },
-    {
       "bom-ref": "pip==26.1.2",
       "description": "The PyPA recommended tool for installing Python packages.",
       "externalReferences": [
@@ -2601,7 +2526,7 @@
       "version": "2.10.1"
     },
     {
-      "bom-ref": "platformdirs==4.10.0",
+      "bom-ref": "platformdirs==4.10.1",
       "description": "A small Python package for determining appropriate platform-specific dirs, e.g. a `user data dir`.",
       "externalReferences": [
         {
@@ -2639,9 +2564,9 @@
         }
       ],
       "name": "platformdirs",
-      "purl": "pkg:pypi/platformdirs@4.10.0",
+      "purl": "pkg:pypi/platformdirs@4.10.1",
       "type": "library",
-      "version": "4.10.0"
+      "version": "4.10.1"
     },
     {
       "bom-ref": "pluggy==1.6.0",
@@ -2658,44 +2583,6 @@
       "purl": "pkg:pypi/pluggy@1.6.0",
       "type": "library",
       "version": "1.6.0"
-    },
-    {
-      "bom-ref": "pony==0.7.19",
-      "description": "Pony Object-Relational Mapper",
-      "externalReferences": [
-        {
-          "comment": "from packaging metadata: Download-URL",
-          "type": "distribution",
-          "url": "http://pypi.python.org/pypi/pony/"
-        },
-        {
-          "comment": "from packaging metadata Project-URL: Documentation",
-          "type": "documentation",
-          "url": "https://docs.ponyorm.org"
-        },
-        {
-          "comment": "from packaging metadata Project-URL: Source",
-          "type": "other",
-          "url": "https://github.com/ponyorm/pony"
-        },
-        {
-          "comment": "from packaging metadata: Home-page",
-          "type": "website",
-          "url": "https://ponyorm.com"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "acknowledgement": "declared",
-            "name": "License :: OSI Approved :: Apache Software License"
-          }
-        }
-      ],
-      "name": "pony",
-      "purl": "pkg:pypi/pony@0.7.19",
-      "type": "library",
-      "version": "0.7.19"
     },
     {
       "bom-ref": "py-serializable==2.1.0",
@@ -3761,29 +3648,6 @@
       "version": "8.2.8"
     },
     {
-      "bom-ref": "toml==0.10.2",
-      "description": "Python Library for Tom's Obvious, Minimal Language",
-      "externalReferences": [
-        {
-          "comment": "from packaging metadata: Home-page",
-          "type": "website",
-          "url": "https://github.com/uiri/toml"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "acknowledgement": "declared",
-            "id": "MIT"
-          }
-        }
-      ],
-      "name": "toml",
-      "purl": "pkg:pypi/toml@0.10.2",
-      "type": "library",
-      "version": "0.10.2"
-    },
-    {
       "bom-ref": "tomli==2.4.1",
       "description": "A lil' TOML parser",
       "externalReferences": [
@@ -4305,7 +4169,7 @@
   "dependencies": [
     {
       "dependsOn": [
-        "filelock==3.29.7",
+        "filelock==3.31.0",
         "msgpack==1.2.1",
         "pytest==9.1.1",
         "requests==2.34.2",
@@ -4344,7 +4208,7 @@
     },
     {
       "dependsOn": [
-        "anyio==4.14.1",
+        "anyio==4.14.2",
         "distro==1.9.0",
         "docstring_parser==0.18.0",
         "httpx==0.28.1",
@@ -4361,7 +4225,7 @@
         "idna==3.18",
         "typing_extensions==4.16.0"
       ],
-      "ref": "anyio==4.14.1"
+      "ref": "anyio==4.14.2"
     },
     {
       "dependsOn": [
@@ -4403,7 +4267,7 @@
       "dependsOn": [
         "tomli==2.4.1"
       ],
-      "ref": "coverage==7.15.1"
+      "ref": "coverage==7.15.2"
     },
     {
       "dependsOn": [
@@ -4470,20 +4334,17 @@
       "ref": "fastapi==0.139.0"
     },
     {
-      "ref": "filelock==3.29.7"
+      "ref": "filelock==3.31.0"
     },
     {
       "ref": "fqdn==1.5.1"
-    },
-    {
-      "ref": "glob2==0.7"
     },
     {
       "ref": "h11==0.16.0"
     },
     {
       "dependsOn": [
-        "anyio==4.14.1",
+        "anyio==4.14.2",
         "certifi==2026.6.17",
         "h11==0.16.0"
       ],
@@ -4495,7 +4356,7 @@
     {
       "dependsOn": [
         "Pygments==2.20.0",
-        "anyio==4.14.1",
+        "anyio==4.14.2",
         "certifi==2026.6.17",
         "click==8.4.2",
         "httpcore==1.0.9",
@@ -4540,7 +4401,7 @@
         "more-itertools==11.1.0",
         "pytest==9.1.1"
       ],
-      "ref": "jaraco.functools==4.5.0"
+      "ref": "jaraco.functools==4.6.0"
     },
     {
       "dependsOn": [
@@ -4586,16 +4447,10 @@
     },
     {
       "dependsOn": [
-        "six==1.17.0"
-      ],
-      "ref": "junit-xml==1.9"
-    },
-    {
-      "dependsOn": [
         "SecretStorage==3.5.0",
         "jaraco.classes==3.4.0",
         "jaraco.context==6.1.2",
-        "jaraco.functools==4.5.0",
+        "jaraco.functools==4.6.0",
         "jeepney==0.9.0",
         "pytest==9.1.1"
       ],
@@ -4606,7 +4461,7 @@
         "PyYAML==6.0.3",
         "jsonpatch==1.33",
         "langchain-protocol==0.0.18",
-        "langsmith==0.10.2",
+        "langsmith==0.10.6",
         "packaging==26.2",
         "pydantic==2.13.4",
         "tenacity==9.1.4",
@@ -4658,7 +4513,7 @@
     },
     {
       "dependsOn": [
-        "anyio==4.14.1",
+        "anyio==4.14.2",
         "distro==1.9.0",
         "httpx==0.28.1",
         "orjson==3.11.9",
@@ -4675,7 +4530,7 @@
         "xxhash==3.8.1",
         "zstandard==0.25.0"
       ],
-      "ref": "langsmith==0.10.2"
+      "ref": "langsmith==0.10.6"
     },
     {
       "ref": "lark==1.3.1"
@@ -4698,7 +4553,7 @@
     },
     {
       "dependsOn": [
-        "coverage==7.15.1",
+        "coverage==7.15.2",
         "pytest==9.1.1",
         "uc-micro-py==2.0.0"
       ],
@@ -4717,7 +4572,7 @@
         "slack_sdk==3.43.0",
         "typer==0.26.8"
       ],
-      "ref": "loop-engine==0.1.0"
+      "ref": "loop-orchestrator==0.1.0"
     },
     {
       "ref": "lxml==6.1.1"
@@ -4725,7 +4580,7 @@
     {
       "dependsOn": [
         "PyYAML==6.0.3",
-        "coverage==7.15.1",
+        "coverage==7.15.2",
         "linkify-it-py==2.1.0",
         "mdit-py-plugins==0.6.1",
         "mdurl==0.1.2",
@@ -4737,7 +4592,7 @@
     {
       "dependsOn": [
         "PyJWT==2.13.0",
-        "anyio==4.14.1",
+        "anyio==4.14.2",
         "httpx-sse==0.4.3",
         "httpx==0.28.1",
         "jsonschema==4.26.0",
@@ -4758,7 +4613,7 @@
     },
     {
       "dependsOn": [
-        "coverage==7.15.1",
+        "coverage==7.15.2",
         "markdown-it-py==4.2.0",
         "pytest==9.1.1"
       ],
@@ -4776,12 +4631,11 @@
     {
       "dependsOn": [
         "click==8.4.2",
-        "coverage==7.15.1",
+        "coverage==7.15.2",
         "libcst==1.8.6",
         "pytest==9.1.1",
         "setproctitle==1.3.7",
-        "textual==8.2.8",
-        "toml==0.10.2"
+        "textual==8.2.8"
       ],
       "ref": "mutmut==3.6.0"
     },
@@ -4799,12 +4653,6 @@
     },
     {
       "ref": "packaging==26.2"
-    },
-    {
-      "dependsOn": [
-        "pytest==9.1.1"
-      ],
-      "ref": "parso==0.8.7"
     },
     {
       "dependsOn": [
@@ -4827,12 +4675,12 @@
     {
       "dependsOn": [
         "CacheControl==0.14.4",
-        "coverage==7.15.1",
+        "coverage==7.15.2",
         "cyclonedx-python-lib==11.11.0",
         "packaging==26.2",
         "pip-api==0.0.34",
         "pip-requirements-parser==32.0.1",
-        "platformdirs==4.10.0",
+        "platformdirs==4.10.1",
         "pytest==9.1.1",
         "requests==2.34.2",
         "rich==15.0.0",
@@ -4843,17 +4691,14 @@
       "ref": "pip_audit==2.10.1"
     },
     {
-      "ref": "platformdirs==4.10.0"
+      "ref": "platformdirs==4.10.1"
     },
     {
       "dependsOn": [
-        "coverage==7.15.1",
+        "coverage==7.15.2",
         "pytest==9.1.1"
       ],
       "ref": "pluggy==1.6.0"
-    },
-    {
-      "ref": "pony==0.7.19"
     },
     {
       "dependsOn": [
@@ -4896,7 +4741,7 @@
     {
       "dependsOn": [
         "execnet==2.1.2",
-        "filelock==3.29.7",
+        "filelock==3.31.0",
         "pytest==9.1.1",
         "setproctitle==1.3.7"
       ],
@@ -5008,7 +4853,7 @@
     },
     {
       "dependsOn": [
-        "anyio==4.14.1",
+        "anyio==4.14.2",
         "fastapi==0.139.0",
         "pydantic==2.13.4",
         "starlette==1.3.1",
@@ -5019,7 +4864,7 @@
     {
       "dependsOn": [
         "PyYAML==6.0.3",
-        "anyio==4.14.1",
+        "anyio==4.14.2",
         "httpx==0.28.1",
         "python-multipart==0.0.32",
         "typing_extensions==4.16.0"
@@ -5037,14 +4882,11 @@
         "Pygments==2.20.0",
         "markdown-it-py==4.2.0",
         "mdit-py-plugins==0.6.1",
-        "platformdirs==4.10.0",
+        "platformdirs==4.10.1",
         "rich==15.0.0",
         "typing_extensions==4.16.0"
       ],
       "ref": "textual==8.2.8"
-    },
-    {
-      "ref": "toml==0.10.2"
     },
     {
       "ref": "tomli==2.4.1"
@@ -5074,7 +4916,7 @@
     },
     {
       "dependsOn": [
-        "coverage==7.15.1",
+        "coverage==7.15.2",
         "pytest==9.1.1"
       ],
       "ref": "uc-micro-py==2.0.0"
@@ -5116,7 +4958,7 @@
     }
   ],
   "metadata": {
-    "timestamp": "2026-07-16T12:51:53.853619+00:00",
+    "timestamp": "2026-07-18T15:31:43.944056+00:00",
     "tools": {
       "components": [
         {
@@ -5220,7 +5062,7 @@
       ]
     }
   },
-  "serialNumber": "urn:uuid:cf5d4e6b-cb9e-440d-acff-2a44e9171f30",
+  "serialNumber": "urn:uuid:80fa3a43-a823-49ab-b8c2-85f9f0050287",
   "version": 1,
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",

@@ -1,4 +1,4 @@
-# loop-engine
+# loop-orchestrator
 
 A reusable framework for running a named, ordered sequence of decoupled AI "persona" stages against a single, explicit, versioned state object — instead of copy-pasting prompts between manual steps.
 
@@ -6,7 +6,7 @@ The default loop reproduces a **PM → Architecture → Agile Sprint Breakdown �
 
 ## Why
 
-Before loop-engine, this pattern (`pm-agent-loop`) was hardcoded as a single, non-reusable CLI tightly coupled to one persona pair and one output shape. loop-engine generalizes it: personas are pluggable modules, loops are plain Python lists composing them, and every stage transition is validated, budget-checked, and written to disk as an inspectable artifact.
+Before loop-orchestrator, this pattern (`pm-agent-loop`) was hardcoded as a single, non-reusable CLI tightly coupled to one persona pair and one output shape. loop-orchestrator generalizes it: personas are pluggable modules, loops are plain Python lists composing them, and every stage transition is validated, budget-checked, and written to disk as an inspectable artifact.
 
 ## Requirements
 
@@ -18,27 +18,27 @@ Before loop-engine, this pattern (`pm-agent-loop`) was hardcoded as a single, no
 ## Installation
 
 ```bash
-git clone https://github.com/glunk-works/loop-engine.git
-cd loop-engine
-hatch run python -c "import loop_engine"  # sanity check
+git clone https://github.com/glunk-works/loop-orchestrator.git
+cd loop-orchestrator
+hatch run python -c "import loop_orchestrator"  # sanity check
 ```
 
 ## Setup
 
-loop-engine never accepts the API key as a CLI flag or environment variable — it is retrieved exclusively from the OS-native credential store (Windows Credential Manager / macOS Keychain / Secret Service on Linux) via [`keyring`](https://pypi.org/project/keyring/):
+loop-orchestrator never accepts the API key as a CLI flag or environment variable — it is retrieved exclusively from the OS-native credential store (Windows Credential Manager / macOS Keychain / Secret Service on Linux) via [`keyring`](https://pypi.org/project/keyring/):
 
 ```bash
-hatch run python -c "import keyring; keyring.set_password('loop-engine', 'anthropic_api_key', 'sk-ant-...')"
+hatch run python -c "import keyring; keyring.set_password('loop-orchestrator', 'anthropic_api_key', 'sk-ant-...')"
 ```
 
-`src/loop_engine/tools/llm/client.py` is the only module in the codebase permitted to import `keyring` — enforced by a static test (`tests/tools/test_keyring_boundary.py`).
+`src/loop_orchestrator/tools/llm/client.py` is the only module in the codebase permitted to import `keyring` — enforced by a static test (`tests/tools/test_keyring_boundary.py`).
 
 ## Usage
 
 ### Run the default loop
 
 ```bash
-hatch run loop-engine run --input path/to/requirements.md --budget 5.00
+hatch run loop-orchestrator run --input path/to/requirements.md --budget 5.00
 ```
 
 | Option | Description | Default |
@@ -53,12 +53,12 @@ Every stage's `State` snapshot is written to `state/<run_id>/<NN>_<StageName>.js
 ### Resume an interrupted or budget-aborted run
 
 ```bash
-hatch run loop-engine run --resume-from state/<run_id>/01_ArchitectureGenerator.json
+hatch run loop-orchestrator run --resume-from state/<run_id>/01_ArchitectureGenerator.json
 ```
 
 ### Answer a paused run's questions (GitHub issue round-trip)
 
-When the persona pipeline hits a question no automated layer can resolve, it files a GitHub issue (label `loop-engine/needs-human`), records the issue in the snapshot, and exits with status `awaiting_issue`. Reply on the issue with a fenced block — one `N: answer` line per question:
+When the persona pipeline hits a question no automated layer can resolve, it files a GitHub issue (label `loop-orchestrator/needs-human`), records the issue in the snapshot, and exits with status `awaiting_issue`. Reply on the issue with a fenced block — one `N: answer` line per question:
 
 ````markdown
 ```answers
@@ -70,7 +70,7 @@ When the persona pipeline hits a question no automated layer can resolve, it fil
 then resume; the PM persona folds your answers into the spec, classifies each answer's blast radius, and the run re-enters at the right stage:
 
 ```bash
-hatch run loop-engine resume --from-issue <issue number>
+hatch run loop-orchestrator resume --from-issue <issue number>
 ```
 
 Closing the issue without an answers comment aborts the run.
@@ -78,30 +78,30 @@ Closing the issue without an answers comment aborts the run.
 ### View per-stage cost/token usage
 
 ```bash
-hatch run loop-engine cost-summary --run-id <run_id>
+hatch run loop-orchestrator cost-summary --run-id <run_id>
 ```
 
 ### Trigger a run from Slack (`/agent-run`)
 
-`loop-engine slack-listen` runs an inbound trigger daemon over Slack [Socket Mode](https://api.slack.com/apis/socket-mode), so a run can be started from the same channel the notifier already posts into — no public ingress, no tunnel, no inbound port.
+`loop-orchestrator slack-listen` runs an inbound trigger daemon over Slack [Socket Mode](https://api.slack.com/apis/socket-mode), so a run can be started from the same channel the notifier already posts into — no public ingress, no tunnel, no inbound port.
 
 **One-time Slack app setup** (operator step):
 
 1. Enable **Socket Mode** on the app, and mint an **app-level token** (`xapp-…`) with the `connections:write` scope. This is a second token, distinct from the bot token — Socket Mode authenticates the *socket* with the app-level token and the *API calls* with the bot token.
 2. Register the `/agent-run` **slash command** (bot scope `commands`). Socket Mode carries slash commands and interactivity, not just Events-API events — no Request URL is needed.
-3. Invite the bot to `LOOP_ENGINE_SLACK_CHANNEL`. **The bot must be a member of that channel**, both to post and to have the command delivered from it.
+3. Invite the bot to `LOOP_ORCHESTRATOR_SLACK_CHANNEL`. **The bot must be a member of that channel**, both to post and to have the command delivered from it.
 
-**Credentials.** Add `LOOP_ENGINE_SLACK_APP_TOKEN` to Infisical (project `loop-engine`, environment `dev`) alongside the existing `LOOP_ENGINE_SLACK_BOT_TOKEN` / `LOOP_ENGINE_SLACK_CHANNEL`. All three are **inherited by the process via `infisical run`** — they are deliberately *not* bounced through `.devcontainer/seed-secrets.sh`, which exists to seed the keyring/`gh`. These are env-var credentials, a distinct class from the keyring-only Anthropic key (same posture as `trigger/`'s `LOOP_ENGINE_WEBHOOK_SECRET`).
+**Credentials.** Add `LOOP_ORCHESTRATOR_SLACK_APP_TOKEN` to Infisical (project `loop-orchestrator`, environment `dev`) alongside the existing `LOOP_ORCHESTRATOR_SLACK_BOT_TOKEN` / `LOOP_ORCHESTRATOR_SLACK_CHANNEL`. All three are **inherited by the process via `infisical run`** — they are deliberately *not* bounced through `.devcontainer/seed-secrets.sh`, which exists to seed the keyring/`gh`. These are env-var credentials, a distinct class from the keyring-only Anthropic key (same posture as `trigger/`'s `LOOP_ORCHESTRATOR_WEBHOOK_SECRET`).
 
-> Prefer setting `LOOP_ENGINE_SLACK_CHANNEL` to the channel **ID** (`C0123456789`, via *Copy link* on the channel) rather than a name. A name is resolved at startup by paginating `conversations.list`, which is rate-limited on large workspaces; an ID is used as-is with no API call.
+> Prefer setting `LOOP_ORCHESTRATOR_SLACK_CHANNEL` to the channel **ID** (`C0123456789`, via *Copy link* on the channel) rather than a name. A name is resolved at startup by paginating `conversations.list`, which is rate-limited on large workspaces; an ID is used as-is with no API call.
 
 **Run the daemon:**
 
 ```bash
-infisical run -- hatch run loop-engine slack-listen
+infisical run -- hatch run loop-orchestrator slack-listen
 ```
 
-It blocks until interrupted (Ctrl-C / `SIGTERM`) and delegates reconnect/backoff to Slack's `SocketModeClient`. It **fails closed**: if any of `LOOP_ENGINE_SLACK_APP_TOKEN`, `LOOP_ENGINE_SLACK_BOT_TOKEN`, or `LOOP_ENGINE_SLACK_CHANNEL` is unset — or the channel cannot be resolved — it exits non-zero with a message naming what's missing, **before opening any socket**. An inbound trigger surface never starts half-configured.
+It blocks until interrupted (Ctrl-C / `SIGTERM`) and delegates reconnect/backoff to Slack's `SocketModeClient`. It **fails closed**: if any of `LOOP_ORCHESTRATOR_SLACK_APP_TOKEN`, `LOOP_ORCHESTRATOR_SLACK_BOT_TOKEN`, or `LOOP_ORCHESTRATOR_SLACK_CHANNEL` is unset — or the channel cannot be resolved — it exits non-zero with a message naming what's missing, **before opening any socket**. An inbound trigger surface never starts half-configured.
 
 **Usage, from the configured channel:**
 
@@ -111,18 +111,18 @@ It blocks until interrupted (Ctrl-C / `SIGTERM`) and delegates reconnect/backoff
 
 `--budget` is **required** and is a hard cap on cumulative LLM spend for that run — the trigger spends real money, so the cap is always explicit and never silently defaulted. A missing, non-numeric, or non-positive budget is rejected with an ephemeral usage reply and no run is started. Everything after the flag becomes the run's requirements text. Replies are **ephemeral** (visible only to the invoker), so the channel stays usable for chatter and notifications; the run's lifecycle events post to the channel as normal.
 
-Commands from any channel other than `LOOP_ENGINE_SLACK_CHANNEL` are ignored.
+Commands from any channel other than `LOOP_ORCHESTRATOR_SLACK_CHANNEL` are ignored.
 
 ### Answer an escalation from Slack (the round-trip)
 
-When a run exhausts its resolver ladder on a question nobody could answer, it **pauses and escalates to a human**. By default that escalation is a filed GitHub issue (resumed with `loop-engine resume --from-issue <N>`). Set **`LOOP_ENGINE_ESCALATION_TRANSPORT=slack`** to route it to Slack instead: the paused run posts its numbered questions into `LOOP_ENGINE_SLACK_CHANNEL`, a human answers **in that thread**, and the same `slack-listen` daemon folds the reply back and resumes the run — no `gh`, no issue.
+When a run exhausts its resolver ladder on a question nobody could answer, it **pauses and escalates to a human**. By default that escalation is a filed GitHub issue (resumed with `loop-orchestrator resume --from-issue <N>`). Set **`LOOP_ORCHESTRATOR_ESCALATION_TRANSPORT=slack`** to route it to Slack instead: the paused run posts its numbered questions into `LOOP_ORCHESTRATOR_SLACK_CHANNEL`, a human answers **in that thread**, and the same `slack-listen` daemon folds the reply back and resumes the run — no `gh`, no issue.
 
 **One-time Slack app setup** (operator step, in addition to the `/agent-run` setup above):
 
 1. Subscribe the app to the **`message.channels`** event (Events API — delivered over the same Socket Mode connection; no Request URL needed).
 2. Grant the bot the **`channels:history`** scope, so it can receive the thread replies. Re-install the app if you add a scope.
 
-No new credentials — the round-trip reuses the three `LOOP_ENGINE_SLACK_*` env vars already configured. `LOOP_ENGINE_ESCALATION_TRANSPORT` defaults to `issue`; only `slack` changes behavior, and when it is set the run **fails closed at startup** if `LOOP_ENGINE_SLACK_BOT_TOKEN` / `LOOP_ENGINE_SLACK_CHANNEL` are missing (a run that cannot post its questions must refuse to start rather than discover that at pause time).
+No new credentials — the round-trip reuses the three `LOOP_ORCHESTRATOR_SLACK_*` env vars already configured. `LOOP_ORCHESTRATOR_ESCALATION_TRANSPORT` defaults to `issue`; only `slack` changes behavior, and when it is set the run **fails closed at startup** if `LOOP_ORCHESTRATOR_SLACK_BOT_TOKEN` / `LOOP_ORCHESTRATOR_SLACK_CHANNEL` are missing (a run that cannot post its questions must refuse to start rather than discover that at pause time).
 
 **Usage.** When a run pauses, the bot posts something like:
 
@@ -145,7 +145,7 @@ Reply **in the thread** (bare text is accepted only when exactly one question is
 The full programmatic surface is available without the CLI:
 
 ```python
-from loop_engine import DEFAULT_LOOP, LLMClient, State, run_graph_loop
+from loop_orchestrator import DEFAULT_LOOP, LLMClient, State, run_graph_loop
 
 initial_state = State(schema_version=3, run_id="my-run", stage_history=[], artifacts={})
 llm_client = LLMClient(budget_usd=5.00)
@@ -157,8 +157,8 @@ final_state = run_graph_loop(DEFAULT_LOOP, initial_state, llm_client)
 A shared multi-stage `Dockerfile` (repo root) defines a `dev` stage (full contributor toolchain: `hatch`, `ruff`, `git`, `gh`) and a `prod` stage (minimal runtime only). Both are local-only — there's no registry publish step; build and run them yourself with plain `docker build`/`docker run`, or open the repo in VS Code with the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers), which uses `.devcontainer/devcontainer.json` (targets the `dev` stage automatically).
 
 ```bash
-docker build --target dev -t loop-engine:dev .
-docker build --target prod -t loop-engine:prod .
+docker build --target dev -t loop-orchestrator:dev .
+docker build --target prod -t loop-orchestrator:prod .
 ```
 
 ### GPG commit signing from the host
@@ -167,11 +167,11 @@ The devcontainer bind-mounts a GPG agent socket file from the host (`${localEnv:
 
 ### Credentials in a container
 
-A bare Linux container has no OS-native keyring backend, so the prod/dev images ship a custom encrypted-file `keyring` backend (`containers/keyring_backend/cryptfile_backend.py`, wired in via `keyring`'s own backend-discovery config — not the PyPI `keyrings.cryptfile` package). `client.py`'s contract doesn't change — `keyring.get_password(...)` just resolves against whichever backend is configured. The backend reads two *file paths*, never secret values, from env vars: `LOOP_ENGINE_KEYRING_FILE` (the encrypted blob, default `/run/secrets/keyring_data.enc`) and `LOOP_ENGINE_KEYRING_PASSPHRASE_FILE` (the decryption passphrase, default `/run/secrets/keyring_passphrase`).
+A bare Linux container has no OS-native keyring backend, so the prod/dev images ship a custom encrypted-file `keyring` backend (`containers/keyring_backend/cryptfile_backend.py`, wired in via `keyring`'s own backend-discovery config — not the PyPI `keyrings.cryptfile` package). `client.py`'s contract doesn't change — `keyring.get_password(...)` just resolves against whichever backend is configured. The backend reads two *file paths*, never secret values, from env vars: `LOOP_ORCHESTRATOR_KEYRING_FILE` (the encrypted blob, default `/run/secrets/keyring_data.enc`) and `LOOP_ORCHESTRATOR_KEYRING_PASSPHRASE_FILE` (the decryption passphrase, default `/run/secrets/keyring_passphrase`).
 
 1. Create the encrypted keyring file once (outside the container, or inside a `dev` container shell):
    ```bash
-   python -c "import keyring; keyring.set_password('loop-engine', 'anthropic_api_key', 'sk-ant-...')"
+   python -c "import keyring; keyring.set_password('loop-orchestrator', 'anthropic_api_key', 'sk-ant-...')"
    ```
 2. Run the prod image, mounting the encrypted file and its passphrase in as files — never as environment variables:
    ```bash
@@ -179,15 +179,15 @@ A bare Linux container has no OS-native keyring backend, so the prod/dev images 
      -v /path/to/keyring_data.enc:/run/secrets/keyring_data.enc:ro \
      -v /path/to/keyring_passphrase:/run/secrets/keyring_passphrase:ro \
      -v $(pwd)/state:/workspace/state \
-     loop-engine:prod run --input requirements.md --budget 5.00
+     loop-orchestrator:prod run --input requirements.md --budget 5.00
    ```
    The `state/` volume mount is required for `--resume-from` to work across separate `docker run` invocations — without it, each container starts with an empty `state/` directory.
 
 #### Dev container: Infisical provisioning
 
-The devcontainer provisions credentials from [Infisical](https://infisical.com) (project `loop-engine`, environment `dev`) instead of the manual step above, via a Universal Auth machine identity — one shared identity for the dev environment, never a per-secret static credential in the repo.
+The devcontainer provisions credentials from [Infisical](https://infisical.com) (project `loop-orchestrator`, environment `dev`) instead of the manual step above, via a Universal Auth machine identity — one shared identity for the dev environment, never a per-secret static credential in the repo.
 
-- The project itself is identified by `.infisical.json` (committed at the repo root — it holds only the project ID and default environment, never a credential; created via `infisical init`). Fill in its `workspaceId` for the real `loop-engine` project before this does anything.
+- The project itself is identified by `.infisical.json` (committed at the repo root — it holds only the project ID and default environment, never a credential; created via `infisical init`). Fill in its `workspaceId` for the real `loop-orchestrator` project before this does anything.
 - Before opening/rebuilding the devcontainer, set `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` in your **host** shell profile (same idea as the existing `GPG_HOST_DIR` requirement for [GPG commit signing](#gpg-commit-signing-from-the-host)) — get these from whoever administers the Infisical project; they're distributed out of band, never via Slack/email/repo.
 - On every container start, `.devcontainer/infisical-start.sh` authenticates via `infisical login --method=universal-auth`, then runs `.devcontainer/seed-secrets.sh` inside `infisical run` — which injects `ANTHROPIC_API_KEY`, `GITHUB_PERSONAL_ACCESS_TOKEN`, and `LOOP_ENGINE_KEYRING_PASSPHRASE` as env vars into that one child process only, never to disk. That script seeds the Anthropic key into the keyring backend above via the unchanged `keyring.set_password(...)` call, authenticates `gh` via `gh auth login --with-token`, and writes only the passphrase file to disk (at `/home/app/.infisical/keyring_passphrase` — the one secret that must persist, since `client.py` reads it continuously at runtime). There is no persistent Infisical daemon and no dotenv file with secret values left on disk.
 - This is a dev-container-only bootstrap convenience — the prod image's credential path above (mounted `/run/secrets/...` files) is unchanged and does not depend on Infisical.
@@ -200,13 +200,13 @@ The token is sourced from Infisical the same way as the Anthropic key above: `gh
 
 ### CI/automation credential fallback
 
-For a CI job that needs to run loop-engine for real (not just the mocked test suite) and can't practically mount a pre-encrypted keyring file, `client.py` also checks a **double-gated** env var pair before falling back to keyring:
+For a CI job that needs to run loop-orchestrator for real (not just the mocked test suite) and can't practically mount a pre-encrypted keyring file, `client.py` also checks a **double-gated** env var pair before falling back to keyring:
 
 ```bash
 docker run --rm \
-  -e LOOP_ENGINE_ALLOW_ENV_CREDENTIAL=1 \
-  -e LOOP_ENGINE_CI_API_KEY=sk-ant-... \
-  loop-engine:prod run --input requirements.md --budget 5.00
+  -e LOOP_ORCHESTRATOR_ALLOW_ENV_CREDENTIAL=1 \
+  -e LOOP_ORCHESTRATOR_CI_API_KEY=sk-ant-... \
+  loop-orchestrator:prod run --input requirements.md --budget 5.00
 ```
 
 **Both variables must be set together** — this is intentionally not a single `API_KEY`-style env var, so a leftover value in a shell can't silently bypass keyring. Use this only in CI/automation contexts; everywhere else, use the encrypted keyring file above.
@@ -271,14 +271,14 @@ See [`docs/architecture_definition.md`](docs/architecture_definition.md) for the
 ## Project layout
 
 ```
-src/loop_engine/
+src/loop_orchestrator/
 ├── core/           # State model, LangGraph engine
 ├── personas/       # BasePersona ABC + pm/architecture/agile_sprint_breakdown/coder_iac
 ├── loops/          # DEFAULT_LOOP composition
 ├── tools/          # llm client, state_io writer, logging config
 └── cli.py          # Typer entrypoint
 
-tests/              # mirrors src/loop_engine/ layout, plus tests/integration/
+tests/              # mirrors src/loop_orchestrator/ layout, plus tests/integration/
 sprints/            # the sprint-by-sprint build plan and its Definition of Done
 docs/               # architecture definition and project spec
 Dockerfile          # multi-stage: dev (contributor toolchain) + prod (minimal runtime)

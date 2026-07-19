@@ -1,15 +1,15 @@
-from loop_engine.core.coder_gate import RalphCoderGate
-from loop_engine.core.engine import Loop
-from loop_engine.core.gates import ArtifactGate
-from loop_engine.loops.default.loop import DEFAULT_LOOP, build_default_loop
-from loop_engine.personas.agile_sprint_breakdown.manifest import ManifestArtifactGate
-from loop_engine.personas.coder_iac.ralph import RalphCoderPersona
-from loop_engine.personas.declarative.node import (
+from loop_orchestrator.core.coder_gate import RalphCoderGate
+from loop_orchestrator.core.engine import Loop
+from loop_orchestrator.core.gates import ArtifactGate
+from loop_orchestrator.loops.default.loop import DEFAULT_LOOP, build_default_loop
+from loop_orchestrator.personas.agile_sprint_breakdown.manifest import ManifestArtifactGate
+from loop_orchestrator.personas.coder_iac.ralph import RalphCoderPersona
+from loop_orchestrator.personas.declarative.node import (
     ArchitectureGenerator,
     PMGenerator,
     SprintBreakdownGenerator,
 )
-from loop_engine.personas.pm.critic_gate import CriticGate
+from loop_orchestrator.personas.pm.critic_gate import CriticGate
 
 
 def test_default_loop_is_four_stages_in_pipeline_order() -> None:
@@ -39,7 +39,7 @@ def test_default_loop_blast_radius_reentry_targets() -> None:
 
 
 def test_document_personas_are_the_generators_with_no_flag() -> None:
-    # Phase 6: the declarative nodes are unconditional — no LOOP_ENGINE_PERSONAS,
+    # Phase 6: the declarative nodes are unconditional — no LOOP_ORCHESTRATOR_PERSONAS,
     # no classic persona classes to fall back to.
     loop = build_default_loop()
 
@@ -61,9 +61,9 @@ def test_document_personas_are_the_generators_with_no_flag() -> None:
 
 
 def test_coder_is_the_ralph_loop_with_no_flag(monkeypatch) -> None:
-    # Phase 6: Ralph is the only Coder — no LOOP_ENGINE_CODER, no classic
+    # Phase 6: Ralph is the only Coder — no LOOP_ORCHESTRATOR_CODER, no classic
     # per-sprint Coder to fall back to.
-    monkeypatch.setenv("LOOP_ENGINE_RALPH_MAX_ITERS", "12")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_RALPH_MAX_ITERS", "12")
     loop = build_default_loop()
 
     coder_stage = loop.stages[3]

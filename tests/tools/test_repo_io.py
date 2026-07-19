@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from loop_engine.tools.repo_io import (
+from loop_orchestrator.tools.repo_io import (
     PullRef,
     RepoNotResolvableError,
     RepoRef,
@@ -19,7 +19,7 @@ from loop_engine.tools.repo_io import (
 
 
 def test_create_repository_builds_argv_and_parses_url() -> None:
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.return_value = "https://github.com/acme/widget\n"
         ref = create_repository("widget", org="acme", private=True)
 
@@ -28,7 +28,7 @@ def test_create_repository_builds_argv_and_parses_url() -> None:
 
 
 def test_create_repository_defaults_to_public_flag_omitted_org() -> None:
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.return_value = "https://github.com/me/widget\n"
         ref = create_repository("widget", private=False)
 
@@ -37,7 +37,7 @@ def test_create_repository_defaults_to_public_flag_omitted_org() -> None:
 
 
 def test_clone_repo_builds_argv_and_returns_dest() -> None:
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.return_value = ""
         result = clone_repo("acme/widget", "workspaces/widget")
 
@@ -46,7 +46,7 @@ def test_clone_repo_builds_argv_and_returns_dest() -> None:
 
 
 def test_clone_repo_with_depth_appends_git_flag() -> None:
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.return_value = ""
         clone_repo("acme/widget", "workspaces/widget", depth=1)
 
@@ -57,7 +57,7 @@ def test_clone_repo_with_depth_appends_git_flag() -> None:
 
 @pytest.mark.parametrize("dest", ["/etc/passwd", "../escape", "a/../../b"])
 def test_clone_repo_rejects_traversal_dest_before_any_gh_call(dest) -> None:
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         with pytest.raises(ValueError, match="Invalid clone destination"):
             clone_repo("acme/widget", dest)
     run_gh.assert_not_called()
@@ -69,7 +69,7 @@ def test_clone_repo_rejects_symlink_escape(tmp_path, monkeypatch) -> None:
     outside.mkdir(exist_ok=True)
     (tmp_path / "escape_link").symlink_to(outside)
 
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         with pytest.raises(ValueError, match="escapes the run tree"):
             clone_repo("acme/widget", "escape_link")
     run_gh.assert_not_called()
@@ -85,14 +85,14 @@ def test_clone_repo_rejects_symlinked_parent_with_nonexistent_target(tmp_path, m
     outside.mkdir(exist_ok=True)
     (tmp_path / "escape_link").symlink_to(outside)
 
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         with pytest.raises(ValueError, match="escapes the run tree"):
             clone_repo("acme/widget", "escape_link/repo")
     run_gh.assert_not_called()
 
 
 def test_create_branch_with_explicit_base_resolves_sha_then_creates_ref() -> None:
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.side_effect = ["abc123\n", ""]
         ref = create_branch("acme", "widget", "feature-x", base="develop")
 
@@ -119,7 +119,7 @@ def test_create_branch_with_explicit_base_resolves_sha_then_creates_ref() -> Non
 
 
 def test_create_branch_without_base_resolves_default_branch_first() -> None:
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.side_effect = ["main\n", "def456\n", ""]
         ref = create_branch("acme", "widget", "feature-y")
 
@@ -140,7 +140,7 @@ def test_create_branch_without_base_resolves_default_branch_first() -> None:
 
 
 def test_open_pr_builds_argv_and_parses_number() -> None:
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.return_value = "https://github.com/acme/widget/pull/42\n"
         ref = open_pr(
             "acme", "widget", head="feature-x", base="develop", title="Add x", body="does x"
@@ -166,7 +166,7 @@ def test_open_pr_builds_argv_and_parses_number() -> None:
 
 
 def test_create_ruleset_posts_to_the_rulesets_endpoint_via_stdin_input() -> None:
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.return_value = json.dumps({"id": 18847726})
         ruleset_id = create_ruleset("glunk-works", "widget", branches=["main", "develop"])
 
@@ -187,7 +187,7 @@ def test_create_ruleset_posts_to_the_rulesets_endpoint_via_stdin_input() -> None
 
 
 def test_create_ruleset_targets_both_main_and_develop() -> None:
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.return_value = json.dumps({"id": 1})
         create_ruleset("glunk-works", "widget", branches=["main", "develop"])
 
@@ -199,7 +199,7 @@ def test_create_ruleset_targets_both_main_and_develop() -> None:
 
 
 def test_create_ruleset_declares_exactly_three_rule_types() -> None:
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.return_value = json.dumps({"id": 1})
         create_ruleset("glunk-works", "widget", branches=["main", "develop"])
 
@@ -214,7 +214,7 @@ def test_create_ruleset_pull_request_rule_declares_full_parameters() -> None:
     dict entirely still passes it and 563/563 still pass, but a live POST
     would 422 (GitHub requires the full parameters schema, not just the
     rule type). Assert the dict itself."""
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.return_value = json.dumps({"id": 1})
         create_ruleset("glunk-works", "widget", branches=["main", "develop"])
 
@@ -233,7 +233,7 @@ def test_create_ruleset_rejects_empty_branches_before_any_gh_call() -> None:
     """S7: `branches=[]` would build an `include=[]` -- a ruleset gating ZERO
     refs -- and still return an id, silently reporting installed protection.
     Guard it, and guard it BEFORE shelling out."""
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         with pytest.raises(ValueError):
             create_ruleset("glunk-works", "widget", branches=[])
     run_gh.assert_not_called()
@@ -247,7 +247,7 @@ def test_create_ruleset_wraps_a_rejected_gh_call_and_carries_its_stderr() -> Non
     stderr (the 403/422 body), the diagnostic `str(CalledProcessError)` alone
     drops -- otherwise `BootstrapResult.ruleset_error` cannot report *why* the
     install failed."""
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.side_effect = subprocess.CalledProcessError(
             1, ["gh", "api"], stderr="HTTP 422: Unprocessable Entity"
         )
@@ -262,7 +262,7 @@ def test_create_ruleset_does_not_wrap_a_gh_timeout() -> None:
     maps to RULESET_FAILED = 'not created, safe to tear down'). It propagates
     unwrapped, exactly like the unparseable-success-body case below. Hence
     `create_ruleset` catches only `CalledProcessError`, not `SubprocessError`."""
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.side_effect = subprocess.TimeoutExpired(["gh", "api"], 60)
         with pytest.raises(subprocess.TimeoutExpired):
             create_ruleset("glunk-works", "widget", branches=["main", "develop"])
@@ -273,7 +273,7 @@ def test_create_ruleset_does_not_wrap_an_unparseable_success_body() -> None:
     unparseable body must NOT be wrapped in `RulesetInstallError` -- the POST
     likely succeeded, so the raw parse error (here `KeyError` on a missing
     `id`) must propagate unwrapped."""
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.return_value = json.dumps({"not_id": 1})
         with pytest.raises(KeyError):
             create_ruleset("glunk-works", "widget", branches=["main", "develop"])
@@ -283,13 +283,13 @@ def test_create_ruleset_body_carries_the_required_name_field() -> None:
     """S2: `name` is a REQUIRED field in GitHub's ruleset POST schema and was
     pinned by no test -- assert it rides the body under both the default and
     an explicit override."""
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.return_value = json.dumps({"id": 1})
         create_ruleset("glunk-works", "widget", branches=["main", "develop"])
     body = json.loads(run_gh.call_args.kwargs["input_data"])
     assert body["name"] == "protect-integration-branches"
 
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.return_value = json.dumps({"id": 1})
         create_ruleset("glunk-works", "widget", branches=["main"], name="custom-name")
     body = json.loads(run_gh.call_args.kwargs["input_data"])
@@ -300,7 +300,7 @@ def test_create_ruleset_declares_no_required_status_checks() -> None:
     """FD4's trap, named explicitly: a generated repo ships no CI, so a
     required status check in the shipped ruleset would be a permanent merge
     deadlock. This must never be reintroduced, even incidentally."""
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.return_value = json.dumps({"id": 1})
         create_ruleset("glunk-works", "widget", branches=["main", "develop"])
 
@@ -315,7 +315,7 @@ def test_create_ruleset_pipes_body_through_subprocess_input() -> None:
     directly and assert the JSON body actually rides the `input` kwarg --
     the channel `create_ruleset`'s body travels through, not just the body
     it hands to `_run_gh`."""
-    with patch("loop_engine.tools.repo_io.github.subprocess.run") as run:
+    with patch("loop_orchestrator.tools.repo_io.github.subprocess.run") as run:
         run.return_value = subprocess.CompletedProcess(
             args=["gh"], returncode=0, stdout=json.dumps({"id": 42}), stderr=""
         )
@@ -336,7 +336,7 @@ def test_resolve_repo_slug_shells_gh_repo_view() -> None:
     """Repo introspection lives here, not in `issue_io` — but its caller is the
     issue filer, which needs an explicit destination instead of `gh`'s implicit
     CWD resolution (finding R8)."""
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.return_value = "acme/repo\n"
         slug = resolve_repo_slug()
 
@@ -347,7 +347,7 @@ def test_resolve_repo_slug_shells_gh_repo_view() -> None:
 
 
 def test_resolve_repo_slug_resolves_against_the_given_cwd() -> None:
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.return_value = "acme/other\n"
         resolve_repo_slug("/orchestrator/checkout")
 
@@ -359,7 +359,7 @@ def test_resolve_repo_slug_raises_a_typed_error_when_gh_fails() -> None:
     itself importing `subprocess` -- `repo_io` stays the sole owner of that
     surface, so a raw `CalledProcessError` must not cross this module's
     boundary."""
-    with patch("loop_engine.tools.repo_io.github._run_gh") as run_gh:
+    with patch("loop_orchestrator.tools.repo_io.github._run_gh") as run_gh:
         run_gh.side_effect = subprocess.CalledProcessError(
             1, ["gh", "repo", "view"], stderr="not a git repository"
         )

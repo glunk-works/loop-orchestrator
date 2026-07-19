@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from loop_engine.flows.bootstrap import BootstrapRequest, BootstrapStatus, run_bootstrap
-from loop_engine.tools import git_io, scaffold
-from loop_engine.tools.repo_io import RepoRef
+from loop_orchestrator.flows.bootstrap import BootstrapRequest, BootstrapStatus, run_bootstrap
+from loop_orchestrator.tools import git_io, scaffold
+from loop_orchestrator.tools.repo_io import RepoRef
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -112,7 +112,7 @@ def test_bootstrap_writes_skeleton_pushes_main_and_creates_develop_after_push(
 
 
 def test_no_open_pr_or_merge_verb_reachable_end_to_end() -> None:
-    from loop_engine.tools import repo_io as real_repo_io
+    from loop_orchestrator.tools import repo_io as real_repo_io
 
     assert not hasattr(real_repo_io, "merge_pull_request")
     assert not any("merge" in name.lower() for name in real_repo_io.__all__)

@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from loop_engine.core.state import State, default_artifact_path
-from loop_engine.tools import artifact_store
-from loop_engine.tools.artifact_store import has_artifact, publish_artifacts
+from loop_orchestrator.core.state import State, default_artifact_path
+from loop_orchestrator.tools import artifact_store
+from loop_orchestrator.tools.artifact_store import has_artifact, publish_artifacts
 
 
 @pytest.fixture(autouse=True)

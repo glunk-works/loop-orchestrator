@@ -3,10 +3,10 @@ import types
 
 import pytest
 
-from loop_engine.core.notify import EventKind, LifecycleEvent, NoOpNotifier
-from loop_engine.core.state import CURRENT_SCHEMA_VERSION, RunStatus, State
-from loop_engine.tools.slack_io import SlackNotifier, build_notifier_from_env
-from loop_engine.tools.slack_io.notifier import _CHANNEL_ENV, _TOKEN_ENV
+from loop_orchestrator.core.notify import EventKind, LifecycleEvent, NoOpNotifier
+from loop_orchestrator.core.state import CURRENT_SCHEMA_VERSION, RunStatus, State
+from loop_orchestrator.tools.slack_io import SlackNotifier, build_notifier_from_env
+from loop_orchestrator.tools.slack_io.notifier import _CHANNEL_ENV, _TOKEN_ENV
 
 _FAKE_TOKEN = "xoxb-fake-not-a-real-token"  # noqa: S105 -- fixture literal, not a real credential
 
@@ -112,7 +112,7 @@ def test_slack_notifier_swallows_a_formatter_bug(monkeypatch) -> None:
 
     _install_fake_slack_sdk(monkeypatch, _Client)
     monkeypatch.setattr(
-        "loop_engine.tools.slack_io.notifier.format_event",
+        "loop_orchestrator.tools.slack_io.notifier.format_event",
         lambda event: (_ for _ in ()).throw(RuntimeError("formatter bug")),
     )
 

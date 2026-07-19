@@ -2,8 +2,8 @@ import dataclasses
 
 import pytest
 
-from loop_engine.core.notify import EventKind, LifecycleEvent, NoOpNotifier
-from loop_engine.core.state import CURRENT_SCHEMA_VERSION, RunStatus, State
+from loop_orchestrator.core.notify import EventKind, LifecycleEvent, NoOpNotifier
+from loop_orchestrator.core.state import CURRENT_SCHEMA_VERSION, RunStatus, State
 
 
 def _state() -> State:

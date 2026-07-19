@@ -3,14 +3,14 @@ from pathlib import Path
 
 import pytest
 
-from loop_engine.tools.coder_tools import grep, list_files, read_file
-from loop_engine.tools.coder_tools.run_lint import (
+from loop_orchestrator.tools.coder_tools import grep, list_files, read_file
+from loop_orchestrator.tools.coder_tools.run_lint import (
     format_run_lint_result,
     parse_run_lint_result,
     run_lint,
     run_ruff,
 )
-from loop_engine.tools.coder_tools.run_tests import (
+from loop_orchestrator.tools.coder_tools.run_tests import (
     format_run_tests_result,
     parse_run_tests_result,
     run_pytest,
@@ -174,7 +174,7 @@ def test_format_parse_run_tests_result_round_trips(exit_code: int, output: str) 
 
 
 def test_run_tests_emits_exact_legacy_string(monkeypatch) -> None:
-    import loop_engine.tools.coder_tools.run_tests as run_tests_module
+    import loop_orchestrator.tools.coder_tools.run_tests as run_tests_module
 
     monkeypatch.setattr(run_tests_module, "run_pytest", lambda path: (0, "1 passed in 0.01s"))
 
@@ -253,7 +253,7 @@ def test_format_parse_run_lint_result_round_trips(exit_code: int, output: str) -
 
 
 def test_run_lint_emits_exact_legacy_string(monkeypatch) -> None:
-    import loop_engine.tools.coder_tools.run_lint as run_lint_module
+    import loop_orchestrator.tools.coder_tools.run_lint as run_lint_module
 
     monkeypatch.setattr(run_lint_module, "run_ruff", lambda path: (0, "All checks passed!"))
 

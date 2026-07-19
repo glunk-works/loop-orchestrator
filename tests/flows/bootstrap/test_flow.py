@@ -6,13 +6,13 @@ git_io) proof."""
 import pytest
 from pydantic import ValidationError
 
-from loop_engine.flows.bootstrap import (
+from loop_orchestrator.flows.bootstrap import (
     BootstrapRequest,
     BootstrapResult,
     BootstrapStatus,
     run_bootstrap,
 )
-from loop_engine.tools.repo_io import RepoRef, RulesetInstallError
+from loop_orchestrator.tools.repo_io import RepoRef, RulesetInstallError
 
 
 class _FakeRepoIO:
@@ -220,7 +220,7 @@ def test_non_ruleset_install_error_propagates_instead_of_ruleset_failed() -> Non
 
 
 def test_no_open_pr_or_merge_verb_is_ever_reachable() -> None:
-    from loop_engine.tools import repo_io as real_repo_io
+    from loop_orchestrator.tools import repo_io as real_repo_io
 
     assert not hasattr(real_repo_io, "merge_pull_request")
     repo_io = _FakeRepoIO()
@@ -275,7 +275,7 @@ def test_flow_module_imports_no_keyring_and_writes_no_files_directly() -> None:
 
     module_path = (
         Path(__file__).resolve().parent.parent.parent.parent
-        / "src/loop_engine/flows/bootstrap/flow.py"
+        / "src/loop_orchestrator/flows/bootstrap/flow.py"
     )
     tree = ast.parse(module_path.read_text())
     disallowed_writes = {"open", "write_text", "write_bytes"}

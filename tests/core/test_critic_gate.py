@@ -4,10 +4,10 @@ import ast
 import json
 from pathlib import Path
 
-from loop_engine.core.gates import GateDecision
-from loop_engine.core.state import State
-from loop_engine.personas.pm.critic_gate import CriticGate
-from loop_engine.personas.pm.fields import CHECKLIST_FIELDS
+from loop_orchestrator.core.gates import GateDecision
+from loop_orchestrator.core.state import State
+from loop_orchestrator.personas.pm.critic_gate import CriticGate
+from loop_orchestrator.personas.pm.fields import CHECKLIST_FIELDS
 
 _CLEAN = {field: f"value for {field}" for field in CHECKLIST_FIELDS}
 _CLEAN["in_scope"] = "reset flow"
@@ -54,7 +54,7 @@ def test_findings_are_deterministic_for_no_progress_guard() -> None:
 
 
 def test_critic_gate_imports_no_pmpersona_class() -> None:
-    src = Path(__file__).resolve().parents[2] / "src/loop_engine/personas/pm/critic_gate.py"
+    src = Path(__file__).resolve().parents[2] / "src/loop_orchestrator/personas/pm/critic_gate.py"
     tree = ast.parse(src.read_text())
     imported = []
     for node in ast.walk(tree):
@@ -63,4 +63,4 @@ def test_critic_gate_imports_no_pmpersona_class() -> None:
         elif isinstance(node, ast.Import):
             imported.extend(a.name for a in node.names)
     # The gate reuses the pure critic checks, never the PMPersona class module.
-    assert "loop_engine.personas.pm.persona" not in imported
+    assert "loop_orchestrator.personas.pm.persona" not in imported

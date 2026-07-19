@@ -1,12 +1,12 @@
 import ssl
 from pathlib import Path
 
-from loop_engine.tools.llm.client import LLMClient
+from loop_orchestrator.tools.llm.client import LLMClient
 
 CLIENT_SOURCE_PATH = (
     Path(__file__).resolve().parent.parent.parent
     / "src"
-    / "loop_engine"
+    / "loop_orchestrator"
     / "tools"
     / "llm"
     / "client.py"

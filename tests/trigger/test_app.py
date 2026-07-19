@@ -5,8 +5,8 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from loop_engine.trigger.app import create_app
-from loop_engine.trigger.parse import RunRequest
+from loop_orchestrator.trigger.app import create_app
+from loop_orchestrator.trigger.parse import RunRequest
 
 _SECRET = "test-webhook-secret-not-a-real-credential"
 
@@ -38,7 +38,7 @@ def _sign(body: bytes, secret: str = _SECRET) -> str:
 
 
 def _client(monkeypatch) -> tuple[TestClient, _FakeDispatcher]:
-    monkeypatch.setenv("LOOP_ENGINE_WEBHOOK_SECRET", _SECRET)
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_WEBHOOK_SECRET", _SECRET)
     fake = _FakeDispatcher()
     app = create_app(dispatcher=fake)
     return TestClient(app), fake
@@ -155,7 +155,7 @@ def test_signed_but_unparseable_body_returns_400_not_500(monkeypatch) -> None:
 
 
 def test_construct_app_without_secret_raises(monkeypatch) -> None:
-    monkeypatch.delenv("LOOP_ENGINE_WEBHOOK_SECRET", raising=False)
+    monkeypatch.delenv("LOOP_ORCHESTRATOR_WEBHOOK_SECRET", raising=False)
 
     with pytest.raises(RuntimeError):
         create_app()

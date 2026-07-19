@@ -1,11 +1,11 @@
 import json
 import logging
 
-from loop_engine.core.engine import Loop, Stage
-from loop_engine.core.gates import ArtifactGate
-from loop_engine.core.graph_engine import run_graph_loop
-from loop_engine.core.state import State
-from loop_engine.personas.base import BasePersona
+from loop_orchestrator.core.engine import Loop, Stage
+from loop_orchestrator.core.gates import ArtifactGate
+from loop_orchestrator.core.graph_engine import run_graph_loop
+from loop_orchestrator.core.state import State
+from loop_orchestrator.personas.base import BasePersona
 
 
 class StubPersona(BasePersona):
@@ -40,10 +40,10 @@ def test_run_loop_emits_json_log_line_per_stage(tmp_path, monkeypatch, caplog) -
         stages=[Stage(persona=StubPersona(k), gate=ArtifactGate(k)) for k in ("a", "b", "c")]
     )
 
-    with caplog.at_level(logging.INFO, logger="loop_engine.cost"):
+    with caplog.at_level(logging.INFO, logger="loop_orchestrator.cost"):
         run_graph_loop(loop, _initial_state(), StubClient(budget_usd=10.0))
 
-    records = [r for r in caplog.records if r.name == "loop_engine.cost"]
+    records = [r for r in caplog.records if r.name == "loop_orchestrator.cost"]
     assert len(records) == 3
 
     for record in records:

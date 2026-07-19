@@ -9,10 +9,14 @@ from pathlib import Path
 
 import pytest
 
-from loop_engine.core.state import RunStatus, State
-from loop_engine.flows.maintenance import MaintenanceRequest, MaintenanceStatus, run_maintenance
-from loop_engine.tools import git_io
-from loop_engine.tools.repo_io import PullRef
+from loop_orchestrator.core.state import RunStatus, State
+from loop_orchestrator.flows.maintenance import (
+    MaintenanceRequest,
+    MaintenanceStatus,
+    run_maintenance,
+)
+from loop_orchestrator.tools import git_io
+from loop_orchestrator.tools.repo_io import PullRef
 
 
 def _completed_state() -> State:
@@ -171,7 +175,7 @@ def test_completed_run_with_no_diff_pushes_nothing_and_does_not_crash(target_rep
 def test_open_pr_is_the_terminal_github_call_no_merge_verb_reachable() -> None:
     """`repo_io` exposes no merge verb at all -- auto-merge can never be
     reached through this flow, regardless of gate outcome."""
-    from loop_engine.tools import repo_io as real_repo_io
+    from loop_orchestrator.tools import repo_io as real_repo_io
 
     assert not hasattr(real_repo_io, "merge_pull_request")
     assert not any("merge" in name.lower() for name in real_repo_io.__all__)

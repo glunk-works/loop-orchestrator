@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from loop_engine.tools.agent_state import (
+from loop_orchestrator.tools.agent_state import (
     MemoryEntry,
     ScratchpadState,
     append_memory,
@@ -11,7 +11,7 @@ from loop_engine.tools.agent_state import (
     read_scratchpad,
     write_scratchpad,
 )
-from loop_engine.tools.state_io.writer import (
+from loop_orchestrator.tools.state_io.writer import (
     AGENT_MEMORY_PATH,
     AppendOnlyViolationError,
     append_agent_memory,
@@ -78,7 +78,7 @@ def test_scratchpad_state_forbids_extra_fields() -> None:
 
 def test_write_agent_scratchpad_rejects_traversal() -> None:
     # The public API only ever passes constants, but the writer guards anyway.
-    from loop_engine.tools.state_io import writer
+    from loop_orchestrator.tools.state_io import writer
 
     with pytest.raises(ValueError):
         writer._agent_target("../escape.md")

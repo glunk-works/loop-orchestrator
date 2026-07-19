@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from loop_engine.tools.state_io import writer as state_writer
-from loop_engine.tools.state_io.writer import state_root
-from loop_engine.tools.worktree.manager import (
+from loop_orchestrator.tools.state_io import writer as state_writer
+from loop_orchestrator.tools.state_io.writer import state_root
+from loop_orchestrator.tools.worktree.manager import (
     WorktreeError,
     branch_name,
     cleanup,
@@ -36,14 +36,14 @@ def repo(tmp_path, monkeypatch):
     _git(tmp_path, "add", "seed.txt")
     _git(tmp_path, "commit", "-m", "seed")
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "worktree")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_ISOLATION", "worktree")
     # state_root is a module global; ensure a clean baseline per test.
     state_writer.set_state_root(None)
     return tmp_path
 
 
 def test_flag_off_by_default(monkeypatch):
-    monkeypatch.delenv("LOOP_ENGINE_ISOLATION", raising=False)
+    monkeypatch.delenv("LOOP_ORCHESTRATOR_ISOLATION", raising=False)
     assert use_worktree_isolation() is False
 
 
@@ -66,7 +66,7 @@ def test_create_is_idempotent(repo):
 
 
 def test_worktree_root_env_override(repo, monkeypatch):
-    monkeypatch.setenv("LOOP_ENGINE_WORKTREE_ROOT", str(repo / "custom_wt"))
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_WORKTREE_ROOT", str(repo / "custom_wt"))
     path = create("run002")
     assert path.parent == (repo / "custom_wt").resolve()
 
@@ -89,7 +89,7 @@ def test_worktree_run_restores_cwd_on_exception(repo):
 
 
 def test_worktree_run_passthrough_when_flag_off(repo, monkeypatch):
-    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "none")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_ISOLATION", "none")
     origin = Path.cwd()
     with worktree_run("run005") as wt:
         assert wt is None
@@ -111,7 +111,7 @@ def test_resume_reuse_enters_existing_worktree(repo):
 
 def test_origin_cwd_is_the_main_checkout_while_inside_the_worktree(repo):
     """The invariant the issue filer leans on (R8): inside a worktree the process
-    CWD is the worktree — whose remote is loop-engine itself — while `origin_cwd()`
+    CWD is the worktree — whose remote is loop-orchestrator itself — while `origin_cwd()`
     is still the checkout the orchestrator was launched from."""
     assert origin_cwd() == repo  # outside a worktree: just the CWD
 
@@ -174,7 +174,7 @@ def test_origin_cwd_context_does_not_leak_into_a_worker_thread(repo):
 
 
 def test_origin_cwd_is_the_cwd_when_isolation_is_off(repo, monkeypatch):
-    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "none")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_ISOLATION", "none")
     with worktree_run("run021") as wt:
         assert wt is None
         # No worktree, so the CWD *is* the intended tree (e.g. a flows/ clone).
@@ -191,7 +191,7 @@ def test_missing_worktree_error_names_the_isolation_mismatch_cause(repo):
 
     message = str(exc.value)
     assert "pruned" in message
-    assert "LOOP_ENGINE_ISOLATION=none" in message
+    assert "LOOP_ORCHESTRATOR_ISOLATION=none" in message
     assert "same isolation mode" in message
 
 
@@ -201,7 +201,7 @@ def test_resume_under_none_errors_when_paused_run_has_a_worktree(repo, monkeypat
     disk; resuming under `none` must not silently passthrough against the
     wrong tree."""
     create("run007")
-    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "none")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_ISOLATION", "none")
 
     with pytest.raises(WorktreeError, match="isolation"):
         with worktree_run("run007", reuse=True):
@@ -211,7 +211,7 @@ def test_resume_under_none_errors_when_paused_run_has_a_worktree(repo, monkeypat
 def test_resume_under_none_passthrough_when_no_worktree_exists(repo, monkeypatch):
     """A run that was never worktree-isolated resumes fine under `none` —
     the R10 guard only fires when a worktree actually exists."""
-    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "none")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_ISOLATION", "none")
     origin = Path.cwd()
 
     with worktree_run("run008", reuse=True) as wt:
@@ -247,8 +247,8 @@ def test_prune_all_removes_every_run_worktree(repo):
 def test_snapshots_land_in_main_checkout_artifacts_in_worktree(repo):
     """The core D2 invariant: under a worktree, artifacts follow the chdir into
     the worktree; state snapshots stay anchored to the main checkout."""
-    from loop_engine.core.state import State
-    from loop_engine.tools.state_io.writer import write_artifact, write_state_snapshot
+    from loop_orchestrator.core.state import State
+    from loop_orchestrator.tools.state_io.writer import write_artifact, write_state_snapshot
 
     state = State(schema_version=1, run_id="run010", stage_history=[], artifacts={})
     with worktree_run("run010") as wt:

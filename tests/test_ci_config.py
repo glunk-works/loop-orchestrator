@@ -204,7 +204,7 @@ def test_pr_title_job_gates_nothing() -> None:
 def test_claude_md_documents_the_human_abort_exit_code() -> None:
     """The CLI's exit codes are a contract a supervising script reads; a
     deliberate human abort must be documented and distinct from a crash (1)."""
-    from loop_engine.cli import ABORTED_BY_HUMAN_EXIT_CODE
+    from loop_orchestrator.cli import ABORTED_BY_HUMAN_EXIT_CODE
 
     text = (REPO_ROOT / "CLAUDE.md").read_text()
     assert f"{ABORTED_BY_HUMAN_EXIT_CODE} aborted by the human" in text

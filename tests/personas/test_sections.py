@@ -1,4 +1,4 @@
-from loop_engine.personas.sections import merge
+from loop_orchestrator.personas.sections import merge
 
 PREVIOUS = """# Doc Title
 

@@ -8,6 +8,6 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
 def test_bundled_claude_md_is_byte_identical_to_ai_context_conventions() -> None:
-    bundled = _REPO_ROOT / "src/loop_engine/tools/scaffold/templates/CLAUDE.md"
+    bundled = _REPO_ROOT / "src/loop_orchestrator/tools/scaffold/templates/CLAUDE.md"
     source = _REPO_ROOT / ".ai/context/conventions.md"
     assert bundled.read_bytes() == source.read_bytes()

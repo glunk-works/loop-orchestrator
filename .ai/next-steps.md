@@ -7,7 +7,14 @@ Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 ## Now
 **Sprint 42 — package rename `loop-engine` → `loop-orchestrator` — code done, on PR #143,
 awaiting the fresh-session Architect Review.** `sprint_status: awaiting_architect_review`,
-assigned **Opus/architect**. Branch `sprint/42-rename-loop-orchestrator`, head `bd52975`.
+assigned **Opus/architect**. Branch `sprint/42-rename-loop-orchestrator`, **head now `b40b559`**
+(the lint fix — see below; supersedes `bd52975`).
+
+> **A genuinely fresh session must post the review.** The 2026-07-19 review session authored
+> `bd52975` AND ran `/code-review` AND dispatched the coder that authored `b40b559`, so it is a
+> diff-author and cannot make the "*did not author the diff*" attestation. New window → `/model
+> opus` → `/resume` → `/code-review #143` → post against `b40b559`. **Confirm CI green first**
+> (`/pr-checks`) — the CI re-run had not been scheduled by GitHub at handoff (queue lag).
 
 ## Just done (Opus/architect session, 2026-07-18/19)
 - **Resumed onto drift:** the cursor said "between sprints, await backlog pick," but reality
@@ -29,21 +36,46 @@ assigned **Opus/architect**. Branch `sprint/42-rename-loop-orchestrator`, head `
   diff*" attestation would be a **knowing false statement** (`workflow.md`). The gate must come
   from a genuinely fresh session.
 
-## Review findings (for the fresh reviewer — re-derive, don't just copy)
-1. **FIXED in bd52975** — `.claude/agents/live-verify.md` executable command + `ship/SKILL.md`
-   label namespace (above).
-2. *(low confidence, not fixed)* — `containers/keyring_backend/cryptfile_backend.py` reads
-   `LOOP_ORCHESTRATOR_KEYRING_FILE` / `..._PASSPHRASE_FILE` with a **hard cut** (no env_compat
-   fallback — the standalone backend can't import the shim). Only risk: a live container that
-   overrides these via the legacy `LOOP_ENGINE_*` names → falls through to the `/run/secrets/…`
-   default. No tracked config sets the legacy name (dev sets the new one; prod uses defaults).
+## Then — fresh review session (2026-07-19) caught a RED PR, fixed it, did not post
+- **Cold `/code-review #143` re-derivation** confirmed the rename clean (see findings) **but**
+  surfaced a **blocking CI-lint failure** the prior session missed: 2× E501 in
+  `test_slack_io_inbound.py` (the rename pushed two lines 100→106 chars). CI `lint` was **red**,
+  cascading every other job to `skipped`. Verified against the live CI log + byte counts — not a
+  local-only artifact.
+- **Dispatched the `coder` subagent** (user's call) to fix it: `hatch run format` wrapped the two
+  lines (minimal 2-line diff), **full** local gate green (lint + format-check + 787 tests), signed
+  commit `b40b559` pushed to `sprint/42-rename-loop-orchestrator`. PR head is now `b40b559`.
+- **Still did NOT post the review** — this session is now itself a diff-author (it dispatched the
+  fix), so the fresh-session attestation still has to come from a *new* session, now targeting
+  `b40b559`. GitHub had not scheduled the CI re-run at handoff (queue lag) — confirm green first.
+
+## Review findings (2026-07-19 cold re-derivation — re-derive again, don't just copy)
+0. **BLOCKING → FIXED in `b40b559`** — the rename lengthened two string literals
+   (`"loop-engine"` → `"loop-orchestrator"`, +6 chars) in `tests/tools/test_slack_io_inbound.py`
+   lines 212/218 from exactly 100 → **106 chars**, tripping **ruff E501**. `hatch run lint` went
+   red on CI, cascading `test`/`format-check`/`sbom`/`secrets-scan`/`dependency-audit` into
+   **skipping** (`needs: lint` failed) — the PR was **not mergeable**. The prior "787 passed" was
+   a local *test* run that skipped `hatch run lint` (the recurring "run the FULL gate" miss).
+   Fixed via `hatch run format` (auto-wrapped the two calls), full local gate re-run green
+   (lint + format-check + **787** tests). *This is why the review must target `b40b559`, not `bd52975`.*
+1. **FIXED in `bd52975`** — `.claude/agents/live-verify.md` executable command + `ship/SKILL.md`
+   label namespace.
+2. **Confirmed NON-issue** — `containers/keyring_backend/cryptfile_backend.py`'s **hard cut** to
+   `LOOP_ORCHESTRATOR_KEYRING_FILE` / `..._PASSPHRASE_FILE` (no env_compat fallback — the
+   standalone backend can't import the shim) is safe: its **only** setter, `.devcontainer/
+   devcontainer.json:30-31`, was renamed to the new names in the **same PR**, and code + env
+   travel together in the image build. No legacy value can strand. (Cold re-check upgraded this
+   from the prior "low confidence" to a non-issue.)
 3. *(minor, not fixed)* — `sbom.json` regenerated in an env missing `mutmut`, dropping 5 real
    transitive components (`glob2`, `junit-xml`, `parso`, `pony`, `toml`). Non-blocking: the
    `sbom` CI job regenerates + uploads, never `git diff`s; direction is arguably more-correct.
 4. **Explicitly NOT findings** — the ~40 `loop-engine` refs in `sprints/*/sprint_plan.md`,
    `docs/project_spec.json`, `requirements.md` are legitimately **historical**; and the Infisical
    `--path=/loop-engine` + secret name `LOOP_ENGINE_KEYRING_PASSPHRASE` are external-store
-   identifiers deliberately preserved (with comments added in the PR).
+   identifiers deliberately preserved (with comments added in the PR). Every project-side env
+   reader routes through `getenv_compat` (verified by grep); `mcp/config.py`'s `_CONFIG_FILENAME`
+   tracks the renamed `loop_orchestrator.mcp.json`; no stale operational refs remain in
+   `.github/` / containers / devcontainer.
 
 ## Next — post the fresh-session Architect Review on #143 (Opus, NEW session)
 `new window → /model opus → /resume → /code-review #143 → post`. Body must OPEN with the

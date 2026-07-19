@@ -22,13 +22,13 @@ import sys
 
 import pytest
 
-from loop_engine.core.engine import InvalidStateTransitionError, Loop, Stage
-from loop_engine.core.gates import ArtifactGate, GateDecision, GateResult
-from loop_engine.core.graph_engine import build_escalation_filer_from_env, run_graph_loop
-from loop_engine.core.notify import EventKind, LifecycleEvent
-from loop_engine.core.state import IssueRef, RunStatus, SlackRef, StageRecord
-from loop_engine.personas.base import BasePersona
-from loop_engine.tools.llm.client import ToolLoopExceededError
+from loop_orchestrator.core.engine import InvalidStateTransitionError, Loop, Stage
+from loop_orchestrator.core.gates import ArtifactGate, GateDecision, GateResult
+from loop_orchestrator.core.graph_engine import build_escalation_filer_from_env, run_graph_loop
+from loop_orchestrator.core.notify import EventKind, LifecycleEvent
+from loop_orchestrator.core.state import IssueRef, RunStatus, SlackRef, StageRecord
+from loop_orchestrator.personas.base import BasePersona
+from loop_orchestrator.tools.llm.client import ToolLoopExceededError
 from tests.core.conftest import absolutize_mutmut_source_paths
 from tests.core.test_engine import QuestionAskingPersona, _initial_state, _stub_llm_client
 
@@ -105,7 +105,7 @@ def test_run_graph_loop_resets_stale_status_and_pending_issue_from_input_state()
     # completion node unconditionally stamps `status=COMPLETED` at the end
     # regardless of what happened at the start, masking the bug. Observe the
     # status a persona actually SEES mid-run instead.
-    from loop_engine.core.gates import ArtifactGate
+    from loop_orchestrator.core.gates import ArtifactGate
 
     seen_status: list[RunStatus] = []
 
@@ -307,7 +307,7 @@ def test_run_graph_loop_clears_stale_pending_slack_from_input_state() -> None:
     # not carry forward a stale pending_slack from a PRIOR Slack pause, or a
     # freshly-completed run would still report itself as awaiting a Slack
     # answer via cli._report_outcome's pending_slack check.
-    from loop_engine.core.gates import ArtifactGate
+    from loop_orchestrator.core.gates import ArtifactGate
 
     class SimplePersona(BasePersona):
         produces = ("doc",)
@@ -334,36 +334,36 @@ def test_build_escalation_filer_from_env_unset_returns_none(monkeypatch) -> None
     # fallback stays the single resolution point for the issue transport
     # (and the one tests patch), so this must return None, not eagerly
     # resolve `default_issue_filer` itself.
-    monkeypatch.delenv("LOOP_ENGINE_ESCALATION_TRANSPORT", raising=False)
+    monkeypatch.delenv("LOOP_ORCHESTRATOR_ESCALATION_TRANSPORT", raising=False)
     assert build_escalation_filer_from_env() is None
 
 
 def test_build_escalation_filer_from_env_explicit_issue_returns_none(monkeypatch) -> None:
-    monkeypatch.setenv("LOOP_ENGINE_ESCALATION_TRANSPORT", "issue")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_ESCALATION_TRANSPORT", "issue")
     assert build_escalation_filer_from_env() is None
 
 
 def test_build_escalation_filer_from_env_slack_missing_token_fails_closed(monkeypatch) -> None:
-    monkeypatch.setenv("LOOP_ENGINE_ESCALATION_TRANSPORT", "slack")
-    monkeypatch.delenv("LOOP_ENGINE_SLACK_BOT_TOKEN", raising=False)
-    monkeypatch.setenv("LOOP_ENGINE_SLACK_CHANNEL", "C123")
-    with pytest.raises(RuntimeError, match="LOOP_ENGINE_ESCALATION_TRANSPORT=slack"):
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_ESCALATION_TRANSPORT", "slack")
+    monkeypatch.delenv("LOOP_ORCHESTRATOR_SLACK_BOT_TOKEN", raising=False)
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_SLACK_CHANNEL", "C123")
+    with pytest.raises(RuntimeError, match="LOOP_ORCHESTRATOR_ESCALATION_TRANSPORT=slack"):
         build_escalation_filer_from_env()
 
 
 def test_build_escalation_filer_from_env_slack_missing_channel_fails_closed(monkeypatch) -> None:
-    monkeypatch.setenv("LOOP_ENGINE_ESCALATION_TRANSPORT", "slack")
-    monkeypatch.setenv("LOOP_ENGINE_SLACK_BOT_TOKEN", "xoxb-test")
-    monkeypatch.delenv("LOOP_ENGINE_SLACK_CHANNEL", raising=False)
-    with pytest.raises(RuntimeError, match="LOOP_ENGINE_ESCALATION_TRANSPORT=slack"):
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_ESCALATION_TRANSPORT", "slack")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_SLACK_BOT_TOKEN", "xoxb-test")
+    monkeypatch.delenv("LOOP_ORCHESTRATOR_SLACK_CHANNEL", raising=False)
+    with pytest.raises(RuntimeError, match="LOOP_ORCHESTRATOR_ESCALATION_TRANSPORT=slack"):
         build_escalation_filer_from_env()
 
 
 def test_build_escalation_filer_from_env_slack_missing_both_fails_closed(monkeypatch) -> None:
-    monkeypatch.setenv("LOOP_ENGINE_ESCALATION_TRANSPORT", "slack")
-    monkeypatch.delenv("LOOP_ENGINE_SLACK_BOT_TOKEN", raising=False)
-    monkeypatch.delenv("LOOP_ENGINE_SLACK_CHANNEL", raising=False)
-    with pytest.raises(RuntimeError, match="LOOP_ENGINE_ESCALATION_TRANSPORT=slack"):
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_ESCALATION_TRANSPORT", "slack")
+    monkeypatch.delenv("LOOP_ORCHESTRATOR_SLACK_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("LOOP_ORCHESTRATOR_SLACK_CHANNEL", raising=False)
+    with pytest.raises(RuntimeError, match="LOOP_ORCHESTRATOR_ESCALATION_TRANSPORT=slack"):
         build_escalation_filer_from_env()
 
 
@@ -384,8 +384,8 @@ def test_run_graph_loop_fail_open_a_raising_notifier_never_changes_the_outcome()
 
 
 def test_run_graph_loop_unconfigured_default_notifier_is_inert(monkeypatch) -> None:
-    monkeypatch.delenv("LOOP_ENGINE_SLACK_BOT_TOKEN", raising=False)
-    monkeypatch.delenv("LOOP_ENGINE_SLACK_CHANNEL", raising=False)
+    monkeypatch.delenv("LOOP_ORCHESTRATOR_SLACK_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("LOOP_ORCHESTRATOR_SLACK_CHANNEL", raising=False)
     # Any attempt to import slack_sdk raises ImportError -- proves the
     # notifier resolved by `notifier or build_notifier_from_env()` (with no
     # env vars set) never pulls it in, without depending on whatever earlier

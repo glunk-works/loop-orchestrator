@@ -8,8 +8,8 @@ from unittest.mock import MagicMock
 import typer
 from typer.testing import CliRunner
 
-from loop_engine.cli import ABORTED_BY_HUMAN_EXIT_CODE, app
-from loop_engine.core.state import (
+from loop_orchestrator.cli import ABORTED_BY_HUMAN_EXIT_CODE, app
+from loop_orchestrator.core.state import (
     CURRENT_SCHEMA_VERSION,
     IssueRef,
     Question,
@@ -17,7 +17,7 @@ from loop_engine.core.state import (
     SlackRef,
     State,
 )
-from loop_engine.loops.default.loop import DEFAULT_LOOP
+from loop_orchestrator.loops.default.loop import DEFAULT_LOOP
 
 runner = CliRunner()
 
@@ -63,11 +63,11 @@ def test_cli_run_help_lists_expected_options() -> None:
 
 def test_cli_run_always_drives_the_langgraph_engine(tmp_path, monkeypatch) -> None:
     # The fresh-run path delegates to `runner.run_new`, so the engine reference
-    # patched here lives on `loop_engine.runner`, not `cli`. Phase 6: the engine
+    # patched here lives on `loop_orchestrator.runner`, not `cli`. Phase 6: the engine
     # is unconditional — no flag, no classic driver to fall back to.
     mock_graph = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_graph)
-    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_orchestrator.runner.run_graph_loop", mock_graph)
+    monkeypatch.setattr("loop_orchestrator.runner.LLMClient", MagicMock())
 
     result = runner.invoke(app, ["run"])
 
@@ -86,8 +86,8 @@ def test_cli_run_awaiting_slack_exits_5_and_points_at_slack_thread(tmp_path, mon
             pending_slack=SlackRef(channel_id="C123", message_ts="1700000000.000100"),
         )
     )
-    monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_graph)
-    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_orchestrator.runner.run_graph_loop", mock_graph)
+    monkeypatch.setattr("loop_orchestrator.runner.LLMClient", MagicMock())
 
     result = runner.invoke(app, ["run"])
 
@@ -115,8 +115,8 @@ def test_cli_resume_from_skips_already_completed_stages(tmp_path, monkeypatch) -
     state_path.write_text(fixture_state.model_dump_json())
 
     mock_run_graph_loop = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_run_graph_loop)
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_orchestrator.cli.run_graph_loop", mock_run_graph_loop)
+    monkeypatch.setattr("loop_orchestrator.cli.LLMClient", MagicMock())
 
     result = runner.invoke(app, ["run", "--resume-from", str(state_path)])
 
@@ -142,8 +142,8 @@ def test_cli_resume_from_migrates_v1_snapshot(tmp_path, monkeypatch) -> None:
     state_path.write_text(json.dumps(v1_payload))
 
     mock_run_graph_loop = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_run_graph_loop)
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_orchestrator.cli.run_graph_loop", mock_run_graph_loop)
+    monkeypatch.setattr("loop_orchestrator.cli.LLMClient", MagicMock())
 
     result = runner.invoke(app, ["run", "--resume-from", str(state_path)])
 
@@ -168,7 +168,7 @@ def test_cli_resume_from_rejects_snapshot_from_a_different_loop(tmp_path, monkey
     )
     state_path = tmp_path / "state.json"
     state_path.write_text(foreign_state.model_dump_json())
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_orchestrator.cli.LLMClient", MagicMock())
 
     result = runner.invoke(app, ["run", "--resume-from", str(state_path)])
 
@@ -178,7 +178,7 @@ def test_cli_resume_from_rejects_snapshot_from_a_different_loop(tmp_path, monkey
 
 def test_cli_resume_from_issue_folds_answers_and_reenters(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("loop_engine.cli.resolve_repo_slug", lambda cwd: "acme/repo")
+    monkeypatch.setattr("loop_orchestrator.cli.resolve_repo_slug", lambda cwd: "acme/repo")
     paused = State(
         schema_version=2,
         run_id="run-1",
@@ -200,7 +200,7 @@ def test_cli_resume_from_issue_folds_answers_and_reenters(tmp_path, monkeypatch)
     snapshot_path.write_text(paused.model_dump_json())
 
     monkeypatch.setattr(
-        "loop_engine.cli.default_issue_reader",
+        "loop_orchestrator.cli.default_issue_reader",
         lambda n, repo=None: {
             "state": "OPEN",
             "url": "https://github.com/acme/repo/issues/17",
@@ -211,8 +211,8 @@ def test_cli_resume_from_issue_folds_answers_and_reenters(tmp_path, monkeypatch)
     # T4: the fold/reentry/run_graph_loop execution now lives in the shared
     # runner.resume_run seam, so that's where these collaborators are patched.
     mock_run_graph_loop = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_run_graph_loop)
-    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_orchestrator.runner.run_graph_loop", mock_run_graph_loop)
+    monkeypatch.setattr("loop_orchestrator.runner.LLMClient", MagicMock())
 
     fold_result_holder = {}
 
@@ -247,7 +247,7 @@ def test_cli_resume_from_issue_dispatches_the_real_default_through_mcp(
     swapped in under `build_issue_provider` (no real gh/subprocess), `resume
     --from-issue` still resolves questions correctly end to end."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("loop_engine.cli.resolve_repo_slug", lambda cwd: "acme/repo")
+    monkeypatch.setattr("loop_orchestrator.cli.resolve_repo_slug", lambda cwd: "acme/repo")
     paused = State(
         schema_version=2,
         run_id="run-1",
@@ -287,10 +287,10 @@ def test_cli_resume_from_issue_dispatches_the_real_default_through_mcp(
                 }
             )
 
-    monkeypatch.setattr("loop_engine.tools.mcp.build_issue_provider", lambda: _FakeProvider())
+    monkeypatch.setattr("loop_orchestrator.tools.mcp.build_issue_provider", lambda: _FakeProvider())
     mock_run_graph_loop = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_run_graph_loop)
-    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_orchestrator.runner.run_graph_loop", mock_run_graph_loop)
+    monkeypatch.setattr("loop_orchestrator.runner.LLMClient", MagicMock())
 
     fold_result_holder = {}
 
@@ -314,7 +314,7 @@ def test_cli_resume_from_issue_aborts_cleanly_when_closed_without_answers(
     """R5: closing the issue without an answers comment is a documented,
     clean abort — not an uncaught traceback."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("loop_engine.cli.resolve_repo_slug", lambda cwd: "acme/repo")
+    monkeypatch.setattr("loop_orchestrator.cli.resolve_repo_slug", lambda cwd: "acme/repo")
     paused = State(
         schema_version=2,
         run_id="run-1",
@@ -329,7 +329,7 @@ def test_cli_resume_from_issue_aborts_cleanly_when_closed_without_answers(
     snapshot_path.write_text(paused.model_dump_json())
 
     monkeypatch.setattr(
-        "loop_engine.cli.default_issue_reader",
+        "loop_orchestrator.cli.default_issue_reader",
         lambda n, repo=None: {
             "state": "CLOSED",
             "url": "https://github.com/acme/repo/issues/17",
@@ -337,7 +337,7 @@ def test_cli_resume_from_issue_aborts_cleanly_when_closed_without_answers(
             "comments": [{"body": "won't fix"}],
         },
     )
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_orchestrator.cli.LLMClient", MagicMock())
 
     result = runner.invoke(app, ["resume", "--from-issue", "17"])
 
@@ -356,7 +356,7 @@ def test_cli_resume_from_issue_does_not_relabel_a_deep_value_error_as_bad_parame
     relabeled as typer.BadParameter -- which exits 2, colliding with
     AWAITING_ISSUE's exit code and misrepresenting a real bug as a usage error."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("loop_engine.cli.resolve_repo_slug", lambda cwd: "acme/repo")
+    monkeypatch.setattr("loop_orchestrator.cli.resolve_repo_slug", lambda cwd: "acme/repo")
     paused = State(
         schema_version=2,
         run_id="run-1",
@@ -378,7 +378,7 @@ def test_cli_resume_from_issue_does_not_relabel_a_deep_value_error_as_bad_parame
     snapshot_path.write_text(paused.model_dump_json())
 
     monkeypatch.setattr(
-        "loop_engine.cli.default_issue_reader",
+        "loop_orchestrator.cli.default_issue_reader",
         lambda n, repo=None: {
             "state": "OPEN",
             "url": "https://github.com/acme/repo/issues/17",
@@ -391,10 +391,10 @@ def test_cli_resume_from_issue_does_not_relabel_a_deep_value_error_as_bad_parame
     )
 
     def raising_engine(loop, state, client, **kwargs):
-        raise ValueError("LOOP_ENGINE_RALPH_MAX_ITERS is not an integer")
+        raise ValueError("LOOP_ORCHESTRATOR_RALPH_MAX_ITERS is not an integer")
 
-    monkeypatch.setattr("loop_engine.runner.run_graph_loop", raising_engine)
-    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_orchestrator.runner.run_graph_loop", raising_engine)
+    monkeypatch.setattr("loop_orchestrator.runner.LLMClient", MagicMock())
 
     result = runner.invoke(app, ["resume", "--from-issue", "17"])
 
@@ -408,7 +408,7 @@ def test_cli_resume_from_issue_folds_answers_via_the_pm_generator(tmp_path, monk
     # fold_answers or every paused run is unresumable (cli.py's resume guard
     # raises typer.BadParameter).
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("loop_engine.cli.resolve_repo_slug", lambda cwd: "acme/repo")
+    monkeypatch.setattr("loop_orchestrator.cli.resolve_repo_slug", lambda cwd: "acme/repo")
     paused = State(
         schema_version=2,
         run_id="run-1",
@@ -430,7 +430,7 @@ def test_cli_resume_from_issue_folds_answers_via_the_pm_generator(tmp_path, monk
     snapshot_path.write_text(paused.model_dump_json())
 
     monkeypatch.setattr(
-        "loop_engine.cli.default_issue_reader",
+        "loop_orchestrator.cli.default_issue_reader",
         lambda n, repo=None: {
             "state": "OPEN",
             "url": "https://github.com/acme/repo/issues/17",
@@ -439,11 +439,13 @@ def test_cli_resume_from_issue_folds_answers_via_the_pm_generator(tmp_path, monk
         },
     )
     monkeypatch.setattr(
-        "loop_engine.runner.run_graph_loop", MagicMock(return_value=_completed_state())
+        "loop_orchestrator.runner.run_graph_loop", MagicMock(return_value=_completed_state())
     )
     mock_llm_client = MagicMock()
     mock_llm_client.call.return_value = SimpleNamespace(text='{"spec_updates": {}, "impacts": {}}')
-    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock(return_value=mock_llm_client))
+    monkeypatch.setattr(
+        "loop_orchestrator.runner.LLMClient", MagicMock(return_value=mock_llm_client)
+    )
 
     result = runner.invoke(app, ["resume", "--from-issue", "17"])
 
@@ -515,7 +517,7 @@ def _init_repo(path: Path) -> None:
 def test_cli_run_under_worktree_isolation_runs_engine_in_worktree(tmp_path, monkeypatch) -> None:
     _init_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "worktree")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_ISOLATION", "worktree")
 
     seen = {}
 
@@ -523,8 +525,8 @@ def test_cli_run_under_worktree_isolation_runs_engine_in_worktree(tmp_path, monk
         seen["cwd"] = Path.cwd()
         return _completed_state()
 
-    monkeypatch.setattr("loop_engine.runner.run_graph_loop", fake_run_graph_loop)
-    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_orchestrator.runner.run_graph_loop", fake_run_graph_loop)
+    monkeypatch.setattr("loop_orchestrator.runner.LLMClient", MagicMock())
 
     origin = Path.cwd()
     result = runner.invoke(app, ["run"])
@@ -540,9 +542,9 @@ def test_cli_run_under_worktree_isolation_runs_engine_in_worktree(tmp_path, monk
 def test_cli_prune_worktrees_all_removes_worktrees(tmp_path, monkeypatch) -> None:
     _init_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "worktree")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_ISOLATION", "worktree")
 
-    from loop_engine.tools.worktree import create
+    from loop_orchestrator.tools.worktree import create
 
     create("runa")
     create("runb")
@@ -588,10 +590,10 @@ def test_cli_resume_from_issue_silently_resumes_a_same_numbered_wrong_repo_issue
     tmp_path, monkeypatch
 ) -> None:
     """F1/F2 reframe: there is no inconsistent state left for the code to
-    detect here. loop-engine's own #17 is a REAL, unrelated escalation issue
-    -- filed by some earlier loop-engine-scoped run -- carrying its own
+    detect here. loop-orchestrator's own #17 is a REAL, unrelated escalation issue
+    -- filed by some earlier loop-orchestrator-scoped run -- carrying its own
     Snapshot: line and its own pending_issue.number == 17. Resuming
-    `--from-issue 17` from the loop-engine checkout (no --repo) reads that
+    `--from-issue 17` from the loop-orchestrator checkout (no --repo) reads that
     genuine issue, loads that genuine (wrong) run, and every check --
     including the F1c integrity check -- passes, because both sides
     legitimately agree (they were read out of the very same issue). This
@@ -600,26 +602,28 @@ def test_cli_resume_from_issue_silently_resumes_a_same_numbered_wrong_repo_issue
     defense, and it is on the human to read it.
     """
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("loop_engine.cli.resolve_repo_slug", lambda cwd: "glunk-works/loop-engine")
+    monkeypatch.setattr(
+        "loop_orchestrator.cli.resolve_repo_slug", lambda cwd: "glunk-works/loop-orchestrator"
+    )
 
-    # loop-engine's OWN local paused run, genuinely paused on loop-engine's
+    # loop-orchestrator's OWN local paused run, genuinely paused on loop-orchestrator's
     # own issue #17 -- unrelated to the managed run the human actually meant.
     wrong_run_snapshot = _paused_on_issue(
-        tmp_path, number=17, url="https://github.com/glunk-works/loop-engine/issues/17"
+        tmp_path, number=17, url="https://github.com/glunk-works/loop-orchestrator/issues/17"
     )
 
     monkeypatch.setattr(
-        "loop_engine.cli.default_issue_reader",
+        "loop_orchestrator.cli.default_issue_reader",
         lambda n, repo=None: {
             "state": "OPEN",
-            "url": "https://github.com/glunk-works/loop-engine/issues/17",
+            "url": "https://github.com/glunk-works/loop-orchestrator/issues/17",
             "body": f"Snapshot: `{wrong_run_snapshot}`",
             "comments": [{"body": "```answers\n1: eu-west-1\n```"}],
         },
     )
-    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_orchestrator.runner.LLMClient", MagicMock())
     mock_graph = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.runner.run_graph_loop", mock_graph)
+    monkeypatch.setattr("loop_orchestrator.runner.run_graph_loop", mock_graph)
     monkeypatch.setattr(
         type(DEFAULT_LOOP.stages[0].persona), "fold_answers", lambda self, state, llm: state
     )
@@ -631,9 +635,9 @@ def test_cli_resume_from_issue_silently_resumes_a_same_numbered_wrong_repo_issue
     assert result.exit_code == 0
     assert mock_graph.called
     # The echoed destination is the human's only signal that this is the
-    # wrong repo (a real `glunk-works/loop-engine` checkout, not the managed
+    # wrong repo (a real `glunk-works/loop-orchestrator` checkout, not the managed
     # repo the escalation was actually meant for).
-    assert "Reading issue #17 from glunk-works/loop-engine" in _plain_output(result)
+    assert "Reading issue #17 from glunk-works/loop-orchestrator" in _plain_output(result)
 
 
 def test_cli_resume_snapshot_derives_repo_and_issue_from_pending_issue_not_cwd(
@@ -649,7 +653,7 @@ def test_cli_resume_snapshot_derives_repo_and_issue_from_pending_issue_not_cwd(
     def _must_not_be_called(cwd):
         raise AssertionError("resolve_repo_slug must not run when --snapshot is given")
 
-    monkeypatch.setattr("loop_engine.cli.resolve_repo_slug", _must_not_be_called)
+    monkeypatch.setattr("loop_orchestrator.cli.resolve_repo_slug", _must_not_be_called)
 
     seen = {}
 
@@ -663,11 +667,11 @@ def test_cli_resume_snapshot_derives_repo_and_issue_from_pending_issue_not_cwd(
             "comments": [{"body": "```answers\n1: eu-west-1\n```"}],
         }
 
-    monkeypatch.setattr("loop_engine.cli.default_issue_reader", fake_reader)
+    monkeypatch.setattr("loop_orchestrator.cli.default_issue_reader", fake_reader)
     monkeypatch.setattr(
-        "loop_engine.runner.run_graph_loop", MagicMock(return_value=_completed_state())
+        "loop_orchestrator.runner.run_graph_loop", MagicMock(return_value=_completed_state())
     )
-    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_orchestrator.runner.LLMClient", MagicMock())
     monkeypatch.setattr(
         type(DEFAULT_LOOP.stages[0].persona), "fold_answers", lambda self, state, llm: state
     )
@@ -690,20 +694,20 @@ def test_cli_resume_raises_on_missing_issue_url(tmp_path, monkeypatch) -> None:
     """F5: read_issue always requests `url`; a missing one signals something
     already went wrong and must raise, not silently skip the integrity check."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("loop_engine.cli.resolve_repo_slug", lambda cwd: "acme/repo")
+    monkeypatch.setattr("loop_orchestrator.cli.resolve_repo_slug", lambda cwd: "acme/repo")
     snapshot_path = _paused_on_issue(tmp_path, url="https://github.com/acme/repo/issues/17")
 
     monkeypatch.setattr(
-        "loop_engine.cli.default_issue_reader",
+        "loop_orchestrator.cli.default_issue_reader",
         lambda n, repo=None: {
             "state": "OPEN",
             "body": f"Snapshot: `{snapshot_path}`",
             "comments": [{"body": "```answers\n1: eu-west-1\n```"}],
         },
     )
-    monkeypatch.setattr("loop_engine.cli.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_orchestrator.cli.LLMClient", MagicMock())
     mock_graph = MagicMock(return_value=_completed_state())
-    monkeypatch.setattr("loop_engine.cli.run_graph_loop", mock_graph)
+    monkeypatch.setattr("loop_orchestrator.cli.run_graph_loop", mock_graph)
 
     result = runner.invoke(app, ["resume", "--from-issue", "17"])
 
@@ -725,11 +729,11 @@ def test_cli_resume_passes_repo_through_to_the_reader(tmp_path, monkeypatch) -> 
             "comments": [{"body": "```answers\n1: eu-west-1\n```"}],
         }
 
-    monkeypatch.setattr("loop_engine.cli.default_issue_reader", fake_reader)
+    monkeypatch.setattr("loop_orchestrator.cli.default_issue_reader", fake_reader)
     monkeypatch.setattr(
-        "loop_engine.runner.run_graph_loop", MagicMock(return_value=_completed_state())
+        "loop_orchestrator.runner.run_graph_loop", MagicMock(return_value=_completed_state())
     )
-    monkeypatch.setattr("loop_engine.runner.LLMClient", MagicMock())
+    monkeypatch.setattr("loop_orchestrator.runner.LLMClient", MagicMock())
     monkeypatch.setattr(
         type(DEFAULT_LOOP.stages[0].persona), "fold_answers", lambda self, state, llm: state
     )
@@ -742,7 +746,7 @@ def test_cli_resume_passes_repo_through_to_the_reader(tmp_path, monkeypatch) -> 
 
 def test_cli_slack_listen_runs_the_daemon(monkeypatch) -> None:
     mock_run_daemon = MagicMock()
-    monkeypatch.setattr("loop_engine.cli.run_daemon", mock_run_daemon)
+    monkeypatch.setattr("loop_orchestrator.cli.run_daemon", mock_run_daemon)
 
     result = runner.invoke(app, ["slack-listen"])
 
@@ -758,11 +762,11 @@ def test_cli_slack_listen_with_unset_credentials_exits_non_zero_and_opens_no_soc
     # exit with its message, never a raw traceback, and never open a socket.
     def raise_fail_closed() -> None:
         raise RuntimeError(
-            "LOOP_ENGINE_SLACK_APP_TOKEN must be set; refusing to start the "
+            "LOOP_ORCHESTRATOR_SLACK_APP_TOKEN must be set; refusing to start the "
             "Slack daemon half-configured (fail-closed)."
         )
 
-    monkeypatch.setattr("loop_engine.cli.run_daemon", raise_fail_closed)
+    monkeypatch.setattr("loop_orchestrator.cli.run_daemon", raise_fail_closed)
 
     result = runner.invoke(app, ["slack-listen"])
 

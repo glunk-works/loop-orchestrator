@@ -1,5 +1,5 @@
-from loop_engine.core.notify import EventKind, LifecycleEvent
-from loop_engine.core.state import (
+from loop_orchestrator.core.notify import EventKind, LifecycleEvent
+from loop_orchestrator.core.state import (
     CURRENT_SCHEMA_VERSION,
     IssueRef,
     RunStatus,
@@ -7,7 +7,7 @@ from loop_engine.core.state import (
     StageRecord,
     State,
 )
-from loop_engine.tools.slack_io.format import (
+from loop_orchestrator.tools.slack_io.format import (
     format_command_accepted,
     format_command_rejected,
     format_event,

@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from loop_engine.trigger.parse import RunRequest, parse_event
+from loop_orchestrator.trigger.parse import RunRequest, parse_event
 
 
 def _labeled_payload(label: str = "agent-action", action: str = "labeled") -> dict:

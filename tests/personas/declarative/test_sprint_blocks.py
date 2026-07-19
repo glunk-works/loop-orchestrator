@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from loop_engine.core.state import State
-from loop_engine.personas.agile_sprint_breakdown.persona import _parse_sprint_blocks
-from loop_engine.personas.declarative import services
+from loop_orchestrator.core.state import State
+from loop_orchestrator.personas.agile_sprint_breakdown.persona import _parse_sprint_blocks
+from loop_orchestrator.personas.declarative import services
 
 TWO_SPRINTS = """### FILEPATH: /sprints/01_foo/sprint_plan.md
 

@@ -4,12 +4,12 @@ surfaces named in `CLAUDE.md`'s enforced-module-boundaries section. This
 moved from three surfaces to four in sprint 24 with the addition of
 `tools/git_io`'s local `git`, and from four to five in sprint 29 with the
 addition of `tools/coder_tools/run_lint.py`'s `ruff` — nothing else in
-`src/loop_engine` may shell out."""
+`src/loop_orchestrator` may shell out."""
 
 import ast
 from pathlib import Path
 
-SRC_ROOT = Path(__file__).resolve().parent.parent.parent / "src" / "loop_engine"
+SRC_ROOT = Path(__file__).resolve().parent.parent.parent / "src" / "loop_orchestrator"
 
 # path -> the sanctioned surface it belongs to. issue_io and repo_io are two
 # consumers of the *same* `gh` surface (repo_io adds no sixth); each other

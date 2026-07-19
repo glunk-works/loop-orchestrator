@@ -1,4 +1,4 @@
-# loop-engine — Backlog
+# loop-orchestrator — Backlog
 
 Post-migration / out-of-band ideas that are **not** part of the current
 `docs/migration_roadmap.md` phases. Captured here so they aren't lost; each is a
@@ -88,7 +88,7 @@ solely on the green-test gate.
 ### BL-2 — Slack integration
 *(added 2026-07-10, from repo owner)*
 
-Add Slack integration to loop-engine. Scope intentionally open — candidate
+Add Slack integration to loop-orchestrator. Scope intentionally open — candidate
 surfaces to define later:
 - Notifications: run started / completed / failed / budget-exceeded /
   **awaiting-issue** (the human-escalation pause is the highest-value signal —
@@ -128,7 +128,7 @@ server.
 >    question, not a given. Check it; do not assume it.
 > 3. **Third credential class.** A Slack bot/app token is neither the keyring-only Anthropic key
 >    nor the env-var webhook secret. `trigger/`'s posture is the precedent to reason *from*
->    (`LOOP_ENGINE_WEBHOOK_SECRET` lives in an env var, **not** the keyring, because it
+>    (`LOOP_ORCHESTRATOR_WEBHOOK_SECRET` lives in an env var, **not** the keyring, because it
 >    authenticates an *inbound request* rather than an *outbound LLM call*) — but Socket Mode's
 >    token is used to *open an outbound connection*, so the precedent may not transfer cleanly.
 >
@@ -139,7 +139,7 @@ server.
 > ### LANDED: pass 1 of 3 — outbound notify (sprint 39, 2026-07-16)
 > The planning pass resolved direction-first: **outbound notify shipped first** (FD1), as an
 > official `slack_sdk` transport in `tools/slack_io`, **not** an MCP server (FD2). Credentials are
-> env vars — `LOOP_ENGINE_SLACK_BOT_TOKEN` / `LOOP_ENGINE_SLACK_CHANNEL` (FD3) — not the keyring,
+> env vars — `LOOP_ORCHESTRATOR_SLACK_BOT_TOKEN` / `LOOP_ORCHESTRATOR_SLACK_CHANNEL` (FD3) — not the keyring,
 > confirming the third-credential-class question above. `core/graph_engine.py`'s `run_graph_loop`
 > emits through the `core/notify` `Notifier` seam, fail-open at the call site (FD4). Landed across
 > T1+T2 (#107), T3 (#112), T4 (this docs pass). **Passes 2–3 — the inbound trigger surface and the
@@ -149,8 +149,8 @@ server.
 > planned next.
 
 > ### LANDED: pass 2 of 3 — inbound trigger (sprint 40, 2026-07-17)
-> The Slack **inbound trigger** shipped: `loop-engine slack-listen` runs a Socket Mode daemon that
-> turns `/agent-run --budget <n> <requirements>` in `LOOP_ENGINE_SLACK_CHANNEL` into a real run.
+> The Slack **inbound trigger** shipped: `loop-orchestrator slack-listen` runs a Socket Mode daemon that
+> turns `/agent-run --budget <n> <requirements>` in `LOOP_ORCHESTRATOR_SLACK_CHANNEL` into a real run.
 > Landed across T1 (listener), T2+T3 (parser + dispatcher, #117), T4+T5 (daemon + CLI, #119), T6
 > (this docs pass).
 >
@@ -165,7 +165,7 @@ server.
 >    `slack_control/` adds **no subprocess surface** (the five sanctioned surfaces are unchanged),
 >    writes no files, and imports neither `keyring` nor `slack_sdk`; `tools/slack_io` remains the
 >    sole `slack_sdk` importer, function-scoped in both directions.
-> 3. **Third credential class confirmed, and it transferred.** `LOOP_ENGINE_SLACK_APP_TOKEN`
+> 3. **Third credential class confirmed, and it transferred.** `LOOP_ORCHESTRATOR_SLACK_APP_TOKEN`
 >    (`xapp-…`, `connections:write`) joins the pass-1 vars as **env vars, not keyring** (FD3) —
 >    despite #3's doubt that the `trigger/` precedent would transfer to a token that opens an
 >    *outbound* connection, it did: the discriminator is "not the LLM API call," not the direction.
@@ -178,8 +178,8 @@ server.
 > anyone who can post in the channel can spend money and run the Coder (threat model, §1).
 >
 > ### LANDED: pass 3 of 3 — escalation round-trip (sprint 41, 2026-07-18) — **BL-2 COMPLETE**
-> The Slack **escalation round-trip** shipped, closing BL-2. With `LOOP_ENGINE_ESCALATION_TRANSPORT=slack`
-> a paused run posts its questions to `LOOP_ENGINE_SLACK_CHANNEL`; a human replies in the thread with
+> The Slack **escalation round-trip** shipped, closing BL-2. With `LOOP_ORCHESTRATOR_ESCALATION_TRANSPORT=slack`
+> a paused run posts its questions to `LOOP_ORCHESTRATOR_SLACK_CHANNEL`; a human replies in the thread with
 > `N: answer` lines (bare text when exactly one question is open); the `slack-listen` daemon folds the
 > reply back through the shared `runner.resume_run` seam and posts the outcome to the thread. Landed
 > across **T1** (`SlackRef` + `pending_slack` + `RunStatus.AWAITING_SLACK` + schema **v4→v5**, #127),
@@ -190,7 +190,7 @@ server.
 > message-event handling + `dispatch_resume`, #136), and **T6** (this docs pass).
 >
 > **Postures worth not re-deriving:**
-> 1. **Transport selection is env-driven and fail-closed.** `LOOP_ENGINE_ESCALATION_TRANSPORT` defaults
+> 1. **Transport selection is env-driven and fail-closed.** `LOOP_ORCHESTRATOR_ESCALATION_TRANSPORT` defaults
 >    to `issue` (byte-for-byte the old GitHub-issue path); `=slack` selects the Slack filer, and
 >    `build_escalation_filer_from_env()` **raises at build** if the Slack vars are then unset — a Slack
 >    run refuses to start rather than discover at pause time it has nowhere to post (unlike the notifier's
@@ -439,7 +439,7 @@ because the orchestrator ran one loop at a time. The trigger surface
 (`InProcessDispatcher`) breaks that assumption: it dispatches concurrent
 `asyncio.to_thread(runner.run_new)` calls, and two different issues' runs sharing one
 process CWD is a real hazard, not a theoretical one — the R8 leak (escalation issues
-filed on loop-engine instead of the managed repo) returns the moment two runs'
+filed on loop-orchestrator instead of the managed repo) returns the moment two runs'
 `worktree_run`s are open at once, because `os.chdir` is inherently process-global no
 matter what wraps it.
 
@@ -472,8 +472,8 @@ lock can never safely come out again until this lands.
 
 **Why:** the five non-blocking notes from the Opus HITL review of PR #34 (2026-07-12,
 sprint `27_phase6_flip_block`, approved). Task 8/Task 10 fixed R8 — escalation issues
-for managed repos were being filed on loop-engine, because `gh` derived the destination
-from an ambient CWD that, inside a run's worktree, resolved to loop-engine itself. The
+for managed repos were being filed on loop-orchestrator, because `gh` derived the destination
+from an ambient CWD that, inside a run's worktree, resolved to loop-orchestrator itself. The
 *write* side is now explicit (`default_issue_filer` resolves `worktree.origin_cwd()` and
 refuses to file without a named destination — no `repo=None` fallback anywhere). These
 are the surfaces that fix did not reach.
@@ -509,12 +509,12 @@ are the surfaces that fix did not reach.
    non-canonical `pending_issue.url`, surfacing from `cli.resume` as a traceback rather
    than a `typer.BadParameter`.
 
-5. **The trigger surface's escalations land on loop-engine, not the requesting repo.**
-   `runner.run_new` opens `worktree_run` in the loop-engine checkout, so `origin_cwd()`
+5. **The trigger surface's escalations land on loop-orchestrator, not the requesting repo.**
+   `runner.run_new` opens `worktree_run` in the loop-orchestrator checkout, so `origin_cwd()`
    resolves there, and `RunRequest.repo_full_name` — the managed repo whose webhook
    started the run — never reaches the filer. **Not a regression** (the old implicit path
    landed in the same place) and arguably correct, since `run_new` does not clone the
-   managed repo, so loop-engine genuinely *is* the tree it operates on. But `CLAUDE.md`
+   managed repo, so loop-orchestrator genuinely *is* the tree it operates on. But `CLAUDE.md`
    now claims **every** entrypoint (`cli`, `runner.run_new`, `run_in_tree`, the trigger
    surface) "is correct without threading a cwd", and for the trigger that holds only in
    that narrow sense. Either qualify the claim or close the gap — do not leave the docs
@@ -525,9 +525,9 @@ isolation mechanism at all); items 1 and 5 here are instances of the same root c
 would largely dissolve if BL-8 lands first. Items 2–4 are independent error-handling
 cleanups and can go any time.
 
-**Notes / where to look:** `src/loop_engine/cli.py` (`resume`),
-`src/loop_engine/tools/issue_io/mcp_client.py`, `src/loop_engine/tools/issue_io/github.py`,
-`src/loop_engine/tools/repo_io/github.py`, `src/loop_engine/trigger/dispatch.py`,
+**Notes / where to look:** `src/loop_orchestrator/cli.py` (`resume`),
+`src/loop_orchestrator/tools/issue_io/mcp_client.py`, `src/loop_orchestrator/tools/issue_io/github.py`,
+`src/loop_orchestrator/tools/repo_io/github.py`, `src/loop_orchestrator/trigger/dispatch.py`,
 `CLAUDE.md` (the `tools/issue_io` boundary bullet). The full review reasoning is on
 PR #34 (`gh pr view 34 --comments`).
 
@@ -613,8 +613,8 @@ force-pushed.
 Evidence (2026-07-12):
 
 - Settings → Branches shows *"Classic branch protections have not been configured."*
-- `GET /repos/glunk-works/loop-engine/rulesets` → `[]`
-- `GET /repos/glunk-works/loop-engine/rules/branches/feat%2Fmcp-langgraph-migration` → `[]`
+- `GET /repos/glunk-works/loop-orchestrator/rulesets` → `[]`
+- `GET /repos/glunk-works/loop-orchestrator/rules/branches/feat%2Fmcp-langgraph-migration` → `[]`
   — this is the **effective** rules endpoint, so an org-level ruleset would appear here. None does.
 - PR #43's `reviewDecision` is empty: no required reviews either.
 
@@ -1003,7 +1003,7 @@ a deliberate two-step act rather than something the merge did for you.
 2. Delete `feat/mcp-langgraph-migration` (currently at `b669482`, now an ancestor of `main` — so
    nothing is lost; the merge commit's second parent preserves every one of the 113 commits).
 3. **Verify `main` is untouched afterwards** via the read-only
-   `gh api repos/glunk-works/loop-engine/rules/branches/main` — all **four** rule types
+   `gh api repos/glunk-works/loop-orchestrator/rules/branches/main` — all **four** rule types
    (`deletion`, `non_fast_forward`, `pull_request`, `required_status_checks`) and all **eight**
    required checks (`lint`, `format-check`, `test`, `secrets-scan`, `dependency-audit`, `sbom`,
    `pr-title`, `architect-review`) still present. Same endpoint `/resume` and `ruleset-drift.yml`
@@ -1191,21 +1191,21 @@ are free only on public repos). `run_bootstrap` calls `repo_io.create_ruleset` *
 server is still exactly four verbs). Full evidence: `sprints/DEFERRED_VERIFICATION.md` §8.
 Live verification surfaced three follow-ups, all in generated-repo territory: **[BL-28]**
 (scaffold fails its own `ruff check`), **[BL-29]** (maintenance escalation crashes on a
-missing `loop-engine/needs-human` label), **[BL-30]** (the maintenance gate targets `src`
+missing `loop-orchestrator/needs-human` label), **[BL-30]** (the maintenance gate targets `src`
 but the scaffold puts tests in `tests/`).
 
 **Why (original):** the factory's whole thesis is that integration branches are PR-gated and auto-merge is
-impossible — loop-engine enforces this on *itself* via the `protected-integration-branches` ruleset,
+impossible — loop-orchestrator enforces this on *itself* via the `protected-integration-branches` ruleset,
 and structurally by giving `repo_io` no merge verb at all. But `flows/bootstrap` hands a brand-new
 repo to the world with **no ruleset**, so the repo it just created accepts direct pushes to `main`,
 force-pushes, and deletion. The invariant holds inside the factory and evaporates at its output.
-This is observable today: of the five repos in `glunk-works`, only `loop-engine` has a ruleset; the
+This is observable today: of the five repos in `glunk-works`, only `loop-orchestrator` has a ruleset; the
 other four (`bounty-infra`, `global-bootstrap`, `appsec-triage-agent`, `pm-agent-loop`) have none.
 
 **The obvious fix is not available.** An **org-level** ruleset would cover every repo at birth
 without touching the code — but it is a **GitHub Team** feature. On the org's current Free plan the
 endpoint returns `403 "Upgrade to GitHub Team to enable this feature."` **Repo-level** rulesets *are*
-free on public repos (loop-engine's is live proof), so the protection must be installed **per repo,
+free on public repos (loop-orchestrator's is live proof), so the protection must be installed **per repo,
 by the thing that creates the repo**. That makes this a code change, not a settings change.
 
 **Shape (not designed yet):**
@@ -1221,7 +1221,7 @@ by the thing that creates the repo**. That makes this a code change, not a setti
    status checks are **repo-specific** and cannot be templated blindly — a generated repo has no
    `architect-review` check, and requiring a check that never reports is a merge deadlock, not a gate.
 
-**The trap to avoid:** do **not** template loop-engine's own eight required checks into generated
+**The trap to avoid:** do **not** template loop-orchestrator's own eight required checks into generated
 repos. A required check that no workflow ever reports is permanently pending, and the repo can never
 merge anything — the mirror-image of BL-11 (there, gates that looked required but blocked nothing;
 here, gates that block everything and can never pass).
@@ -1388,7 +1388,7 @@ genuinely owed and genuinely not urgent, and saying so plainly is better than pa
 sprint that then slips.
 
 **Do not read "lowest priority" as "optional."** The HMAC secret is an inbound credential
-(`LOOP_ENGINE_WEBHOOK_SECRET`, an env var — a distinct credential class from the keyring-only
+(`LOOP_ORCHESTRATOR_WEBHOOK_SECRET`, an env var — a distinct credential class from the keyring-only
 Anthropic key), and an unverified auth path on a public-facing surface is exactly the sort of thing
 that is fine until the day it is catastrophic. It stays on this list until it is run.
 
@@ -1397,11 +1397,11 @@ that Sprint 36's daemon-bearing session raises. If that host ends up reachable, 
 opportunistically rather than standing the whole thing up twice.
 
 **Notes / where to look:** `sprints/DEFERRED_VERIFICATION.md` §6 (the full protocol),
-`src/loop_engine/trigger/` (`app.py`, `dispatch.py`), `tests/trigger/`.
+`src/loop_orchestrator/trigger/` (`app.py`, `dispatch.py`), `tests/trigger/`.
 
 > ### SUPERSEDED IN PRACTICE — not deleted (sprint 40, 2026-07-17, BL-2 pass 2)
 > **Slack is now the live inbound path.** `slack_control/`'s Socket Mode daemon
-> (`loop-engine slack-listen`) does what §6 was owed for — a real inbound trigger, authenticated,
+> (`loop-orchestrator slack-listen`) does what §6 was owed for — a real inbound trigger, authenticated,
 > reaching a real `runner.run_new` — **without a tunnel or a routable address**, because the daemon
 > dials *out*. That is exactly the dissolution BL-2's planning pass predicted, and it removes the
 > "sequence it with anything that gives the project a routable host" dependency above: **that host
@@ -1415,11 +1415,11 @@ opportunistically rather than standing the whole thing up twice.
 > - **The "fine until catastrophic" argument now cuts the other way.** An unverified auth path
 >   matters because it is *public-facing* — but `trigger/` is not currently served anywhere, and now
 >   likely never will be. The honest risk is no longer "unverified auth on a live surface"; it is
->   **dead code carrying an inbound credential** (`LOOP_ENGINE_WEBHOOK_SECRET`).
+>   **dead code carrying an inbound credential** (`LOOP_ORCHESTRATOR_WEBHOOK_SECRET`).
 > - **The real decision is therefore no longer "verify it" but "keep or retire it."** Standing up a
 >   tunnel to verify a surface we deliberately superseded is hard to justify; so is leaving a parked
 >   inbound listener and its secret in the tree indefinitely. **Open question for the owner**
->   (deliberately not decided here): retire `trigger/` + `LOOP_ENGINE_WEBHOOK_SECRET` and close §6
+>   (deliberately not decided here): retire `trigger/` + `LOOP_ORCHESTRATOR_WEBHOOK_SECRET` and close §6
 >   as moot, or keep it as a second path and pay for the verification. **Until that is decided this
 >   item stays open** — "superseded in practice" is not "closed," and quietly dropping it would be
 >   the failure this item exists to prevent.
@@ -1437,11 +1437,11 @@ assignment), let a PR close an item by reference, and make the register **querya
 which already files GitHub issues as its human-escalation channel.
 
 > ### ⚠️ The governing constraint: this repo's issue tracker is NOT a free surface — the product writes to it
-> `tools/issue_io` files **runtime human-escalation issues** from live loop-engine runs. A dev backlog
+> `tools/issue_io` files **runtime human-escalation issues** from live loop-orchestrator runs. A dev backlog
 > in the same tracker shares a namespace with **machine-generated issues from a running engine**.
 >
 > That is not hypothetical. **Finding R8** (V3, 2026-07-12) was exactly this: escalation issues for
-> *managed* repos were filed against **`loop-engine` itself**, because `gh` derived its destination
+> *managed* repos were filed against **`loop-orchestrator` itself**, because `gh` derived its destination
 > from the ambient CWD. The three issues in this repo's tracker (**#16, #19, #21** — all closed) are
 > that bug's artifacts. R8 is fixed (`default_issue_filer` now names the repo explicitly), but the
 > coupling is structural: **the register of defects would live in a table a buggy run can write to.**
@@ -1473,7 +1473,7 @@ defect family as [BL-16]/[BL-18]/[BL-20] — an observation asserted rather than
 verified the wrong property while reporting success), [BL-1] (an in-loop review stage would also need
 somewhere to file).
 
-**Notes / where to look:** `docs/backlog.md` (1223 lines), `src/loop_engine/tools/issue_io/`,
+**Notes / where to look:** `docs/backlog.md` (1223 lines), `src/loop_orchestrator/tools/issue_io/`,
 `gh issue list --state all` on this repo (3 closed, 0 open), `docs/migration_roadmap.md` (finding R8).
 
 ---
@@ -1525,8 +1525,8 @@ require*). **BL-26 is what makes FD4 resolvable.** Do not fold it into 36; that 
 **Related:** [BL-21] (protection at birth — same "the invariant evaporates at the factory's output"
 shape), [BL-27] (the registry that would have to be written to), [BL-1].
 
-**Notes / where to look:** `src/loop_engine/flows/bootstrap/flow.py`,
-`src/loop_engine/tools/scaffold/templates/`, `glunk-works/global-bootstrap`
+**Notes / where to look:** `src/loop_orchestrator/flows/bootstrap/flow.py`,
+`src/loop_orchestrator/tools/scaffold/templates/`, `glunk-works/global-bootstrap`
 (`main.tf`, `variables.tf`, `project_policies.tf`), sprint 36's FD4.
 
 ---
@@ -1537,7 +1537,7 @@ shape), [BL-27] (the registry that would have to be written to), [BL-1].
 **Why:** `variables.tf`'s committed `projects` map lists `tri-loop-dev`, `bedrock-serverless-rag`,
 `bounty-infra`, `resume-optimizer`. **All four exist — under `Seuss27/`, the repo owner's personal
 account, not the `glunk-works` org.** The map is therefore **internally consistent but scoped to the
-project's previous home.** The org's real repos (`loop-engine`, `pm-agent-loop`, `appsec-triage-agent`)
+project's previous home.** The org's real repos (`loop-orchestrator`, `pm-agent-loop`, `appsec-triage-agent`)
 are **not registered at all**, and `bounty-infra` exists in **both** namespaces. The move from the
 personal account to the org never carried the registry with it (global-bootstrap last pushed
 **2026-06-26**).
@@ -1602,7 +1602,7 @@ failed). The Global Conventions the factory injects mandate `ruff check` is gree
 commit, so the factory ships a repo that cannot meet its own Definition of Done on commit #1.
 
 **Shape:** add a `[tool.ruff.lint.per-file-ignores]` entry to the template exempting `tests/*`
-from `S101` (mirroring how loop-engine's own `pyproject.toml` handles it), and extend
+from `S101` (mirroring how loop-orchestrator's own `pyproject.toml` handles it), and extend
 `tests/tools/scaffold/test_writer.py` (or the §8 evidence) so a scaffolded tree passes `ruff
 check` on its own. `src/` change (template) → needs its own sprint/PR + fresh-session
 architect-review.
@@ -1610,14 +1610,14 @@ architect-review.
 **Related:** [BL-21] (the sprint that surfaced it), [BL-30] (the other "generated repo can't
 satisfy its own gate" finding).
 
-### BL-29 — Maintenance escalation against a factory-born repo CRASHES: the `loop-engine/needs-human` label doesn't exist there
+### BL-29 — Maintenance escalation against a factory-born repo CRASHES: the `loop-orchestrator/needs-human` label doesn't exist there
 *(added 2026-07-15, from sprint 36 live verification — `DEFERRED_VERIFICATION.md` §7)*
 
 **Why:** when the default loop escalates a question mid-run, `_pause_for_issue` →
 `tools/issue_io.default_issue_filer` files a GitHub issue via `gh issue create … --label
-loop-engine/needs-human`. On loop-engine itself that label exists; on a **factory-born**
+loop-orchestrator/needs-human`. On loop-orchestrator itself that label exists; on a **factory-born**
 managed repo it does **not** (bootstrap scaffolds files but provisions no labels), so `gh`
-exits non-zero (`could not add label: 'loop-engine/needs-human' not found`) and the call raises
+exits non-zero (`could not add label: 'loop-orchestrator/needs-human' not found`) and the call raises
 `MCPToolError` — **crashing the whole run** instead of pausing at `AWAITING_ISSUE`. Observed
 live twice on `factory-scratch-boot-20260715`: the engine had already persisted the
 `AWAITING_ISSUE` snapshot, but the issue never got filed and the process died. So the very
@@ -1626,7 +1626,7 @@ factory manages** — a human is never actually asked. The §7 green PASS was on
 manually `gh label create`-ing the label.
 
 **Shape (decide deliberately):** either (a) `flows/bootstrap` provisions the
-`loop-engine/needs-human` label at repo creation (the label becomes part of the factory's
+`loop-orchestrator/needs-human` label at repo creation (the label becomes part of the factory's
 output contract, alongside the ruleset), or (b) `default_issue_filer` creates-the-label-if-
 missing / degrades to no `--label`, or (c) both. Note the failure mode is *worse than silent*:
 the snapshot says `awaiting_issue` while no issue exists, so `resume --from-issue` has nothing
@@ -1653,7 +1653,7 @@ in-loop Coder gate (`core/coder_gate.py`) keys off the same `src` assumption, so
 
 **Why:** measured in isolation this planning pass: `build_coder_tool_provider().__enter__()` costs
 **~5.0s** (spawn the stdio subprocess + `session.initialize()` + `list_tools()`); teardown is a
-cheap ~0.25s. The 5s is **import-bound** — a fresh server subprocess re-imports `loop_engine` plus
+cheap ~0.25s. The 5s is **import-bound** — a fresh server subprocess re-imports `loop_orchestrator` plus
 the MCP/pydantic/anthropic stack before it can answer `list_tools`. In the test suite this shows up
 as ~20 tests paying the penalty (~40% of a 278s local run), which **sprint 37 addresses by reducing
 the number of spawns** (Tasks 1-2). This item is the *other* half: reduce the per-spawn **cost**,
@@ -1664,7 +1664,7 @@ the same 5s before the model can use a single tool.
 **Shape (not decided):** profile what the server subprocess imports at startup; the likely lever is
 **lazy-importing** the heavy stack in the server entry module (`mcp_servers/*_server`) so the
 `list_tools` handshake doesn't drag in anthropic/langgraph/etc. that a read-only tool call never
-needs. Measure spawn 5s → ?s. Watch for: the import cost may be structural to `loop_engine/__init__`
+needs. Measure spawn 5s → ?s. Watch for: the import cost may be structural to `loop_orchestrator/__init__`
 (a package-level import chain), in which case the fix is decoupling the server's import graph from
 the orchestrator's, not just deferring within one module. `src/` change → own sprint/PR +
 fresh-session review.
@@ -1735,8 +1735,8 @@ were confirmed (the guard stays **green** under the violating construct it exist
 - **Subprocess guard:** enumerates `.Popen` / bare `Popen` + a fixed `os` exec/system list; misses
   `os.popen`, `os.spawn*`, `os.posix_spawn*`, `os.fork`, and `subprocess.run`/`call`/`check_output` as
   *calls* (`os` is already imported, so no import line trips it either).
-- **Leaf-import guard:** `from loop_engine.tools import slack_io` slips — `node.module` is
-  `loop_engine.tools` and the imported *name* (`slack_io`) is never inspected. A real back-channel
+- **Leaf-import guard:** `from loop_orchestrator.tools import slack_io` slips — `node.module` is
+  `loop_orchestrator.tools` and the imported *name* (`slack_io`) is never inspected. A real back-channel
   into a guarded package.
 - **Module-scope guard:** "module scope" is defined as direct `tree.body` children only, so a
   top-level `try: import slack_sdk` (which executes at import time) slips — defeating the exact
@@ -1952,8 +1952,8 @@ small and share the BL-2 escalation surface.
    (lift it into `runner` or a small `loops` helper and have `cli` import it) so the loop registry can't
    diverge between the CLI and the programmatic entrypoints.
 
-**Notes / where to look:** `src/loop_engine/tools/slack_io/escalation.py`,
-`src/loop_engine/tools/issue_io/github.py`, `src/loop_engine/cli.py`, `src/loop_engine/runner.py`. Full
+**Notes / where to look:** `src/loop_orchestrator/tools/slack_io/escalation.py`,
+`src/loop_orchestrator/tools/issue_io/github.py`, `src/loop_orchestrator/cli.py`, `src/loop_orchestrator/runner.py`. Full
 review reasoning is on PRs #131 and #133 (`gh pr view <n> --comments`).
 
 **Related:** [BL-2] (the sprint whose reviews surfaced these), [BL-9] (the other "issue-path cleanup"

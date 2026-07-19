@@ -1,0 +1,14 @@
+{
+  "servers": {
+    "github": {
+      "command": "python",
+      "args": ["-m", "loop_orchestrator.mcp_servers.github_server"],
+      "cwd": null
+    },
+    "issue": {
+      "command": "python",
+      "args": ["-m", "loop_orchestrator.mcp_servers.issue_io_server"],
+      "cwd": null
+    }
+  }
+}

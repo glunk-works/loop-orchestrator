@@ -6,11 +6,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from loop_engine.core.engine import Loop, Stage
-from loop_engine.core.gates import GateDecision, GateResult
-from loop_engine.core.graph_engine import run_graph_loop
-from loop_engine.core.state import RunStatus, State
-from loop_engine.personas.declarative.node import ArchitectureGenerator
+from loop_orchestrator.core.engine import Loop, Stage
+from loop_orchestrator.core.gates import GateDecision, GateResult
+from loop_orchestrator.core.graph_engine import run_graph_loop
+from loop_orchestrator.core.state import RunStatus, State
+from loop_orchestrator.personas.declarative.node import ArchitectureGenerator
 
 FIRST_ATTEMPT = "# Architecture\n\n1. Overview.\n\n## Assumptions\n\n- Single region.\n"
 

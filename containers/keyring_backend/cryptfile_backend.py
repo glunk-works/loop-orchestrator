@@ -1,10 +1,10 @@
-"""Standalone keyring backend for loop-engine's containerized deployments.
+"""Standalone keyring backend for loop-orchestrator's containerized deployments.
 
-Deliberately NOT part of the installed loop_engine package. Only
-src/loop_engine/tools/llm/client.py is permitted to import `keyring`; this
+Deliberately NOT part of the installed loop_orchestrator package. Only
+src/loop_orchestrator/tools/llm/client.py is permitted to import `keyring`; this
 module lives outside that boundary entirely and is wired into `keyring` via
 its own backend-discovery config (keyringrc.cfg + PYTHONPATH), never
-imported by loop_engine's own code.
+imported by loop_orchestrator's own code.
 
 Both the encrypted data file and the passphrase used to derive the
 decryption key must be supplied as mounted files, never environment
@@ -38,10 +38,12 @@ class EncryptedFileKeyring(keyring.backend.KeyringBackend):
     def __init__(self) -> None:
         super().__init__()
         self._file_path = Path(
-            os.environ.get("LOOP_ENGINE_KEYRING_FILE", "/run/secrets/keyring_data.enc")
+            os.environ.get("LOOP_ORCHESTRATOR_KEYRING_FILE", "/run/secrets/keyring_data.enc")
         )
         self._passphrase_path = Path(
-            os.environ.get("LOOP_ENGINE_KEYRING_PASSPHRASE_FILE", "/run/secrets/keyring_passphrase")
+            os.environ.get(
+                "LOOP_ORCHESTRATOR_KEYRING_PASSPHRASE_FILE", "/run/secrets/keyring_passphrase"
+            )
         )
 
     def _passphrase(self) -> bytes:

@@ -4,8 +4,8 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from loop_engine.slack_control.command import SlackRunCommand
-from loop_engine.slack_control.dispatch import SlackRunDispatcher
+from loop_orchestrator.slack_control.command import SlackRunCommand
+from loop_orchestrator.slack_control.dispatch import SlackRunDispatcher
 
 
 def _command(
@@ -29,7 +29,7 @@ def test_dispatch_invokes_runner_once_with_command_fields(monkeypatch) -> None:
         calls.append((human_input, budget_usd, loop_name))
         return MagicMock()
 
-    monkeypatch.setattr("loop_engine.runner.run_new", fake_run_new)
+    monkeypatch.setattr("loop_orchestrator.runner.run_new", fake_run_new)
     dispatcher = SlackRunDispatcher()
 
     async def main() -> None:
@@ -50,7 +50,7 @@ def test_dispatch_returns_before_the_run_finishes(monkeypatch) -> None:
         assert release.wait(timeout=5), "test deadlocked waiting for release"
         return MagicMock()
 
-    monkeypatch.setattr("loop_engine.runner.run_new", fake_run_new)
+    monkeypatch.setattr("loop_orchestrator.runner.run_new", fake_run_new)
     dispatcher = SlackRunDispatcher()
 
     async def main() -> float:
@@ -77,7 +77,7 @@ def test_second_dispatch_for_same_envelope_while_active_is_a_no_op(monkeypatch) 
         assert release.wait(timeout=5), "test deadlocked waiting for release"
         return MagicMock()
 
-    monkeypatch.setattr("loop_engine.runner.run_new", fake_run_new)
+    monkeypatch.setattr("loop_orchestrator.runner.run_new", fake_run_new)
     dispatcher = SlackRunDispatcher()
 
     async def main() -> None:
@@ -100,7 +100,7 @@ def test_envelope_can_be_dispatched_again_after_run_completes(monkeypatch) -> No
         calls.append(human_input)
         return MagicMock()
 
-    monkeypatch.setattr("loop_engine.runner.run_new", fake_run_new)
+    monkeypatch.setattr("loop_orchestrator.runner.run_new", fake_run_new)
     dispatcher = SlackRunDispatcher()
 
     async def main() -> None:
@@ -123,7 +123,7 @@ def test_in_flight_task_is_strongly_referenced_and_released_on_completion(monkey
         assert release.wait(timeout=5), "test deadlocked waiting for release"
         return MagicMock()
 
-    monkeypatch.setattr("loop_engine.runner.run_new", fake_run_new)
+    monkeypatch.setattr("loop_orchestrator.runner.run_new", fake_run_new)
     dispatcher = SlackRunDispatcher()
 
     async def main() -> None:
@@ -152,7 +152,7 @@ def test_dispatcher_serializes_concurrent_runs_for_different_envelopes(monkeypat
         order.append(f"end:{human_input}")
         return MagicMock()
 
-    monkeypatch.setattr("loop_engine.runner.run_new", fake_run_new)
+    monkeypatch.setattr("loop_orchestrator.runner.run_new", fake_run_new)
     dispatcher = SlackRunDispatcher()
 
     async def main() -> None:
@@ -175,11 +175,11 @@ def test_run_failure_is_logged_and_releases_the_dedupe_key(monkeypatch, caplog) 
         calls.append(human_input)
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("loop_engine.runner.run_new", failing_run_new)
+    monkeypatch.setattr("loop_orchestrator.runner.run_new", failing_run_new)
     dispatcher = SlackRunDispatcher()
 
     async def main() -> None:
-        with caplog.at_level("ERROR", logger="loop_engine.slack_control.dispatch"):
+        with caplog.at_level("ERROR", logger="loop_orchestrator.slack_control.dispatch"):
             await dispatcher.dispatch(_command(envelope_id="env-7"))
             await asyncio.sleep(0.2)
             await dispatcher.dispatch(_command(envelope_id="env-7"))
@@ -215,9 +215,11 @@ def test_dispatch_resume_loads_the_snapshot_and_calls_resume_run(monkeypatch) ->
         calls.append(("resume", state, resolved_answers, resolved_by, budget_usd))
         return _fake_state()
 
-    monkeypatch.setattr("loop_engine.slack_control.dispatch.load_state", fake_load_state)
-    monkeypatch.setattr("loop_engine.runner.resume_run", fake_resume_run)
-    monkeypatch.setattr("loop_engine.slack_control.dispatch.send_thread_message", lambda **_: None)
+    monkeypatch.setattr("loop_orchestrator.slack_control.dispatch.load_state", fake_load_state)
+    monkeypatch.setattr("loop_orchestrator.runner.resume_run", fake_resume_run)
+    monkeypatch.setattr(
+        "loop_orchestrator.slack_control.dispatch.send_thread_message", lambda **_: None
+    )
     dispatcher = SlackRunDispatcher(bot_token="xoxb-fake")  # noqa: S106
 
     async def main() -> None:
@@ -238,15 +240,19 @@ def test_dispatch_resume_returns_before_the_resume_finishes(monkeypatch) -> None
     started = threading.Event()
     release = threading.Event()
 
-    monkeypatch.setattr("loop_engine.slack_control.dispatch.load_state", lambda path: _fake_state())
+    monkeypatch.setattr(
+        "loop_orchestrator.slack_control.dispatch.load_state", lambda path: _fake_state()
+    )
 
     def fake_resume_run(state, resolved_answers, *, resolved_by, budget_usd):
         started.set()
         assert release.wait(timeout=5), "test deadlocked waiting for release"
         return _fake_state()
 
-    monkeypatch.setattr("loop_engine.runner.resume_run", fake_resume_run)
-    monkeypatch.setattr("loop_engine.slack_control.dispatch.send_thread_message", lambda **_: None)
+    monkeypatch.setattr("loop_orchestrator.runner.resume_run", fake_resume_run)
+    monkeypatch.setattr(
+        "loop_orchestrator.slack_control.dispatch.send_thread_message", lambda **_: None
+    )
     dispatcher = SlackRunDispatcher()
 
     async def main() -> float:
@@ -267,7 +273,9 @@ def test_second_dispatch_resume_for_same_envelope_while_active_is_a_no_op(monkey
     release = threading.Event()
     calls = []
 
-    monkeypatch.setattr("loop_engine.slack_control.dispatch.load_state", lambda path: _fake_state())
+    monkeypatch.setattr(
+        "loop_orchestrator.slack_control.dispatch.load_state", lambda path: _fake_state()
+    )
 
     def fake_resume_run(state, resolved_answers, *, resolved_by, budget_usd):
         calls.append(resolved_by)
@@ -275,8 +283,10 @@ def test_second_dispatch_resume_for_same_envelope_while_active_is_a_no_op(monkey
         assert release.wait(timeout=5), "test deadlocked waiting for release"
         return _fake_state()
 
-    monkeypatch.setattr("loop_engine.runner.resume_run", fake_resume_run)
-    monkeypatch.setattr("loop_engine.slack_control.dispatch.send_thread_message", lambda **_: None)
+    monkeypatch.setattr("loop_orchestrator.runner.resume_run", fake_resume_run)
+    monkeypatch.setattr(
+        "loop_orchestrator.slack_control.dispatch.send_thread_message", lambda **_: None
+    )
     dispatcher = SlackRunDispatcher()
 
     async def main() -> None:
@@ -304,7 +314,9 @@ def test_second_dispatch_resume_for_same_thread_but_distinct_envelope_is_a_no_op
     release = threading.Event()
     calls = []
 
-    monkeypatch.setattr("loop_engine.slack_control.dispatch.load_state", lambda path: _fake_state())
+    monkeypatch.setattr(
+        "loop_orchestrator.slack_control.dispatch.load_state", lambda path: _fake_state()
+    )
 
     def fake_resume_run(state, resolved_answers, *, resolved_by, budget_usd):
         calls.append(resolved_by)
@@ -312,8 +324,10 @@ def test_second_dispatch_resume_for_same_thread_but_distinct_envelope_is_a_no_op
         assert release.wait(timeout=5), "test deadlocked waiting for release"
         return _fake_state()
 
-    monkeypatch.setattr("loop_engine.runner.resume_run", fake_resume_run)
-    monkeypatch.setattr("loop_engine.slack_control.dispatch.send_thread_message", lambda **_: None)
+    monkeypatch.setattr("loop_orchestrator.runner.resume_run", fake_resume_run)
+    monkeypatch.setattr(
+        "loop_orchestrator.slack_control.dispatch.send_thread_message", lambda **_: None
+    )
     dispatcher = SlackRunDispatcher()
 
     async def main() -> None:
@@ -340,14 +354,18 @@ def test_dispatch_resume_is_dispatchable_again_for_the_same_thread_after_it_fini
 ) -> None:
     calls = []
 
-    monkeypatch.setattr("loop_engine.slack_control.dispatch.load_state", lambda path: _fake_state())
     monkeypatch.setattr(
-        "loop_engine.runner.resume_run",
+        "loop_orchestrator.slack_control.dispatch.load_state", lambda path: _fake_state()
+    )
+    monkeypatch.setattr(
+        "loop_orchestrator.runner.resume_run",
         lambda state, resolved_answers, *, resolved_by, budget_usd: (
             calls.append(resolved_by) or _fake_state()
         ),
     )
-    monkeypatch.setattr("loop_engine.slack_control.dispatch.send_thread_message", lambda **_: None)
+    monkeypatch.setattr(
+        "loop_orchestrator.slack_control.dispatch.send_thread_message", lambda **_: None
+    )
     dispatcher = SlackRunDispatcher()
 
     async def main() -> None:
@@ -388,10 +406,14 @@ def test_dispatch_and_dispatch_resume_serialize_under_the_same_lock(monkeypatch)
         order.append("end:resume_run")
         return _fake_state()
 
-    monkeypatch.setattr("loop_engine.runner.run_new", fake_run_new)
-    monkeypatch.setattr("loop_engine.runner.resume_run", fake_resume_run)
-    monkeypatch.setattr("loop_engine.slack_control.dispatch.load_state", lambda path: _fake_state())
-    monkeypatch.setattr("loop_engine.slack_control.dispatch.send_thread_message", lambda **_: None)
+    monkeypatch.setattr("loop_orchestrator.runner.run_new", fake_run_new)
+    monkeypatch.setattr("loop_orchestrator.runner.resume_run", fake_resume_run)
+    monkeypatch.setattr(
+        "loop_orchestrator.slack_control.dispatch.load_state", lambda path: _fake_state()
+    )
+    monkeypatch.setattr(
+        "loop_orchestrator.slack_control.dispatch.send_thread_message", lambda **_: None
+    )
     dispatcher = SlackRunDispatcher()
 
     async def main() -> None:
@@ -408,21 +430,23 @@ def test_dispatch_and_dispatch_resume_serialize_under_the_same_lock(monkeypatch)
 
 
 def test_dispatch_resume_failure_is_logged_and_releases_the_dedupe_key(monkeypatch, caplog) -> None:
-    monkeypatch.setattr("loop_engine.slack_control.dispatch.load_state", lambda path: _fake_state())
+    monkeypatch.setattr(
+        "loop_orchestrator.slack_control.dispatch.load_state", lambda path: _fake_state()
+    )
 
     def failing_resume_run(state, resolved_answers, *, resolved_by, budget_usd):
         raise RuntimeError("boom")
 
     calls = []
-    monkeypatch.setattr("loop_engine.runner.resume_run", failing_resume_run)
+    monkeypatch.setattr("loop_orchestrator.runner.resume_run", failing_resume_run)
     monkeypatch.setattr(
-        "loop_engine.slack_control.dispatch.send_thread_message",
+        "loop_orchestrator.slack_control.dispatch.send_thread_message",
         lambda **kwargs: calls.append(kwargs),
     )
     dispatcher = SlackRunDispatcher()
 
     async def main() -> None:
-        with caplog.at_level("ERROR", logger="loop_engine.slack_control.dispatch"):
+        with caplog.at_level("ERROR", logger="loop_orchestrator.slack_control.dispatch"):
             await dispatcher.dispatch_resume(**_resume_kwargs(envelope_id="env-resume-fail"))
             await asyncio.sleep(0.2)
             # The dedupe key was released, so a second attempt is not a no-op.
@@ -440,10 +464,12 @@ def test_dispatch_resume_posts_the_mapped_outcome_for_each_terminal_status(monke
     posted = []
 
     monkeypatch.setattr(
-        "loop_engine.slack_control.dispatch.send_thread_message",
+        "loop_orchestrator.slack_control.dispatch.send_thread_message",
         lambda **kwargs: posted.append(kwargs),
     )
-    monkeypatch.setattr("loop_engine.slack_control.dispatch.load_state", lambda path: _fake_state())
+    monkeypatch.setattr(
+        "loop_orchestrator.slack_control.dispatch.load_state", lambda path: _fake_state()
+    )
 
     async def _run_for_status(status: str, dispatcher: SlackRunDispatcher) -> None:
         await dispatcher.dispatch_resume(**_resume_kwargs(envelope_id=f"env-{status}"))
@@ -452,7 +478,7 @@ def test_dispatch_resume_posts_the_mapped_outcome_for_each_terminal_status(monke
     for status in ("completed", "failed_stage", "budget_exceeded", "awaiting_slack"):
         posted.clear()
         monkeypatch.setattr(
-            "loop_engine.runner.resume_run",
+            "loop_orchestrator.runner.resume_run",
             lambda state, resolved_answers, *, resolved_by, budget_usd, _status=status: _fake_state(
                 _status
             ),
@@ -473,12 +499,14 @@ def test_dispatch_resume_posts_the_mapped_outcome_for_each_terminal_status(monke
 def test_dispatch_resume_skips_the_outcome_post_when_no_bot_token_configured(monkeypatch) -> None:
     posted = []
     monkeypatch.setattr(
-        "loop_engine.slack_control.dispatch.send_thread_message",
+        "loop_orchestrator.slack_control.dispatch.send_thread_message",
         lambda **kwargs: posted.append(kwargs),
     )
-    monkeypatch.setattr("loop_engine.slack_control.dispatch.load_state", lambda path: _fake_state())
     monkeypatch.setattr(
-        "loop_engine.runner.resume_run",
+        "loop_orchestrator.slack_control.dispatch.load_state", lambda path: _fake_state()
+    )
+    monkeypatch.setattr(
+        "loop_orchestrator.runner.resume_run",
         lambda state, resolved_answers, *, resolved_by, budget_usd: _fake_state(),
     )
     dispatcher = SlackRunDispatcher()  # no bot_token

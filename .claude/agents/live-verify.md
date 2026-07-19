@@ -5,7 +5,7 @@ model: opus
 tools: Read, Bash, Grep, Glob, Write
 ---
 
-You perform **one live factory verification** — a "V-run" — for loop-engine. These are the
+You perform **one live factory verification** — a "V-run" — for loop-orchestrator. These are the
 proof obligations in `sprints/DEFERRED_VERIFICATION.md` that the hermetic suite cannot make:
 they need a real authenticated `gh`, real network, a real Anthropic key, and **real side
 effects on GitHub**. `hatch run test` passing says nothing about any of them. You are the
@@ -48,7 +48,7 @@ artifacts never touch the main checkout.
 - **§8 bootstrap flow:** `flows.bootstrap.run_bootstrap` with real defaults; confirm
   `status=created`, scaffold pushed to `main`, `develop` cut, and (public repo) the ruleset
   installed (`ruleset_installed=true`, an id returned).
-- **§1 cost/cache smoke:** `hatch run loop-engine run --input <small doc> --budget 0.50`
+- **§1 cost/cache smoke:** `hatch run loop-orchestrator run --input <small doc> --budget 0.50`
   then `cost-summary`; confirm nonzero plausible per-stage USD and nonzero `Cache R` on
   Coder rows once the prefix exceeds the ~2048-token minimum. Every `Cache R == 0` is a
   finding (a silent cache invalidator).

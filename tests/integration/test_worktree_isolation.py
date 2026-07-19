@@ -6,12 +6,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from loop_engine.core.engine import Loop, Stage
-from loop_engine.core.gates import ArtifactGate
-from loop_engine.core.graph_engine import run_graph_loop
-from loop_engine.core.state import RunStatus, State
-from loop_engine.personas.base import BasePersona
-from loop_engine.tools.worktree import worktree_run
+from loop_orchestrator.core.engine import Loop, Stage
+from loop_orchestrator.core.gates import ArtifactGate
+from loop_orchestrator.core.graph_engine import run_graph_loop
+from loop_orchestrator.core.state import RunStatus, State
+from loop_orchestrator.personas.base import BasePersona
+from loop_orchestrator.tools.worktree import worktree_run
 
 
 class AppendArtifactPersona(BasePersona):
@@ -65,10 +65,10 @@ ENGINES = [run_graph_loop]
 
 @pytest.mark.parametrize("engine", ENGINES)
 def test_isolation_on_matches_isolation_off(engine, repo, monkeypatch):
-    monkeypatch.delenv("LOOP_ENGINE_ISOLATION", raising=False)
+    monkeypatch.delenv("LOOP_ORCHESTRATOR_ISOLATION", raising=False)
     off = engine(_loop(["a", "b"]), _state("off"), _client())
 
-    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "worktree")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_ISOLATION", "worktree")
     with worktree_run("onrun"):
         on = engine(_loop(["a", "b"]), _state("onrun"), _client())
 
@@ -78,7 +78,7 @@ def test_isolation_on_matches_isolation_off(engine, repo, monkeypatch):
 
 @pytest.mark.parametrize("engine", ENGINES)
 def test_snapshots_in_main_checkout_artifacts_in_worktree(engine, repo, monkeypatch):
-    monkeypatch.setenv("LOOP_ENGINE_ISOLATION", "worktree")
+    monkeypatch.setenv("LOOP_ORCHESTRATOR_ISOLATION", "worktree")
     run_id = "splitrun"
     with worktree_run(run_id) as wt:
         engine(_loop(["a"]), _state(run_id), _client())

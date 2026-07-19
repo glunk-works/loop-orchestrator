@@ -1,5 +1,5 @@
 """Repo-wide static assertions (sprint 35) over every `read_text` /
-`write_text` / `open()` call in `src/loop_engine`:
+`write_text` / `open()` call in `src/loop_orchestrator`:
 
 1. Every text-mode call must pin an explicit `encoding=` kwarg -- the C
    locale otherwise silently picks a platform-dependent encoding. Binary
@@ -22,7 +22,7 @@ from pathlib import Path
 
 from tests.tools._ast_open import is_write_capable, mode_node, open_call_is_method
 
-SRC_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "loop_engine"
+SRC_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "loop_orchestrator"
 _TARGET_METHODS = {"read_text", "write_text"}
 # Mirrors test_state_io_boundary.py::ALLOWED_DIRS -- the two sanctioned
 # file-write-owning modules -- plus agent_state, whose store.py holds this

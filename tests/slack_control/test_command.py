@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from loop_engine.slack_control.command import CommandRejection, SlackRunCommand, parse_command
+from loop_orchestrator.slack_control.command import CommandRejection, SlackRunCommand, parse_command
 
 
 def _payload(

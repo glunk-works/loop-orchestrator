@@ -34,7 +34,7 @@ resume and prunable otherwise. Gated by a new flag, default off, so the phase
 boundary stays checkout-able (consistent with `LOOP_ENGINE_ENGINE` /
 `LOOP_ENGINE_TOOLS`).
 
-**Flag.** `LOOP_ENGINE_ISOLATION` — enum `none` (default) | `worktree`.
+**Flag.** `LOOP_ORCHESTRATOR_ISOLATION` — enum `none` (default) | `worktree`.
 (3b later extends this with `container` | `sandbox`.)
 
 ### New module: `tools/worktree/manager.py`
@@ -47,7 +47,7 @@ API:
 
 - `worktree_path(run_id) -> Path` — `<worktree_root>/<run_id>`, where
   `worktree_root` defaults to `.worktrees/` under the main checkout and is
-  overridable via `LOOP_ENGINE_WORKTREE_ROOT`.
+  overridable via `LOOP_ORCHESTRATOR_WORKTREE_ROOT`.
 - `create(run_id) -> Path` — `git worktree add <path> -b loop/<run_id> HEAD`
   (idempotent: if the path already exists and is a registered worktree, reuse
   it; this is what resume relies on).
@@ -56,7 +56,7 @@ API:
   integration seam. On enter: capture the orchestrator home (original cwd),
   `create` (or reuse) the worktree, `os.chdir(worktree)`. On exit: `os.chdir`
   back **in a `finally`** (must restore even on exception), then apply the
-  retention policy. When `LOOP_ENGINE_ISOLATION != worktree` it is a no-op
+  retention policy. When `LOOP_ORCHESTRATOR_ISOLATION != worktree` it is a no-op
   passthrough (no chdir, no worktree) so the default path is byte-identical to
   today.
 
@@ -64,7 +64,7 @@ API:
 - `awaiting_issue` → **retain** (the run resumes here; artifacts must survive).
 - `completed` → **retain** (Phase 5 opens a PR from it).
 - `failed_stage` / `budget_exceeded` → **retain** for inspection; prunable via a
-  new `loop-engine prune-worktrees [--older-than] [--status]` command.
+  new `loop-orchestrator prune-worktrees [--older-than] [--status]` command.
 
 Rationale for retain-by-default: a worktree is cheap (shared object store) and
 losing a resumable/inspectable run is expensive. Pruning is explicit.
@@ -143,7 +143,7 @@ new run; read from the loaded snapshot on resume).
   lands in the worktree while `write_state_snapshot` lands in the orchestrator
   home; with isolation off, both land in cwd (parity).
 - Extend the subprocess-boundary test to allow `git` in `tools/worktree` only.
-- Parity: rerun the engine-parity harness with `LOOP_ENGINE_ISOLATION=worktree`
+- Parity: rerun the engine-parity harness with `LOOP_ORCHESTRATOR_ISOLATION=worktree`
   for **both** engines — outcomes identical to isolation-off.
 - `tests/test_cli.py`: `run` under the flag creates a worktree and writes the
   snapshot to the main checkout; `resume` reuses the worktree; resume against a
@@ -205,14 +205,14 @@ side needs **no change** for 3b — only the server *launch parameters* change:
               args=["run","--rm","--network","none","--read-only",
                     "-v", f"{worktree}:{worktree}:rw", "-w", worktree,
                     "--cap-drop","ALL","--user","<nonroot>",
-                    LOOP_ENGINE_DEV_IMAGE, "python","-m","...coder_tools_server"]
+                    LOOP_ORCHESTRATOR_DEV_IMAGE, "python","-m","...coder_tools_server"]
 3b sandbox:   command="bwrap", args=["--unshare-all","--die-with-parent",
                     "--ro-bind","/usr","/usr", "--bind", worktree, worktree,
                     "--chdir", worktree, "python","-m","...coder_tools_server"]
 ```
 
 Concretely 3b adds a `sandbox_server_params(worktree)` alongside
-`coder_tools_server_params`, selected by `LOOP_ENGINE_ISOLATION`.
+`coder_tools_server_params`, selected by `LOOP_ORCHESTRATOR_ISOLATION`.
 
 **Substrate.** The image is the **`dev` stage of the root `Dockerfile`** (already
 carries hatch + pytest). For the container path, target a host with a **native**
@@ -220,7 +220,7 @@ daemon (the Phase 5 factory host) so the `-v worktree:worktree` bind uses a real
 host path — this sidesteps the DooD host-path-translation footgun that makes the
 current nested devcontainer the wrong place to run it.
 
-**Daemon-free alternative** (`LOOP_ENGINE_ISOLATION=sandbox`): `bwrap`/`nsjail`
+**Daemon-free alternative** (`LOOP_ORCHESTRATOR_ISOLATION=sandbox`): `bwrap`/`nsjail`
 give process isolation without a daemon and work inside an unprivileged
 container **if** unprivileged user namespaces are permitted. Verify
 availability (`bwrap --version`; `unshare -Ur true`) before committing to build

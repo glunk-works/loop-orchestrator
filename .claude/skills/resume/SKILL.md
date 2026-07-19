@@ -1,6 +1,6 @@
 ---
 name: resume
-description: Rehydrate a fresh dev session from .ai/ externalized state — read the cursor, adopt the assigned persona/model, and state the exact pick-up point. Then start the next_action unattended IF the cursor is clean and unambiguous (hitl_gate NONE OPEN, sprint_status implementing, model matches, no drift); otherwise state the pick-up point and wait. Fails closed — an open, missing, or unreadable gate always waits. Run this at the START of a session working on this repo. Distinct from the `loop-engine resume` CLI subcommand.
+description: Rehydrate a fresh dev session from .ai/ externalized state — read the cursor, adopt the assigned persona/model, and state the exact pick-up point. Then start the next_action unattended IF the cursor is clean and unambiguous (hitl_gate NONE OPEN, sprint_status implementing, model matches, no drift); otherwise state the pick-up point and wait. Fails closed — an open, missing, or unreadable gate always waits. Run this at the START of a session working on this repo. Distinct from the `loop-orchestrator resume` CLI subcommand.
 ---
 
 # /resume — rehydrate a fresh session from externalized state

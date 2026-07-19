@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from loop_engine.core.state import (
+from loop_orchestrator.core.state import (
     CURRENT_SCHEMA_VERSION,
     RunStatus,
     SlackRef,

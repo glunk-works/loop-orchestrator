@@ -4,23 +4,23 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from loop_engine.core.coder_gate import EDIT_FAILURES_HEADER, RALPH_REGRESSION_PREFIX
-from loop_engine.core.state import State
-from loop_engine.personas.agile_sprint_breakdown.manifest import build_task_manifest
-from loop_engine.personas.coder_iac.ralph import (
+from loop_orchestrator.core.coder_gate import EDIT_FAILURES_HEADER, RALPH_REGRESSION_PREFIX
+from loop_orchestrator.core.state import State
+from loop_orchestrator.personas.agile_sprint_breakdown.manifest import build_task_manifest
+from loop_orchestrator.personas.coder_iac.ralph import (
     RalphCoderPersona,
     _build_repair_prompt,
     _build_task_prompt,
     _finalize_report,
     select_next_task,
 )
-from loop_engine.tools.agent_state import (
+from loop_orchestrator.tools.agent_state import (
     ScratchpadState,
     read_memory,
     read_scratchpad,
     write_scratchpad,
 )
-from loop_engine.tools.llm.client import ToolLoopExceededError
+from loop_orchestrator.tools.llm.client import ToolLoopExceededError
 
 
 def _prompt_of(client: MagicMock) -> str:
@@ -80,7 +80,7 @@ class _FakeProvider:
 @pytest.fixture(autouse=True)
 def _stub_coder_tool_provider(monkeypatch):
     monkeypatch.setattr(
-        "loop_engine.personas.coder_iac.shared.build_coder_tool_provider",
+        "loop_orchestrator.personas.coder_iac.shared.build_coder_tool_provider",
         lambda cwd=None: _FakeProvider(),
     )
 
@@ -171,11 +171,11 @@ def test_open_questions_escalate_and_task_is_not_checked_off() -> None:
 
 
 _MALFORMED_EDIT_BLOCK = (
-    "Attempt.\n\n### FILEPATH: src/loop_engine/ci.py\n"
+    "Attempt.\n\n### FILEPATH: src/loop_orchestrator/ci.py\n"
     "no fenced contents and no SEARCH/REPLACE pairs here.\n"
 )
 _WELL_FORMED_EDIT_BLOCK = (
-    "Attempt.\n\n### FILEPATH: src/loop_engine/ci.py\n```python\nCI = True\n```\n"
+    "Attempt.\n\n### FILEPATH: src/loop_orchestrator/ci.py\n```python\nCI = True\n```\n"
 )
 
 
@@ -207,7 +207,7 @@ def test_edit_application_failure_retries_the_same_task_until_it_applies() -> No
 
 
 def test_finalize_report_returns_report_and_failures_tuple() -> None:
-    clean_report = "Done.\n\n### FILEPATH: src/loop_engine/ci.py\n```python\nCI = True\n```\n"
+    clean_report = "Done.\n\n### FILEPATH: src/loop_orchestrator/ci.py\n```python\nCI = True\n```\n"
     report, failures = _finalize_report(clean_report)
     assert failures == []
     assert report == clean_report

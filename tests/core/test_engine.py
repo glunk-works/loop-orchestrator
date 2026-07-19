@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from loop_engine.core.engine import (
+from loop_orchestrator.core.engine import (
     MAX_ESCALATIONS_PER_STAGE,
     MAX_REPLANS_PER_RUN,
     PAUSED_STAGE_COUNTER,
@@ -20,11 +20,11 @@ from loop_engine.core.engine import (
     apply_resolved_answers,
     reentry_index,
 )
-from loop_engine.core.gates import ArtifactGate, GateDecision, GateResult
-from loop_engine.core.graph_engine import run_graph_loop
-from loop_engine.core.state import IssueRef, Question, RunStatus, SlackRef, StageRecord, State
-from loop_engine.personas.base import BasePersona
-from loop_engine.tools.llm.client import (
+from loop_orchestrator.core.gates import ArtifactGate, GateDecision, GateResult
+from loop_orchestrator.core.graph_engine import run_graph_loop
+from loop_orchestrator.core.state import IssueRef, Question, RunStatus, SlackRef, StageRecord, State
+from loop_orchestrator.personas.base import BasePersona
+from loop_orchestrator.tools.llm.client import (
     BudgetExceededError,
     ToolLoopExceededError,
     TruncatedResponseError,
@@ -46,7 +46,7 @@ def _stub_issue_filer(monkeypatch):
         filed.append(list(questions))
         return IssueRef(number=42, url="https://github.com/example/repo/issues/42")
 
-    monkeypatch.setattr("loop_engine.core.engine.default_issue_filer", fake_file_issue)
+    monkeypatch.setattr("loop_orchestrator.core.engine.default_issue_filer", fake_file_issue)
     return filed
 
 
@@ -407,7 +407,7 @@ class _FakeIssueProvider:
 
 
 def test_engine_injected_mcp_issue_filer_routes_through_provider() -> None:
-    from loop_engine.tools.issue_io import mcp_issue_filer
+    from loop_orchestrator.tools.issue_io import mcp_issue_filer
 
     persona = QuestionAskingPersona()
     loop = Loop(stages=[Stage(persona=persona, gate=ArtifactGate("doc"))])
@@ -435,18 +435,20 @@ def test_engine_uninjected_default_filer_names_an_explicit_destination_repo(monk
     stub and pins the real default: it must dispatch `create_issue` with an
     explicit, non-null `repo`.
     """
-    from loop_engine.tools.issue_io import default_issue_filer as real_default_issue_filer
+    from loop_orchestrator.tools.issue_io import default_issue_filer as real_default_issue_filer
 
     provider = _FakeIssueProvider()
     # Restore the real default over the autouse stub (a bare `monkeypatch.undo()`
     # would also undo `_isolated_cwd`, spraying snapshots into the repo).
-    monkeypatch.setattr("loop_engine.core.engine.default_issue_filer", real_default_issue_filer)
     monkeypatch.setattr(
-        "loop_engine.tools.mcp.build_issue_provider",
+        "loop_orchestrator.core.engine.default_issue_filer", real_default_issue_filer
+    )
+    monkeypatch.setattr(
+        "loop_orchestrator.tools.mcp.build_issue_provider",
         lambda: _ContextManagerProvider(provider),
     )
     monkeypatch.setattr(
-        "loop_engine.tools.repo_io.resolve_repo_slug", lambda cwd: "acme/managed-repo"
+        "loop_orchestrator.tools.repo_io.resolve_repo_slug", lambda cwd: "acme/managed-repo"
     )
 
     loop = Loop(stages=[Stage(persona=QuestionAskingPersona(), gate=ArtifactGate("doc"))])
@@ -478,7 +480,7 @@ class _ContextManagerProvider:
 def test_engine_injected_mcp_issue_filer_routes_through_provider_at_escalation_cap() -> None:
     """R4: the escalation-cap pause site (site 2 of 3) also honors an
     injected filer, not just the default-path stub."""
-    from loop_engine.tools.issue_io import mcp_issue_filer
+    from loop_orchestrator.tools.issue_io import mcp_issue_filer
 
     class AlwaysAskingPersona(BasePersona):
         def __init__(self) -> None:
@@ -513,7 +515,7 @@ def test_engine_injected_mcp_issue_filer_routes_through_provider_at_replan_cap()
     single stage re-escalating trips its own per-stage escalation cap first
     (both caps are 2) before a multi-round scenario could ever reach the
     replan-cap branch."""
-    from loop_engine.tools.issue_io import mcp_issue_filer
+    from loop_orchestrator.tools.issue_io import mcp_issue_filer
 
     persona = QuestionAskingPersona()
     resolver = AnsweringResolver(impact="plan")
@@ -676,10 +678,10 @@ def test_engine_logs_stage_completion_with_distinct_nonzero_values(caplog) -> No
 
     loop = Loop(stages=[Stage(persona=SpendingPersona(), gate=ArtifactGate("doc"))])
 
-    with caplog.at_level(logging.INFO, logger="loop_engine.cost"):
+    with caplog.at_level(logging.INFO, logger="loop_orchestrator.cost"):
         run_graph_loop(loop, _initial_state("run-log"), _stub_llm_client())
 
-    records = [r for r in caplog.records if r.name == "loop_engine.cost"]
+    records = [r for r in caplog.records if r.name == "loop_orchestrator.cost"]
     assert len(records) == 1
     payload = json.loads(records[0].message)
     assert payload["stage_name"] == "SpendingPersona"

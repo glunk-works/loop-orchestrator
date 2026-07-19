@@ -25,7 +25,7 @@ this file tracks *how far we've got and what's next*.
 | 4 · part 1a — Ralph hardening (review findings #6 (a)–(d)) | ✅ complete, reviewed; 3 HITL-review findings resolved (see "Sprint-19a HITL-review settlements"). Plan: `sprints/19a_ralph_hardening/sprint_plan.md` | `d675d5d` → review-fixes |
 | 4 · part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate | ✅ complete, reviewed; HITL-review findings resolved via sprint 21 review-fixes. 394 tests green. Plans: `sprints/20_declarative_generators/`, `sprints/21_declarative_review_fixes/` | `cf48b0c` → `aceb23a` → `03818d9` |
 | 5 — Autonomous triggers + multi-repo factory | 🟨 22a + 22b + 23 + 23a + 24 + 25 complete, reviewed, archived. Sprint 25 (bootstrap flow capability slice) landed the second sanctioned file-write surface (`tools/scaffold`), HITL-reviewed by Opus and approved. Next: plan Phase 6 (collapse the flags). Plans: `sprints/22a_mcp_multiserver_discovery/`, `sprints/22b_native_github_server/`, `sprints/23_trigger_surface/`, `sprints/23a_trigger_review_fixes/`, `sprints/24_maintenance_flow/`, `sprints/25_bootstrap_flow/` | `457f675` → `71f1692` → `d0e118d` → `7b46227` → `5bc3811` → `5ff8c02` → `e0406d8` → `212beeb` → `6172ad1` → `f8d388a` → `79b535d` |
-| 6 — Collapse the flags (decommission the migration scaffolding) | 🟩 **DONE (2026-07-12).** Planning pass locked 2026-07-10; Sprint 26 (`issue_io`→MCP unification, capability+seams) — implemented, green, **HITL-reviewed by Opus and approved (2026-07-10)**; review findings R1–R7 routed into the host-gated flip block (see the Sprint 26 HITL-review subsection + `DEFERRED_VERIFICATION.md` §9), archived. Flip block planned in `sprints/27_phase6_flip_block/`; its Phase-3b-completion prerequisite **sprint 28 (gate-pytest sandbox) is complete, green, HITL-reviewed by Opus and approved (2026-07-10, `386c660`), and archived** — unblocking sprint 27's host V-runs. **Sprint 29 (Coder host-run hardening) is complete, green, HITL-reviewed by Opus and approved (2026-07-11, `b0be361`/`10f27d3`):** it closed the two Coder-convergence gaps the V2 re-attempt surfaced — **F-TOOLLOOP-CAP** (graceful `ToolLoopExceededError` + inner cap 12→40) and **F-CODER-NO-LINT** (the `run_lint` ruff tool, a fifth sanctioned subprocess surface). **Sprint 30 (Ralph test-scope guardrails) is complete, green, HITL-reviewed by Opus and approved (2026-07-11, `551338a`/`f934fda`):** V2 re-attempt #6 surfaced a third convergence gap, **F-RALPH-OVERSPEC-TEST** (Ralph authored out-of-spec tests asserting private/underscore internals, then escalated on their self-caused failures instead of self-fixing); sprint 30 closed it with a prompt-only fix (locked FD1/FD2 — test-scope + self-fix-before-escalate directives added to the Coder/Ralph prompts, no gate-guard). **Sprint 31 (Ralph completion integrity) is complete, green, HITL-reviewed by Opus and approved (2026-07-11, `e5d9d98`/`9c32cbf`):** V2 re-attempt #7 confirmed sprint 30's fix holds but surfaced a fourth gap, **F-RALPH-FALSE-COMPLETION** (`RalphCoderPersona` marked a task done on "no open question" alone, never checking that `apply_file_blocks` actually applied the edit — so one malformed edit block baked a permanent `## Edit Application Failures` marker into the report and wedged the Coder gate before pytest); sprint 31 closed it with a bookkeeping fix in `personas/coder_iac/ralph.py` only (locked FD1/FD2/FD3 — completion gated on no-questions **and** no-edit-failures, the failure kept distinct from an escalation and simply retried; no `core/coder_gate.py` change). **V2 is now PASS (host re-attempt #8, 2026-07-11):** a real container-sandboxed Ralph run reached terminal `COMPLETED` under the full production config — 8/8 manifest tasks, zero escalations, $2.24/$5.00, independently re-verified (pytest 15 passed, ruff clean, every spec case + error path exercised); sprint 31's fix held, so FD1 did not fire. **Sprint 27's subtractive flag deletions are DONE (2026-07-11):** Task 0 tagged `pre-phase6-classic`; Tasks 1–4 deleted all four migration flags and their classic paths (`ec8b0e5` ENGINE, `adb20b3` TOOLS, `56c3824` PERSONAS, `3ea8106` CODER); Task 6 (the `loop.py` collapse) fell out of them — a `build_default_loop()` that cannot read a flag cannot branch on one; Task 7 reconciled the docs. **Task 5 (the `artifacts` strip) is DEFERRED to its own sprint (decision FD3)** — its premise was false: deleting `run_loop` does not make the engine the sole `artifacts` reader, because the readers were always the personas and gates, so the strip is a behavior-changing refactor rather than a deletion. **V3 is PASS (qualified, 2026-07-12)** — the forced issue-escalation host round-trip: V3a (verb-level, $0) and V3b (engine-level) both proved the issue path against a real `gh`, real GitHub issues, and the real `issue` MCP server subprocess; it surfaced findings **R8** (the issue verbs had no explicit repo target — escalation issues for managed repos were being filed on loop-engine itself), **R9** (the PM stage cannot escalate a requirements contradiction) and **R10** (a run cannot be paused and resumed under different isolation modes). **Task 8 (the issue-path flip onto MCP) landed (`8a8b59f`, PR #30), and its R8 fix was completed by Task 10 (`796610a`, PR #34)** — the first cut threaded `cwd` from `cli.py` alone and every fresh-run path kept leaking, so the destination decision moved *into* `default_issue_filer` (resolving `worktree.origin_cwd()`, no `repo=None` fallback anywhere). Task 10 also closed the review's F1–F7: `resume --snapshot` is now repo/issue-authoritative from the snapshot's own `pending_issue.url`, `_ORIGIN_CWD`/`_STATE_ROOT` are `ContextVar`s restored by token, `InProcessDispatcher` serializes runs, and `_pause_for_issue` persists before filing. **HITL-reviewed by Opus and approved (2026-07-12, fresh session, PR #34).** **Task 9 (this row's close) pruned rather than deleted `sprints/DEFERRED_VERIFICATION.md`** — its premise was false in the same way Task 5's was: the file held five checks (§1, §5, §6, §7, §8) that were **never performed**, so deleting it would have silently discarded the project's only record of them. The Phase-6 sections it *had* discharged (§2 moot, §3/§4/§9 superseded by V1/V2/V3) were retired and their results folded into this row; the file survives as the standing register of unmet proof obligations and **outlives the migration**. **Phase 6 is therefore complete: four flags deleted, one path (LangGraph engine + MCP tool dispatch + declarative `GeneratorNode` personas / PM `CriticGate` + Ralph Coder); classic recoverable at the `pre-phase6-classic` tag; `LOOP_ENGINE_ISOLATION` survives as genuine runtime config; V1/V2/V3 all PASS.** ✅ **Task 5's dangling ⚠ is now DISCHARGED (sprint 32, 2026-07-12) — inverted, not executed as written: `artifact_refs` was stripped, `State.artifacts` survives as the permanent source of truth (FD1, superseding FD3 below).** **Sprint 32 is complete, green, HITL-reviewed by Opus and approved (2026-07-12, fresh session, PR #39, squash `3db3237`)** — `schema_version` 3→4 with an explicit pop of the retired key; the 8 artifact-reader modules came out **byte-identical** to the pre-sprint base, which is the tell that the inversion held. Its review raised eight non-blocking findings (two worth folding in: `publish_artifacts`' new per-stage disk read vs. its "does no I/O" docstring, and its unencoded `Path.read_text()` read-back) and, more consequentially, surfaced **BL-10** — a `ci.yml` hole under which #39's own test suite had **never run** (a 78-char title failed `pr-title`, which skipped `lint`, which cascaded to skip the entire heavy chain; a title edit fires `edited`, which `lint` deliberately ignores, so it could never recover). Recovered by close+reopen (`reopened` preserves the head SHA, so the commit-pinned `architect-review` stayed green); logged in PR #40 (`46458af`), **not fixed**. Plans: `sprints/26_issue_io_mcp_unification/`, `sprints/27_phase6_flip_block/`, `sprints/28_gate_pytest_sandbox/`, `sprints/29_coder_host_run_hardening/`, `sprints/30_ralph_test_scope/`, `sprints/31_ralph_completion_integrity/` | `3a9bc30` → `b7e2496` → `386c660` → `b0be361` → `10f27d3` → `551338a` → `f934fda` → `e5d9d98` → `9c32cbf` → `ec8b0e5` → `adb20b3` → `56c3824` → `3ea8106` → `8a8b59f` (Task 8, PR #30) → `796610a` (Task 10, PR #34) → `ddd28a8` (Task 9 — Phase 6 closed, PR #37) |
+| 6 — Collapse the flags (decommission the migration scaffolding) | 🟩 **DONE (2026-07-12).** Planning pass locked 2026-07-10; Sprint 26 (`issue_io`→MCP unification, capability+seams) — implemented, green, **HITL-reviewed by Opus and approved (2026-07-10)**; review findings R1–R7 routed into the host-gated flip block (see the Sprint 26 HITL-review subsection + `DEFERRED_VERIFICATION.md` §9), archived. Flip block planned in `sprints/27_phase6_flip_block/`; its Phase-3b-completion prerequisite **sprint 28 (gate-pytest sandbox) is complete, green, HITL-reviewed by Opus and approved (2026-07-10, `386c660`), and archived** — unblocking sprint 27's host V-runs. **Sprint 29 (Coder host-run hardening) is complete, green, HITL-reviewed by Opus and approved (2026-07-11, `b0be361`/`10f27d3`):** it closed the two Coder-convergence gaps the V2 re-attempt surfaced — **F-TOOLLOOP-CAP** (graceful `ToolLoopExceededError` + inner cap 12→40) and **F-CODER-NO-LINT** (the `run_lint` ruff tool, a fifth sanctioned subprocess surface). **Sprint 30 (Ralph test-scope guardrails) is complete, green, HITL-reviewed by Opus and approved (2026-07-11, `551338a`/`f934fda`):** V2 re-attempt #6 surfaced a third convergence gap, **F-RALPH-OVERSPEC-TEST** (Ralph authored out-of-spec tests asserting private/underscore internals, then escalated on their self-caused failures instead of self-fixing); sprint 30 closed it with a prompt-only fix (locked FD1/FD2 — test-scope + self-fix-before-escalate directives added to the Coder/Ralph prompts, no gate-guard). **Sprint 31 (Ralph completion integrity) is complete, green, HITL-reviewed by Opus and approved (2026-07-11, `e5d9d98`/`9c32cbf`):** V2 re-attempt #7 confirmed sprint 30's fix holds but surfaced a fourth gap, **F-RALPH-FALSE-COMPLETION** (`RalphCoderPersona` marked a task done on "no open question" alone, never checking that `apply_file_blocks` actually applied the edit — so one malformed edit block baked a permanent `## Edit Application Failures` marker into the report and wedged the Coder gate before pytest); sprint 31 closed it with a bookkeeping fix in `personas/coder_iac/ralph.py` only (locked FD1/FD2/FD3 — completion gated on no-questions **and** no-edit-failures, the failure kept distinct from an escalation and simply retried; no `core/coder_gate.py` change). **V2 is now PASS (host re-attempt #8, 2026-07-11):** a real container-sandboxed Ralph run reached terminal `COMPLETED` under the full production config — 8/8 manifest tasks, zero escalations, $2.24/$5.00, independently re-verified (pytest 15 passed, ruff clean, every spec case + error path exercised); sprint 31's fix held, so FD1 did not fire. **Sprint 27's subtractive flag deletions are DONE (2026-07-11):** Task 0 tagged `pre-phase6-classic`; Tasks 1–4 deleted all four migration flags and their classic paths (`ec8b0e5` ENGINE, `adb20b3` TOOLS, `56c3824` PERSONAS, `3ea8106` CODER); Task 6 (the `loop.py` collapse) fell out of them — a `build_default_loop()` that cannot read a flag cannot branch on one; Task 7 reconciled the docs. **Task 5 (the `artifacts` strip) is DEFERRED to its own sprint (decision FD3)** — its premise was false: deleting `run_loop` does not make the engine the sole `artifacts` reader, because the readers were always the personas and gates, so the strip is a behavior-changing refactor rather than a deletion. **V3 is PASS (qualified, 2026-07-12)** — the forced issue-escalation host round-trip: V3a (verb-level, $0) and V3b (engine-level) both proved the issue path against a real `gh`, real GitHub issues, and the real `issue` MCP server subprocess; it surfaced findings **R8** (the issue verbs had no explicit repo target — escalation issues for managed repos were being filed on loop-orchestrator itself), **R9** (the PM stage cannot escalate a requirements contradiction) and **R10** (a run cannot be paused and resumed under different isolation modes). **Task 8 (the issue-path flip onto MCP) landed (`8a8b59f`, PR #30), and its R8 fix was completed by Task 10 (`796610a`, PR #34)** — the first cut threaded `cwd` from `cli.py` alone and every fresh-run path kept leaking, so the destination decision moved *into* `default_issue_filer` (resolving `worktree.origin_cwd()`, no `repo=None` fallback anywhere). Task 10 also closed the review's F1–F7: `resume --snapshot` is now repo/issue-authoritative from the snapshot's own `pending_issue.url`, `_ORIGIN_CWD`/`_STATE_ROOT` are `ContextVar`s restored by token, `InProcessDispatcher` serializes runs, and `_pause_for_issue` persists before filing. **HITL-reviewed by Opus and approved (2026-07-12, fresh session, PR #34).** **Task 9 (this row's close) pruned rather than deleted `sprints/DEFERRED_VERIFICATION.md`** — its premise was false in the same way Task 5's was: the file held five checks (§1, §5, §6, §7, §8) that were **never performed**, so deleting it would have silently discarded the project's only record of them. The Phase-6 sections it *had* discharged (§2 moot, §3/§4/§9 superseded by V1/V2/V3) were retired and their results folded into this row; the file survives as the standing register of unmet proof obligations and **outlives the migration**. **Phase 6 is therefore complete: four flags deleted, one path (LangGraph engine + MCP tool dispatch + declarative `GeneratorNode` personas / PM `CriticGate` + Ralph Coder); classic recoverable at the `pre-phase6-classic` tag; `LOOP_ORCHESTRATOR_ISOLATION` survives as genuine runtime config; V1/V2/V3 all PASS.** ✅ **Task 5's dangling ⚠ is now DISCHARGED (sprint 32, 2026-07-12) — inverted, not executed as written: `artifact_refs` was stripped, `State.artifacts` survives as the permanent source of truth (FD1, superseding FD3 below).** **Sprint 32 is complete, green, HITL-reviewed by Opus and approved (2026-07-12, fresh session, PR #39, squash `3db3237`)** — `schema_version` 3→4 with an explicit pop of the retired key; the 8 artifact-reader modules came out **byte-identical** to the pre-sprint base, which is the tell that the inversion held. Its review raised eight non-blocking findings (two worth folding in: `publish_artifacts`' new per-stage disk read vs. its "does no I/O" docstring, and its unencoded `Path.read_text()` read-back) and, more consequentially, surfaced **BL-10** — a `ci.yml` hole under which #39's own test suite had **never run** (a 78-char title failed `pr-title`, which skipped `lint`, which cascaded to skip the entire heavy chain; a title edit fires `edited`, which `lint` deliberately ignores, so it could never recover). Recovered by close+reopen (`reopened` preserves the head SHA, so the commit-pinned `architect-review` stayed green); logged in PR #40 (`46458af`), **not fixed**. Plans: `sprints/26_issue_io_mcp_unification/`, `sprints/27_phase6_flip_block/`, `sprints/28_gate_pytest_sandbox/`, `sprints/29_coder_host_run_hardening/`, `sprints/30_ralph_test_scope/`, `sprints/31_ralph_completion_integrity/` | `3a9bc30` → `b7e2496` → `386c660` → `b0be361` → `10f27d3` → `551338a` → `f934fda` → `e5d9d98` → `9c32cbf` → `ec8b0e5` → `adb20b3` → `56c3824` → `3ea8106` → `8a8b59f` (Task 8, PR #30) → `796610a` (Task 10, PR #34) → `ddd28a8` (Task 9 — Phase 6 closed, PR #37) |
 
 Phases 1–3b are detailed and executed (3b's daemon-host e2e is deferred, not
 lost — see its plan). Phase 4's planning pass is done and it **split into two
@@ -41,19 +41,19 @@ is **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`),
 
 **The two-branch era is over.** Sprint branches are cut from `main`; PRs are based on `main`. The topology that generated BL-12, BL-13 and BL-14 in a single week **no longer exists** — the *generator* is gone, not just the instances (see `docs/backlog.md`).
 
-**✅ Sprint 36 — live factory verification — DONE (2026-07-15).** `DEFERRED_VERIFICATION.md` **§5** (`github_server` verbs), **§7** (maintenance flow) and **§8** (bootstrap flow) were run **live against real GitHub** — the first time the factory's central claim was verified with real side effects. Track A (#73/#76/#77) fixed and hardened BL-21's `create_ruleset`; Track B (#79, squash `212cc56`) executed the three sections against one disposable scratch-repo lifecycle. §8's ruleset was proven **functional, not merely present** (FD9 — direct/force/delete pushes on `main` and `develop` all observed rejected, the `administration=write` admin token itself blocked); §7's green path opened a real PR against `develop`, and a real loop was shown to converge a red suite to green. **BL-21 closed.** Findings filed: **BL-28** (scaffold fails its own `ruff check`), **BL-29** (maintenance escalation crashes on a missing `loop-engine/needs-human` label), **BL-30** (green gate targets `src` but the scaffold puts tests in `tests/`). FD1's stale "no `gh` auth / daemon-bearing host" premise was corrected in `DEFERRED_VERIFICATION.md`; **§1 → BL-3, §6 → BL-24** remain the only open sections.
+**✅ Sprint 36 — live factory verification — DONE (2026-07-15).** `DEFERRED_VERIFICATION.md` **§5** (`github_server` verbs), **§7** (maintenance flow) and **§8** (bootstrap flow) were run **live against real GitHub** — the first time the factory's central claim was verified with real side effects. Track A (#73/#76/#77) fixed and hardened BL-21's `create_ruleset`; Track B (#79, squash `212cc56`) executed the three sections against one disposable scratch-repo lifecycle. §8's ruleset was proven **functional, not merely present** (FD9 — direct/force/delete pushes on `main` and `develop` all observed rejected, the `administration=write` admin token itself blocked); §7's green path opened a real PR against `develop`, and a real loop was shown to converge a red suite to green. **BL-21 closed.** Findings filed: **BL-28** (scaffold fails its own `ruff check`), **BL-29** (maintenance escalation crashes on a missing `loop-orchestrator/needs-human` label), **BL-30** (green gate targets `src` but the scaffold puts tests in `tests/`). FD1's stale "no `gh` auth / daemon-bearing host" premise was corrected in `DEFERRED_VERIFICATION.md`; **§1 → BL-3, §6 → BL-24** remain the only open sections.
 
 **✅ Sprint 37 — test-suite velocity (BL-22) — DONE (2026-07-15).** Four tasks landed as separate squash-merged PRs, each green on the full required-check set (`architect-review` exempt — none touched `src/`): **T1** (`0066701`, PR #82) stubbed `build_coder_tool_provider` in `tests/personas/test_ralph_coder.py` so the ralph unit tests stop spawning a real MCP server (~75s file → ~5s; suite 278s → 174.58s); **T2** (`2b9292f`, PR #83) moved the direct-spawner MCP test files' provider fixtures to **module scope** — chosen over the plan's literal "session" wording to avoid an autouse-cwd fixture leaking across later-collected files (suite → ~86–89s, no flake); **T3** (`e993861`, PR #86) added a **step-level** `if:` short-circuit in `ci.yml`'s `test` job that skips `hatch run test` only when every changed file is docs (`**/*.md`, `.ai/**`, `sprints/**`, `docs/**`), fails safe on any API error, SIGPIPE-safe capture-then-match — deliberately **not** `paths-ignore` and **not** an aggregator job (avoids the BL-10/BL-12 "green for the wrong reason" trap; a skipped step still reports the job green), verified live on throwaway docs-only + code-touching PRs (both correct polarity, closed unmerged); **T4** (`deb7c99`, PR #87) landed `pytest-xdist==3.8.0` as a **new** `test-parallel` hatch script (`-n auto --dist=loadscope`), NOT wired into the default `test` script (protects the single-file fast path) — `loadscope` was required, not optional, because xdist's default distribution scatters a module's tests across workers and T2's module-scoped fixtures don't amortize that way (one transient >120s stall observed before switching). **CI full suite now ~54s** on a real GitHub runner (4 workers, 573 passed), down from the ~380s the sprint started from — roughly 7×. Sprint-37 planning also filed **BL-31** (reduce the MCP per-spawn ~5s cold-start itself), deferred as its own `src/`-touching unit. **No HITL gate — all four PRs were `src/`-exempt.**
 
-**✅ Sprint 38 — test-validity audit, `core/` mutation pass 1 (BL-23) — DONE (2026-07-15).** Three tasks landed as separate squash-merged PRs: **T1** (PR #90) stood up `mutmut` (pinned dev dep, `[tool.mutmut]` scoped to `src/loop_engine/core/` against `tests/core/`) and captured the baseline — 693 mutants, 147 survivors, ~35s wall-clock (`sprints/38_test_validity_audit/mutation_baseline.md`); **T2** (PR #92) triaged all 147 survivors into `audit_report.md` with FD3's mandatory full-suite cross-check (distinguishing mislocated coverage from genuinely-uncovered from equivalent), parallelized across `git worktree` checkouts (~110min sequential → ~15min); **T3** (PR #94) landed every `fix` verdict as an added/strengthened `tests/core/` test — **no `src/` change was needed anywhere**, since every row that looked like a genuine defect (the `has_artifact(state, None)` masking gap, the token/cost/cache delta subtraction-vs-addition bug) turned out on inspection to be mislocated coverage, not an actual bug. Landing T3 also **corrected 3 of the 89 originally `fix`-triaged mutants to `keep — equivalent`** (proven by call-graph analysis while landing that group's own fix, not just "no test happened to catch it" — FD5's bar), so the report's final tally is **61 keep, 86 fix, 0 delete** (was 58/89 pre-correction); `hatch run mutate`'s residual survivor count (61) matches the corrected report exactly, verified per-file against the report's named rows, not just the total. Both planning-pass follow-ups resolved: **BL-32 filed** (PR #95) — the deferred adversarial invariant-injection audit of the static structural guards, since mutmut's operator catalog cannot generate the constructs those guards exist to catch (FD1); and the **gate-vs-script decision landed on "stay on-demand"** (owner call, given the real ~35–50s runtime came in far below the sprint plan's feared "minutes-to-hours" — no `ci.yml` gate added). **No HITL gate — all PRs were `src/`-exempt** (test-only or docs-only throughout).
+**✅ Sprint 38 — test-validity audit, `core/` mutation pass 1 (BL-23) — DONE (2026-07-15).** Three tasks landed as separate squash-merged PRs: **T1** (PR #90) stood up `mutmut` (pinned dev dep, `[tool.mutmut]` scoped to `src/loop_orchestrator/core/` against `tests/core/`) and captured the baseline — 693 mutants, 147 survivors, ~35s wall-clock (`sprints/38_test_validity_audit/mutation_baseline.md`); **T2** (PR #92) triaged all 147 survivors into `audit_report.md` with FD3's mandatory full-suite cross-check (distinguishing mislocated coverage from genuinely-uncovered from equivalent), parallelized across `git worktree` checkouts (~110min sequential → ~15min); **T3** (PR #94) landed every `fix` verdict as an added/strengthened `tests/core/` test — **no `src/` change was needed anywhere**, since every row that looked like a genuine defect (the `has_artifact(state, None)` masking gap, the token/cost/cache delta subtraction-vs-addition bug) turned out on inspection to be mislocated coverage, not an actual bug. Landing T3 also **corrected 3 of the 89 originally `fix`-triaged mutants to `keep — equivalent`** (proven by call-graph analysis while landing that group's own fix, not just "no test happened to catch it" — FD5's bar), so the report's final tally is **61 keep, 86 fix, 0 delete** (was 58/89 pre-correction); `hatch run mutate`'s residual survivor count (61) matches the corrected report exactly, verified per-file against the report's named rows, not just the total. Both planning-pass follow-ups resolved: **BL-32 filed** (PR #95) — the deferred adversarial invariant-injection audit of the static structural guards, since mutmut's operator catalog cannot generate the constructs those guards exist to catch (FD1); and the **gate-vs-script decision landed on "stay on-demand"** (owner call, given the real ~35–50s runtime came in far below the sprint plan's feared "minutes-to-hours" — no `ci.yml` gate added). **No HITL gate — all PRs were `src/`-exempt** (test-only or docs-only throughout).
 
-**✅ Sprint 39 — BL-2 pass 1 of 3, outbound Slack notify — DONE (2026-07-16).** Direction resolved notify-first (FD1); `tools/slack_io` wraps the official `slack_sdk`, not an MCP server (FD2); credentials are env vars `LOOP_ENGINE_SLACK_BOT_TOKEN`/`LOOP_ENGINE_SLACK_CHANNEL`, not keyring (FD3); `core/graph_engine.py`'s `run_graph_loop` emits through the `core/notify` `Notifier` seam, fail-open at the call site, gated on a `resuming: bool` flag rather than `start_index` (FD4). **T1+T2** (PR #107) added the `core/notify` contract + `tools/slack_io` transport/formatter; **T3** (PR #112) wired the two emit points into `run_graph_loop`; **T4** (this PR) is the docs-only close-out. Full detail: `docs/backlog.md`'s BL-2 entry.
+**✅ Sprint 39 — BL-2 pass 1 of 3, outbound Slack notify — DONE (2026-07-16).** Direction resolved notify-first (FD1); `tools/slack_io` wraps the official `slack_sdk`, not an MCP server (FD2); credentials are env vars `LOOP_ORCHESTRATOR_SLACK_BOT_TOKEN`/`LOOP_ORCHESTRATOR_SLACK_CHANNEL`, not keyring (FD3); `core/graph_engine.py`'s `run_graph_loop` emits through the `core/notify` `Notifier` seam, fail-open at the call site, gated on a `resuming: bool` flag rather than `start_index` (FD4). **T1+T2** (PR #107) added the `core/notify` contract + `tools/slack_io` transport/formatter; **T3** (PR #112) wired the two emit points into `run_graph_loop`; **T4** (this PR) is the docs-only close-out. Full detail: `docs/backlog.md`'s BL-2 entry.
 
-**✅ Sprint 40 — BL-2 pass 2 of 3, inbound Slack trigger — DONE (2026-07-17).** `loop-engine slack-listen` runs a Socket Mode daemon turning `/agent-run --budget <n> <requirements>` in `LOOP_ENGINE_SLACK_CHANNEL` into a real run. Slack **supersedes** `trigger/` as the live inbound path rather than unifying with it (FD1) — `slack_control/` is a new top-level orchestrator-level caller sharing no code with the now-parked `trigger/`. Socket Mode dissolved BL-24's hosting blocker (the daemon dials **out**: no tunnel, no routable address, no bound port), and the WebSocket posture fit the existing rules without relaxing them — no new subprocess surface, still five. Inbound **fails closed** (`build_daemon_from_env` raises before any socket opens), the FD3 channel guard compares **resolved IDs, not names**, and `--budget` is **required** (fail-closed on the money cap). Third credential class confirmed: `LOOP_ENGINE_SLACK_APP_TOKEN` is an env var, not keyring (FD3). **T1** (listener), **T2+T3** (PR #117, parser + dispatcher), **T4+T5** (PR #119, daemon + CLI), **T6** (this PR) the docs-only close-out. Full detail: `docs/backlog.md`'s BL-2 entry.
+**✅ Sprint 40 — BL-2 pass 2 of 3, inbound Slack trigger — DONE (2026-07-17).** `loop-orchestrator slack-listen` runs a Socket Mode daemon turning `/agent-run --budget <n> <requirements>` in `LOOP_ORCHESTRATOR_SLACK_CHANNEL` into a real run. Slack **supersedes** `trigger/` as the live inbound path rather than unifying with it (FD1) — `slack_control/` is a new top-level orchestrator-level caller sharing no code with the now-parked `trigger/`. Socket Mode dissolved BL-24's hosting blocker (the daemon dials **out**: no tunnel, no routable address, no bound port), and the WebSocket posture fit the existing rules without relaxing them — no new subprocess surface, still five. Inbound **fails closed** (`build_daemon_from_env` raises before any socket opens), the FD3 channel guard compares **resolved IDs, not names**, and `--budget` is **required** (fail-closed on the money cap). Third credential class confirmed: `LOOP_ORCHESTRATOR_SLACK_APP_TOKEN` is an env var, not keyring (FD3). **T1** (listener), **T2+T3** (PR #117, parser + dispatcher), **T4+T5** (PR #119, daemon + CLI), **T6** (this PR) the docs-only close-out. Full detail: `docs/backlog.md`'s BL-2 entry.
 
-**✅ Sprint 41 — BL-2 pass 3 of 3, Slack escalation round-trip — DONE (2026-07-18). BL-2 COMPLETE.** With `LOOP_ENGINE_ESCALATION_TRANSPORT=slack`, a paused run posts its questions to `LOOP_ENGINE_SLACK_CHANNEL` and a human's thread reply is folded back through the shared `runner.resume_run` seam to resume it — an alternative to the GitHub-issue round-trip, exit code **5** (`AWAITING_SLACK`). `core/`'s pause path is now transport-agnostic behind an `EscalationFiler` seam (`build_escalation_filer_from_env()`, default `issue`, **fail-closed** when `=slack` but the Slack vars are unset); `State` gained `pending_slack: SlackRef | None` at schema **v5**; correlation is `find_paused_snapshot_by_slack_thread` (latest-per-run-dir by **mtime**, not filename — a blast-radius re-entry can write a lower stage-index file later); `dispatch_resume` dedupes on `envelope_id` **and** `thread_ts` and the FD3 channel guard applies to `message` events before any state read. `slack_control/`'s boundary widened to read the state tree (only via `tools/state_io`) and resume via `runner`, still no `keyring`/`slack_sdk`/direct-write/subprocess. **T1** (#127), **T2** (#128), **T3** (#131), **T4** (#133), **T5** (#136), **T6** (this PR, docs). **Hermetically verified (780 tests, fakes throughout); NOT yet exercised live** — the whole Slack *inbound* surface (pass 2 command + pass 3 round-trip) has only ever run against a fake `WebClient`/listener, so the deferred live round-trip smoke is tracked in **BL-37** (see the runbook `docs/slack_escalation_live_smoke.md`). Full detail: `docs/backlog.md`'s BL-2 entry (LANDED pass 3); threat model §1 escalation-round-trip boundary.
+**✅ Sprint 41 — BL-2 pass 3 of 3, Slack escalation round-trip — DONE (2026-07-18). BL-2 COMPLETE.** With `LOOP_ORCHESTRATOR_ESCALATION_TRANSPORT=slack`, a paused run posts its questions to `LOOP_ORCHESTRATOR_SLACK_CHANNEL` and a human's thread reply is folded back through the shared `runner.resume_run` seam to resume it — an alternative to the GitHub-issue round-trip, exit code **5** (`AWAITING_SLACK`). `core/`'s pause path is now transport-agnostic behind an `EscalationFiler` seam (`build_escalation_filer_from_env()`, default `issue`, **fail-closed** when `=slack` but the Slack vars are unset); `State` gained `pending_slack: SlackRef | None` at schema **v5**; correlation is `find_paused_snapshot_by_slack_thread` (latest-per-run-dir by **mtime**, not filename — a blast-radius re-entry can write a lower stage-index file later); `dispatch_resume` dedupes on `envelope_id` **and** `thread_ts` and the FD3 channel guard applies to `message` events before any state read. `slack_control/`'s boundary widened to read the state tree (only via `tools/state_io`) and resume via `runner`, still no `keyring`/`slack_sdk`/direct-write/subprocess. **T1** (#127), **T2** (#128), **T3** (#131), **T4** (#133), **T5** (#136), **T6** (this PR, docs). **Hermetically verified (780 tests, fakes throughout); NOT yet exercised live** — the whole Slack *inbound* surface (pass 2 command + pass 3 round-trip) has only ever run against a fake `WebClient`/listener, so the deferred live round-trip smoke is tracked in **BL-37** (see the runbook `docs/slack_escalation_live_smoke.md`). Full detail: `docs/backlog.md`'s BL-2 entry (LANDED pass 3); threat model §1 escalation-round-trip boundary.
 
-**▶ NEXT ACTION: pick the next backlog item (owner's call) — BL-2 is complete, the migration is done.** Post-migration work is backlog-driven from `docs/backlog.md`; there is no forced next sprint. Candidate open work, owner to choose among: the repo-owner-requested product items **BL-1** (in-loop code review of the Coder's output), **BL-3** (prompt-caching review — needs a real key + spend, folds in the §1 caching smoke), **BL-4** (Ralph loop watcher), **BL-5** (per-persona model routing — Opus for the Architect stage; the `claude-opus-4-8` `RATES` entry is its hard prerequisite); the two still-open **decisions BL-24** (retire `trigger/` + `LOOP_ENGINE_WEBHOOK_SECRET` as moot vs. keep and pay for the §6 webhook verification — Slack supersedes it in practice but proves nothing about it, no shared code) and **BL-35** (which stale-red `architect-review` fix, if any — file-don't-fix stands, manual `gh run rerun` is the workaround); the cross-cutting hardening **BL-32/BL-33** (adversarial guard audit + the single shared hardened boundary-guard helper) and **BL-36** (the low-priority sprint-41 review cleanups); **BL-37** (the deferred **live** smoke of the Slack inbound surface — an operator-run round-trip, *not* a `live-verify` V-run, since that subagent is scoped to factory flows and excludes inbound trigger surfaces; runbook at `docs/slack_escalation_live_smoke.md`); and the deferred factory live-verification smokes (the `live-verify` V-runs) that the hermetic suite structurally can't make. BL-23 remains a multi-pass program — extending mutation testing beyond `core/` is a later beat.
+**▶ NEXT ACTION: pick the next backlog item (owner's call) — BL-2 is complete, the migration is done.** Post-migration work is backlog-driven from `docs/backlog.md`; there is no forced next sprint. Candidate open work, owner to choose among: the repo-owner-requested product items **BL-1** (in-loop code review of the Coder's output), **BL-3** (prompt-caching review — needs a real key + spend, folds in the §1 caching smoke), **BL-4** (Ralph loop watcher), **BL-5** (per-persona model routing — Opus for the Architect stage; the `claude-opus-4-8` `RATES` entry is its hard prerequisite); the two still-open **decisions BL-24** (retire `trigger/` + `LOOP_ORCHESTRATOR_WEBHOOK_SECRET` as moot vs. keep and pay for the §6 webhook verification — Slack supersedes it in practice but proves nothing about it, no shared code) and **BL-35** (which stale-red `architect-review` fix, if any — file-don't-fix stands, manual `gh run rerun` is the workaround); the cross-cutting hardening **BL-32/BL-33** (adversarial guard audit + the single shared hardened boundary-guard helper) and **BL-36** (the low-priority sprint-41 review cleanups); **BL-37** (the deferred **live** smoke of the Slack inbound surface — an operator-run round-trip, *not* a `live-verify` V-run, since that subagent is scoped to factory flows and excludes inbound trigger surfaces; runbook at `docs/slack_escalation_live_smoke.md`); and the deferred factory live-verification smokes (the `live-verify` V-runs) that the hermetic suite structurally can't make. BL-23 remains a multi-pass program — extending mutation testing beyond `core/` is a later beat.
 
 **Sprint 35's other outcomes**, each recorded in `docs/backlog.md`: the two non-blocking findings from #39's review landed as Task 1 (PR #57). The four Dependabot majors (#50–53) **merged** — they were not four upgrades but **one deadline**, the Node 20 → Node 24 runtime migration, with GitHub removing Node 20 on **2026-09-16**; since `secrets-scan` is a *required* check, `gitleaks-action@v2` dying would have made **every PR unmergeable** on a known date. Driving them to green exposed two structural CI faults (**BL-20**: Dependabot runs read a *different* secret store, and re-triggering as a human silently reads the other one — a green that proves nothing; and Dependabot's default PR title fails the required `pr-title` check by construction, fixed in `dependabot.yml`). Sprint 35 also found and fixed a live gate defect — `architect-review` was **exempting itself on large PRs** (a paginating `gh` piped into `grep -q` → SIGPIPE → `pipefail` → read as "no `src/` changes" → green), filed as **BL-16**. `sprints/DEFERRED_VERIFICATION.md`'s five never-run checks each now have a **named, scheduled owner** (Task 6, FD4): §5/§7/§8 → sprint 36, §1 → folded into BL-3, §6 → BL-24. `.ai/next-steps.md` remains the live cursor.
 
@@ -68,7 +68,7 @@ is **built behind `LOOP_ENGINE_PERSONAS=declarative`** (default `classic`),
 all four migration flags and the classic paths they selected are gone (`ec8b0e5`,
 `adb20b3`, `56c3824`, `3ea8106`), `build_default_loop()` is one unbranched wiring, and
 the classic engine/tools/personas/Coder are recoverable at the **`pre-phase6-classic`**
-tag. Only `LOOP_ENGINE_ISOLATION` (+ `LOOP_ENGINE_RALPH_MAX_ITERS`) survive, both genuine
+tag. Only `LOOP_ORCHESTRATOR_ISOLATION` (+ `LOOP_ORCHESTRATOR_RALPH_MAX_ITERS`) survive, both genuine
 runtime config. **Task 5 (the `State.artifacts` strip) as originally planned is
 superseded — sprint 32 (2026-07-12) inverted it: `artifact_refs` was stripped instead,
 `State.artifacts` survives as the permanent source of truth (FD1 below, superseding FD3).**
@@ -107,7 +107,7 @@ one to two (`CLAUDE.md` + `tests/tools/test_state_io_boundary.py` updated togeth
 mirroring how sprint 24 moved the subprocess-surface count three→four); bundled
 package-data templates (`kind="python"` only; a `kind="iac"` set is deferred behind
 the seam) plus a byte-identical `templates/CLAUDE.md` sync-guard against
-`.ai/context/conventions.md`; the new `src/loop_engine/flows/bootstrap/` package
+`.ai/context/conventions.md`; the new `src/loop_orchestrator/flows/bootstrap/` package
 (a sibling of `flows/maintenance`) chaining `repo_io.create_repository` →
 `repo_io.clone_repo` → `git_io.checkout_branch(main)` → `scaffold.write_skeleton` →
 `git_io.commit_all`/`push_branch(main)` → `repo_io.create_branch(develop, base=main)`
@@ -131,7 +131,7 @@ sanctioned subprocess surface, moving the invariant from three to four (`CLAUDE.
 + `tests/tools/test_subprocess_surfaces.py` updated together); `runner.run_in_tree`
 (same loop-build as `run_new` but cwd pinned to the clone, deliberately **not**
 opening `worktree_run` — the clone is its own isolation boundary); the new
-`src/loop_engine/flows/maintenance/` package chaining `repo_io.clone_repo` →
+`src/loop_orchestrator/flows/maintenance/` package chaining `repo_io.clone_repo` →
 `git_io.checkout_branch` → `run_in_tree` → a green gate (`coder_tools.run_pytest`
 against the clone) → **green-only** `git_io.commit_all`/`push_branch` +
 `repo_io.open_pr` (base defaults to `develop`); a `flows/` boundary test (no
@@ -156,13 +156,13 @@ and its 3 dispatch/webhook findings **fixed in 23a (`212beeb`) and re-reviewed
 clean** (see "Sprint-23a HITL-review settlements" below). It is a capability slice mirroring 22b's posture: dispatch is
 **in-process** (a worker-thread `InProcessDispatcher`, so the sanctioned
 subprocess-surface count stays **three**, unchanged), FastAPI is pinned as
-loop-engine's first web runtime dependency while `uvicorn`/hosting stays
+loop-orchestrator's first web runtime dependency while `uvicorn`/hosting stays
 deferred (hermetic `TestClient` coverage only, `httpx` dev-only), the webhook
-secret is an env var (`LOOP_ENGINE_WEBHOOK_SECRET`, HMAC over the raw body,
+secret is an env var (`LOOP_ORCHESTRATOR_WEBHOOK_SECRET`, HMAC over the raw body,
 fail-closed) — not a keyring credential — and it does **not** chain into the
 factory verbs (no `tools/repo_io` call, no clone/branch/PR) — that's Sprint
 24's job. Sprint 22b (native `github_server` + `tools/repo_io` delegate +
-committed `loop_engine.mcp.json` github entry + `build_github_provider()`) is
+committed `loop_orchestrator.mcp.json` github entry + `build_github_provider()`) is
 **complete, HITL-reviewed and approved** (`7b46227`, review-fix `5bc3811`) —
 the system's second MCP server and its first credentialed one. The review
 raised one finding — `_validate_clone_dest` gated its symlink-escape check on
@@ -202,7 +202,7 @@ into permanent bloat.
   body is ever read back off disk (`schema_version` 4).
 - **Phase 2 scope:** built only the coder-tools MCP server (the sole
   LLM-callable tool set). **Deferred:** state-io/github MCP servers (they're
-  orchestrator-invoked, not model tools) and full `loop_engine.mcp.json`-file-driven
+  orchestrator-invoked, not model tools) and full `loop_orchestrator.mcp.json`-file-driven
   multi-server discovery (the `list_tools` runtime-discovery mechanism is in
   place, pointed at a default server).
 - **Phase 4 planning pass (locked):**
@@ -333,12 +333,12 @@ into permanent bloat.
   - **Dispatch = an injectable `RunDispatcher` seam, one in-process
     implementation; no fourth subprocess surface.** `InProcessDispatcher` runs
     the loop **in-process** on a worker thread (`asyncio.to_thread`), never as a
-    `loop-engine run` subprocess. The "exactly three sanctioned subprocess
+    `loop-orchestrator run` subprocess. The "exactly three sanctioned subprocess
     surfaces" invariant is unchanged — the dispatched loop's own
     worktree/`gh`/pytest calls are those existing surfaces reached from a new
     caller, not a new surface.
   - **Web dependency = FastAPI (pinned); `uvicorn` deferred with hosting.**
-    FastAPI is a pinned **runtime** dependency (loop-engine's first web
+    FastAPI is a pinned **runtime** dependency (loop-orchestrator's first web
     dependency); the ASGI app is tested hermetically via `TestClient`.
     `uvicorn` is **not** pinned — the ASGI runner/port-binding decision lands
     with deployment. `httpx` (for `TestClient`) is a **dev/test** dependency
@@ -346,7 +346,7 @@ into permanent bloat.
   - **Webhook auth = HMAC over the raw body, secret from an env var,
     fail-closed.** `X-Hub-Signature-256` (HMAC-SHA256 over the raw request
     bytes, `hmac.compare_digest`) is mandatory. The shared secret is
-    `LOOP_ENGINE_WEBHOOK_SECRET`; unset → the app refuses to construct/start
+    `LOOP_ORCHESTRATOR_WEBHOOK_SECRET`; unset → the app refuses to construct/start
     (fail-closed, never falls open). Not a keyring credential — `trigger/`
     imports no `keyring`.
   - **Trigger grammar = two bare-verb triggers; requirements = issue
@@ -355,7 +355,7 @@ into permanent bloat.
     non-empty line is `/agent-run` — both carry no payload of their own;
     `human_input = issue["title"] + "\n\n" + issue["body"]`. Everything else,
     including `ping`, is a 2xx no-op.
-  - **Placement = new top-level `src/loop_engine/trigger/` package;
+  - **Placement = new top-level `src/loop_orchestrator/trigger/` package;
     orchestrator-level caller** (sibling to `cli.py`, not a `tools/` module,
     not an MCP server). Enforced boundary: no `keyring`, no direct file
     write, no subprocess surface (`tests/trigger/test_boundaries.py`). No CLI
@@ -445,7 +445,7 @@ into permanent bloat.
     step is `run_in_tree`: default loop, cwd pinned to the clone, deliberately
     **not** opening `worktree_run` (the clone is itself the isolation
     boundary; `run_new`'s orchestrator-worktree wrapper would chdir into the
-    wrong tree under `LOOP_ENGINE_ISOLATION`). "Absorb `CLAUDE.md` +
+    wrong tree under `LOOP_ORCHESTRATOR_ISOLATION`). "Absorb `CLAUDE.md` +
     `.agent/STATE.md`" = cwd inside the clone so the existing readers pick
     them up — no new absorb code.
   - **Green gate = `coder_tools`' pytest on the clone; push + PR are
@@ -456,7 +456,7 @@ into permanent bloat.
     a failing status, no commit/push/PR. `open_pr`'s base defaults to
     `develop`, overridable. Auto-merge stays impossible — no merge verb
     exists and `open_pr` is the terminal GitHub call.
-  - **Placement = new top-level `src/loop_engine/flows/` package (sibling of
+  - **Placement = new top-level `src/loop_orchestrator/flows/` package (sibling of
     `trigger/`, `cli.py`); orchestrator-level caller.** Enforced boundary,
     asserted by `tests/flows/test_boundaries.py`: imports no `keyring`,
     writes no files directly, and introduces no subprocess surface of its
@@ -484,13 +484,13 @@ into permanent bloat.
 - `LOOP_ENGINE_ENGINE=langgraph` → LangGraph engine (default: classic `run_loop`).
 - `LOOP_ENGINE_TOOLS=mcp` → Coder dispatches tools via the MCP provider
   (default: in-process `CODER_TOOLS`/`_execute_tool`).
-- `LOOP_ENGINE_ISOLATION=worktree` → per-run git worktree; the CLI chdir's the
+- `LOOP_ORCHESTRATOR_ISOLATION=worktree` → per-run git worktree; the CLI chdir's the
   run into it (default: no isolation, runs in the checkout). Worktree base dir
-  overridable via `LOOP_ENGINE_WORKTREE_ROOT` (default `.worktrees/`).
+  overridable via `LOOP_ORCHESTRATOR_WORKTREE_ROOT` (default `.worktrees/`).
 - `LOOP_ENGINE_CODER=ralph` → the Ralph-loop Coder (one increment per
   invocation, self-loop via `execute_stage`) instead of the classic per-sprint
   Coder (default `classic`). *(Phase 4 · part 1 — planned, sprint 19.)*
-- `LOOP_ENGINE_RALPH_MAX_ITERS` → Ralph iteration cap = the Coder stage's
+- `LOOP_ORCHESTRATOR_RALPH_MAX_ITERS` → Ralph iteration cap = the Coder stage's
   `max_revisions` under `ralph` mode (default `30`). *(Phase 4 · part 1.)*
 - `LOOP_ENGINE_PERSONAS=declarative` → the three document personas (PM,
   Architecture, Sprint Breakdown) become config-driven `GeneratorNode`s and the
@@ -506,7 +506,7 @@ into permanent bloat.
 - `tools/agent_state/` + `.agent/STATE.md`/`.agent/MEMORY.md` — semantic-state layer.
 - `mcp_servers/coder_tools_server.py` — stdio MCP server (read/execute-only).
 - `tools/mcp/` — `MCPToolProvider` (discovery + dispatch on a background event loop); Phase 3b `container_server_params`/`sandbox_server_params` + preflight (inert).
-- `tools/isolation.py` — single reader of `LOOP_ENGINE_ISOLATION` (`none|worktree|container|sandbox`) + `IsolationUnavailableError`.
+- `tools/isolation.py` — single reader of `LOOP_ORCHESTRATOR_ISOLATION` (`none|worktree|container|sandbox`) + `IsolationUnavailableError`.
 - `personas/declarative/` — Phase 4 · part 2. `mode.py` (single reader of `LOOP_ENGINE_PERSONAS`), `config.py` (`GeneratorConfig` + `yaml.safe_load` loader), `services.py` (the shared-services registry: input-wrappers / output-adapters / revision-styles / `resolve_via_document`), `node.py` (`GeneratorNode` + the three identity subclasses `ArchitectureGenerator`/`SprintBreakdownGenerator`/`PMGenerator`), `configs/*.yaml`. Prompts externalized to `prompts/` (byte-identical to the personas' embedded templates).
 - `personas/pm/critic_gate.py` — `CriticGate`, the PM critic *checks* re-expressed as a structural stage gate (core-safe home, like `ManifestArtifactGate`).
 - `CLAUDE.md` — expanded with a portable "Global Conventions" skill section.
@@ -529,7 +529,7 @@ Summary + the decisions that resolved the earlier open questions:
   (not root-threading) because everything already keys off `Path.cwd()` — this
   needs ~zero signature changes, converges the MCP `cwd` param and the in-process
   tool path, and auto-tightens the existing traversal/symlink checks to the
-  worktree. Gated by `LOOP_ENGINE_ISOLATION=worktree` (default off).
+  worktree. Gated by `LOOP_ORCHESTRATOR_ISOLATION=worktree` (default off).
 - **Snapshots stay in the main checkout** (state_io grows a `state_root()` the
   context manager pins to the orchestrator home); only the artifact tree
   (`src/`/`docs/`/`sprints/`/`.agent/`) follows the chdir into the worktree. So
@@ -572,7 +572,7 @@ progress as a `.agent/STATE.md` checklist, driven to completion by
 (green + *every task checked off*). Per-task "done" = its acceptance-criteria
 test passes. Behind `LOOP_ENGINE_CODER=ralph` (default `classic`); flag-gated,
 not parity-claimed. Termination is hard-bounded (iteration cap
-`LOOP_ENGINE_RALPH_MAX_ITERS`, no-progress escalation via identical-findings,
+`LOOP_ORCHESTRATOR_RALPH_MAX_ITERS`, no-progress escalation via identical-findings,
 USD budget as governor).
 
 ### Part 2 — Declarative generators (`GeneratorNode`) + PM critic-gate — sprint 20 *(built behind flag)*
@@ -637,27 +637,27 @@ decisions above.
 - **Tool surface = factory verbs only** — `{create_repository, clone_repo, create_branch,
   open_pr}`. The existing `issue_io` escalation verbs (create/read/comment) **stay on their
   current direct path** (don't destabilize `resume --from-issue`); unify onto MCP in Phase 6.
-- **Full `loop_engine.mcp.json`-driven multi-server discovery** (pays down cross-cutting #3), not a
+- **Full `loop_orchestrator.mcp.json`-driven multi-server discovery** (pays down cross-cutting #3), not a
   bespoke second provider. Two design constraints, both locked: **(a) consumer split** —
   the provider feeds the **model's** coder tool loop only; github verbs are
   **orchestrator-invoked** and must never enter that loop, so discovery is
   **consumer-scoped** (each consumer builds a provider for the servers *it* names).
   **(b) heterogeneous launch profiles** — coder-tools is sandboxed/no-network (runs
   untrusted model code, runtime-computed launch); github runs un-sandboxed with
-  network + `gh` auth (trusted first-party code, static `loop_engine.mcp.json` spec). `loop_engine.mcp.json`
+  network + `gh` auth (trusted first-party code, static `loop_orchestrator.mcp.json` spec). `loop_orchestrator.mcp.json`
   is **optional** with a built-in `coder_tools` default so absence is byte-identical to today.
-- **Config filename = `loop_engine.mcp.json` at repo root** *(revised 2026-07-09, Opus/Architect,
+- **Config filename = `loop_orchestrator.mcp.json` at repo root** *(revised 2026-07-09, Opus/Architect,
   during 22a implementation)*. The planning pass originally named this file `.mcp.json`, but
   repo-root `.mcp.json` is **already** Claude Code's own project MCP config (`{"mcpServers":
   {"github": …}}`, the devcontainer's hosted-github wiring, committed `65ed47c`) — a different
-  schema and purpose, and a filename Claude Code reserves by convention. loop-engine takes a
-  distinct, product-namespaced file (`loop_engine.mcp.json`) for its own stdio launch specs; the
+  schema and purpose, and a filename Claude Code reserves by convention. loop-orchestrator takes a
+  distinct, product-namespaced file (`loop_orchestrator.mcp.json`) for its own stdio launch specs; the
   two never mix. (`.ai/mcp.json` was rejected: `.ai/` is the dev-workflow layer, not product
   runtime.)
 
 ### Phase 5 sprint decomposition (Phase 4 split precedent)
 
-- **Sprint 22a — `loop_engine.mcp.json` multi-server discovery** *(implemented, all 5
+- **Sprint 22a — `loop_orchestrator.mcp.json` multi-server discovery** *(implemented, all 5
   tasks green: `sprints/22a_mcp_multiserver_discovery/sprint_plan.md`)*. Pure client-side
   refactor of `tools/mcp` — config-driven, N-server, consumer-scoped provider. **No** new
   server / subprocess / credential / file-write surface (confirmed — no dependency added,
@@ -668,12 +668,12 @@ decisions above.
   (two-server discovery/routing) and `test_mcp_provider.py::test_extra_config_server_never_reaches_coder_provider`
   (consumer-scope guard).
   **HITL gate after 22a before 22b.**
-- **Sprint 22b — native `github_server` + `tools/repo_io` delegate + `loop_engine.mcp.json` entry**
+- **Sprint 22b — native `github_server` + `tools/repo_io` delegate + `loop_orchestrator.mcp.json` entry**
   *(implemented, all 5 tasks green: `sprints/22b_native_github_server/sprint_plan.md`;
   HITL-reviewed and approved, `7b46227` → review-fix `5bc3811`)*. Ships the
   server (factory verbs), the GitHub-owning
   delegate module (new `tools/repo_io` sibling to `issue_io`; issue_io untouched), a
-  **committed** repo-root `loop_engine.mcp.json` github stanza (the first real instance
+  **committed** repo-root `loop_orchestrator.mcp.json` github stanza (the first real instance
   of that file), and the consumer-scoped `build_github_provider()` orchestrator helper
   — plus hermetic tests and the bidirectional coder⟂github scope guard
   (`tests/tools/test_mcp_provider.py`). **Open design item from 22a planning, now
@@ -692,9 +692,9 @@ decisions above.
   `sprints/23_trigger_surface/sprint_plan.md`; HITL-reviewed — its 3 findings
   fixed in Sprint 23a (`212beeb`) and re-reviewed clean, see "Sprint-23a
   HITL-review settlements")*.
-  Ships `src/loop_engine/runner.py` (the shared `run_new` run-starter,
+  Ships `src/loop_orchestrator/runner.py` (the shared `run_new` run-starter,
   factored out of `cli.run` so both the CLI and the dispatcher call one
-  source of truth) and the new `src/loop_engine/trigger/` package: `parse.py`
+  source of truth) and the new `src/loop_orchestrator/trigger/` package: `parse.py`
   (`RunRequest` + the locked trigger grammar), `dispatch.py` (`RunDispatcher`
   seam + `InProcessDispatcher`, worker-thread dispatch, in-memory dedupe),
   `app.py` (the FastAPI ASGI app — HMAC-verify raw body → parse → dispatch).
@@ -705,7 +705,7 @@ decisions above.
   + a package boundary static test asserting no `keyring`, no direct file
   write, no subprocess surface); live webhook→real-run verification is
   deferred to a daemon-bearing host (`sprints/DEFERRED_VERIFICATION.md` §6).
-  FastAPI is loop-engine's first web runtime dependency (`httpx` dev-only for
+  FastAPI is loop-orchestrator's first web runtime dependency (`httpx` dev-only for
   `TestClient`); `sbom.json` regenerated, `hatch run audit` green.
 - **Sprint 24 — maintenance flow** *(implemented, all 6 tasks green:
   `sprints/24_maintenance_flow/sprint_plan.md`; HITL review pending)*. Ships
@@ -714,7 +714,7 @@ decisions above.
   as the genuine **fourth** sanctioned surface, not bolted onto `repo_io`=`gh`
   or `worktree`=orchestrator-own isolation), `runner.run_in_tree` (the default
   loop, cwd pinned to the clone, deliberately **not** `worktree_run`), and the
-  new `src/loop_engine/flows/maintenance/` package chaining `repo_io.clone_repo`
+  new `src/loop_orchestrator/flows/maintenance/` package chaining `repo_io.clone_repo`
   → `git_io.checkout_branch` → `run_in_tree` → a green gate
   (`coder_tools.run_pytest` against the clone) → **green-only**
   `git_io.commit_all`/`push_branch` + `repo_io.open_pr` (base `develop`, red ⇒
@@ -733,7 +733,7 @@ decisions above.
   invariant one→two, mirroring how 24 moved the subprocess invariant three→four),
   bundled `kind="python"` templates + a byte-identical `templates/CLAUDE.md`
   sync-guard against `.ai/context/conventions.md`, and the new
-  `src/loop_engine/flows/bootstrap/` package chaining `repo_io.create_repository`
+  `src/loop_orchestrator/flows/bootstrap/` package chaining `repo_io.create_repository`
   → `repo_io.clone_repo` → `git_io.checkout_branch(main)` →
   `scaffold.write_skeleton` → `git_io.commit_all`/`push_branch(main)` →
   `repo_io.create_branch(develop, base=main)` (ordering load-bearing: the base
@@ -754,7 +754,7 @@ where the trigger server is hosted (`uvicorn`, deferred with deployment); org
 access to `glunk-works`; how runs are queued/rate-limited durably (23 ships
 only best-effort in-memory dedupe behind the `RunDispatcher` seam). **Settled
 in 23:** the webhook auth model — HMAC-SHA256 over the raw body,
-`LOOP_ENGINE_WEBHOOK_SECRET` env var, fail-closed.
+`LOOP_ORCHESTRATOR_WEBHOOK_SECRET` env var, fail-closed.
 
 ## Phase 6 — Collapse the flags (decommission the scaffolding)
 
@@ -804,7 +804,7 @@ Landed the third native MCP server (`mcp_servers/issue_io_server.py`, mirroring
 `issue_filer` write seam threaded through `execute_stage`/`_pause_for_issue`/
 `run_loop`/`run_graph_loop` (default `None` resolves to the classic
 `file_question_issue` via module-global lookup at call time, so existing
-`monkeypatch.setattr("loop_engine.core.engine.file_question_issue", ...)`
+`monkeypatch.setattr("loop_orchestrator.core.engine.file_question_issue", ...)`
 tests keep working unmodified — binding the classic filer as a literal
 default-argument value would have snapshotted it at import time and broken
 that monkeypatch pattern); an analogous injectable read seam in `cli.py`'s
@@ -864,7 +864,7 @@ below** (they are exactly the seams that block exercises), not a new sprint:
   block silently drops the real answers below it → `resume` reports "no answers
   yet". Switch to `finditer` over all blocks in a comment.
 - **R7 (host-gated nit) — committed MCP stanzas launch bare `python`.**
-  `loop_engine.mcp.json`'s `issue`/`github` stanzas exec `python` (not the active
+  `loop_orchestrator.mcp.json`'s `issue`/`github` stanzas exec `python` (not the active
   interpreter), so the servers fail to spawn on a `python3`-only host — unlike
   the `coder_tools` built-in default which uses `sys.executable`. Resolve when
   the live round-trip check (`DEFERRED_VERIFICATION.md` §9) runs on the host.
@@ -890,11 +890,11 @@ daemon-bearing host (the same host the deferred 3b/Ralph verification needs).
 
 | Flag | Fate | Sunset criterion |
 |---|---|---|
-| `LOOP_ENGINE_ENGINE=langgraph` | ✅ **DELETED** (`ec8b0e5`, sprint 27 Task 1) | Gated on V1. `run_loop`, `use_langgraph_engine`, `ENGINE_ENV_VAR` and both `_select_engine()` indirections are gone; `run_graph_loop` is called directly. The classic-vs-graph parity harness collapsed into `test_engine.py` (one engine ⇒ nothing to compare), keeping only genuinely graph-specific routing coverage. **Public API break:** `loop_engine.run_loop` → `loop_engine.run_graph_loop`. |
+| `LOOP_ENGINE_ENGINE=langgraph` | ✅ **DELETED** (`ec8b0e5`, sprint 27 Task 1) | Gated on V1. `run_loop`, `use_langgraph_engine`, `ENGINE_ENV_VAR` and both `_select_engine()` indirections are gone; `run_graph_loop` is called directly. The classic-vs-graph parity harness collapsed into `test_engine.py` (one engine ⇒ nothing to compare), keeping only genuinely graph-specific routing coverage. **Public API break:** `loop_orchestrator.run_loop` → `loop_orchestrator.run_graph_loop`. |
 | `LOOP_ENGINE_TOOLS=mcp` | ✅ **DELETED** (`adb20b3`, sprint 27 Task 2) | Gated on V1. `use_mcp_tools`, `_TOOLS_ENV_VAR`, the in-process `CODER_TOOLS`/`_execute_tool` dispatch, and the now-orphaned hand-written tool-schema dicts (`READ_TOOL_SCHEMAS`, `RUN_TESTS_TOOL_SCHEMA`, `RUN_LINT_TOOL_SCHEMA` — FastMCP derives the server's schemas from the function signatures) are gone. Retires the "container isolation requires `TOOLS=mcp`" refusal: with no in-process path, the sandboxing guarantee is structural, not conditional. |
 | `LOOP_ENGINE_CODER=ralph` | ✅ **DELETED** (`3ea8106`, sprint 27 Task 4) | Gated on V2 (PASS, re-attempt #8). `CODER_ENV_VAR`, `coder_mode`, `use_ralph_coder`, `CoderIacPersona`, `CoderGate` and `_last_reported_sprint` are gone; `ralph_max_iterations()` survives (genuine runtime config). Three paths `RalphCoderGate` *shares* with the deleted `CoderGate` were only covered by `CoderGate`'s tests (edit-failure short-circuit, no-tests-collected, content-gate deferral) and were **ported**, not lost. |
 | `LOOP_ENGINE_PERSONAS=declarative` | ✅ **DELETED** (`56c3824`, sprint 27 Task 3) | Gated on V1. `use_declarative_personas`, `PERSONAS_ENV_VAR`, `PMPersona`, `ArchitecturePersona`, `AgileSprintBreakdownPersona` and their embedded templates are gone; `prompts/` is the sole source of truth. **Kept** what the declarative path still calls: `pm.persona.fold_answers` (+ `_wrap_untrusted_artifact`/`_parse_extraction_response`) and `agile_sprint_breakdown.persona._parse_sprint_blocks`. Their only direct coverage lived in the deleted persona tests and was **re-homed** onto the surviving code, not dropped. |
-| `LOOP_ENGINE_ISOLATION` | ✅ **KEPT** (genuine runtime config) | Not old-vs-new: `none` for local dev, `container` for the factory host. Stays permanently. (So does `LOOP_ENGINE_RALPH_MAX_ITERS` — the Ralph self-loop bound, config rather than scaffolding.) |
+| `LOOP_ORCHESTRATOR_ISOLATION` | ✅ **KEPT** (genuine runtime config) | Not old-vs-new: `none` for local dev, `container` for the factory host. Stays permanently. (So does `LOOP_ORCHESTRATOR_RALPH_MAX_ITERS` — the Ralph self-loop bound, config rather than scaffolding.) |
 
 **Also collapses here:**
 - The **dual-field `artifacts`/`artifact_refs` strip** (cross-cutting #1) —
@@ -920,7 +920,7 @@ migration's remaining risk.
 
 **Open questions — RESOLVED 2026-07-10 (Opus/Architect flip-planning pass, user-confirmed); planned in `sprints/27_phase6_flip_block/sprint_plan.md`:**
 - **FD1 — Verification bar = per-flag *criterion*, batched *execution*.** Each flag keeps its own sunset criterion, but the runs are batched where paths co-occur: **one big end-to-end factory run** clears `ENGINE`+`TOOLS`+`PERSONAS` together (they're on the happy path and mutually exercised in the target production config; parity-checked against the classic baseline), with **two carve-outs** that a happy-path run structurally cannot exercise — **Ralph** (§3: a dedicated multi-sprint convergence/cost run, no parity oracle) and the **issue path** (§9: a forced pause-for-issue round-trip + R1–R4 seam wiring). Consequence: **deletion in `run_loop`-first dependency order** (`ENGINE` → `TOOLS` → `PERSONAS` → `CODER=ralph` → issue-path flip), since the `artifacts` strip and `loop.py` collapse are downstream of `run_loop` deletion. Rationale: isolated per-flag verification is both wasteful (re-provision host + re-burn real budget for paths that always run together) and weaker (never proves the interacting combined config that is the one-path end state).
-- **FD2 — No flag survives as a break-glass; git is the recovery mechanism.** Full deletion for all four sunsettable flags — an escape hatch kept live is a path kept untested (and for `ENGINE`, one that keeps `State` fat by blocking the `artifacts` strip), re-creating the exact calcification Phase 6 exists to remove. The "what if Ralph regresses" anxiety is answered by **tagging the pre-deletion commit** (`pre-phase6-classic`): the classic paths live in history, recoverable via `git revert` of a deletion commit — no permanently-live, permanently-untested branch. `PERSONAS` classic prompt *content* is separately preserved (promoted to `prompts/` as sole source of truth; only the redundant `run()` bodies + embedded templates are deleted). `LOOP_ENGINE_ISOLATION` stays — genuine runtime config (`none`/`container`), not a break-glass.
+- **FD2 — No flag survives as a break-glass; git is the recovery mechanism.** Full deletion for all four sunsettable flags — an escape hatch kept live is a path kept untested (and for `ENGINE`, one that keeps `State` fat by blocking the `artifacts` strip), re-creating the exact calcification Phase 6 exists to remove. The "what if Ralph regresses" anxiety is answered by **tagging the pre-deletion commit** (`pre-phase6-classic`): the classic paths live in history, recoverable via `git revert` of a deletion commit — no permanently-live, permanently-untested branch. `PERSONAS` classic prompt *content* is separately preserved (promoted to `prompts/` as sole source of truth; only the redundant `run()` bodies + embedded templates are deleted). `LOOP_ORCHESTRATOR_ISOLATION` stays — genuine runtime config (`none`/`container`), not a break-glass.
 
 ## Cross-cutting follow-ups (don't lose these)
 
@@ -935,10 +935,10 @@ migration's remaining risk.
    the first production caller** — `flows/maintenance.run_maintenance` chains
    `clone_repo` → `git_io.checkout_branch` → the default loop → a green gate
    → `git_io.commit_all`/`push_branch` → `open_pr`, gated on green tests.
-3. **Full `loop_engine.mcp.json`-driven multi-server discovery** — ✅ mechanism
-   generalized to N servers via `loop_engine.mcp.json` (22a: `load_mcp_config` +
+3. **Full `loop_orchestrator.mcp.json`-driven multi-server discovery** — ✅ mechanism
+   generalized to N servers via `loop_orchestrator.mcp.json` (22a: `load_mcp_config` +
    `build_provider_for`, proven by `tests/tools/test_mcp_multiserver.py`'s
-   two-server discovery/routing test); `loop_engine.mcp.json`-declared static
+   two-server discovery/routing test); `loop_orchestrator.mcp.json`-declared static
    servers — ✅ the first (`github`) landed with 22b, **committed** at the repo
    root.
 4. **Ralph cap-exhaustion → escalate, not fail.** Part-1 v1 hard-fails

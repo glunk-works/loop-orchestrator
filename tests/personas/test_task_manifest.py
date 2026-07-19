@@ -3,9 +3,9 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from loop_engine.core.gates import GateDecision
-from loop_engine.core.state import State
-from loop_engine.personas.agile_sprint_breakdown.manifest import (
+from loop_orchestrator.core.gates import GateDecision
+from loop_orchestrator.core.state import State
+from loop_orchestrator.personas.agile_sprint_breakdown.manifest import (
     ManifestArtifactGate,
     TaskEntry,
     build_task_manifest,
