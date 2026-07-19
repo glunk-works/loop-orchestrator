@@ -209,13 +209,17 @@ def test_resolve_channel_id_strips_a_leading_hash_before_checking_id_shape(monke
 
 
 def test_resolve_channel_id_looks_up_a_bare_name(monkeypatch) -> None:
-    _install_fake_conversations_client(monkeypatch, pages=[[{"id": "C999", "name": "loop-orchestrator"}]])
+    _install_fake_conversations_client(
+        monkeypatch, pages=[[{"id": "C999", "name": "loop-orchestrator"}]]
+    )
 
     assert resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="loop-orchestrator") == "C999"
 
 
 def test_resolve_channel_id_strips_a_leading_hash_before_a_name_lookup(monkeypatch) -> None:
-    _install_fake_conversations_client(monkeypatch, pages=[[{"id": "C999", "name": "loop-orchestrator"}]])
+    _install_fake_conversations_client(
+        monkeypatch, pages=[[{"id": "C999", "name": "loop-orchestrator"}]]
+    )
 
     assert resolve_channel_id(bot_token=_FAKE_BOT_TOKEN, channel="#loop-orchestrator") == "C999"
 
