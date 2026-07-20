@@ -6,61 +6,80 @@ Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
 **Bounty loop — Phase 0, sprint 45 (scope validator §5 + ingestion-sanitization seam §10).
-`sprint_status: implementing`, assigned Sonnet/coder.** The sprint-45 plan is **written and
-HITL-approved** ([`sprints/45_scope_validator_ingestion/sprint_plan.md`](../sprints/45_scope_validator_ingestion/sprint_plan.md)).
-Sprint 45 is Phase 0's **final** sprint — build the two security invariants as pure leaf
-primitives with **no live consumer** (the scanning MCP tools that mount them are Phase 1).
-After sprint 45, Phase 1 (Recon) begins. Second loop (`loops/bounty/`) is the active
-initiative; the dev loop (`loops/default`) stays paused.
+`sprint_status: awaiting_architect_review`, assigned Opus/architect.** Task 1 is
+implemented, `/critic-gate` ran and is clean, and the combined `src/` PR is open:
+[PR #168](https://github.com/glunk-works/loop-orchestrator/pull/168). Sprint 45 is Phase 0's
+**final** sprint. After the T1 architect-review + Task 2 (docs) + merge, Phase 0 is complete
+and Phase 1 (Recon) begins.
 
-## Just done (2026-07-20) — sprint-45 planning pass (Opus/architect)
-- **Ran the six-micro-gate planning pass** and wrote `sprints/45_scope_validator_ingestion/sprint_plan.md`.
-  Locked decisions **P0-D11..D16** (owner-confirmed; recorded in the plan, to be added to
-  `bounty_loop_architecture.md` §9 in Task 2):
-  - **D11** deliverable = the two primitives **only, no consumer** (scanning MCP tools = Phase 1).
-  - **D12** a **standalone `ScopeRules` value object** + `from_target` structural adapter — **no
-    runtime edge** onto `inventory_db` (`Target` is `TYPE_CHECKING`-only).
-  - **D13** scope = **fail-closed allowlist**: ≥1 in-scope AND 0 out-of-scope; deny wins; empty
-    in-scope denies all; raises `ScopeViolation`.
-  - **D14** `is_action_banned` = pure classifier now; reject-vs-escalate **policy deferred** to the
-    Phase-3 consumer (§6).
-  - **D15** sanitizer = **structural/mechanical** only (control/ANSI/zero-width strip, NFKC,
-    collapse, length cap); **no** phrase blocklist.
-  - **D16** PR structure = **one combined `src/` PR** (both primitives) + a docs PR → one
-    fresh-session `architect-review` cycle.
-- **Planning Gate: approved** by the owner.
+## Just done (2026-07-20) — sprint-45 Task 1 (Sonnet/coder)
+- Cut `sprint/45-scope-validator-ingestion` from up-to-date `main` (per the prior session's
+  instruction — implementation never lands on a docs branch).
+- Built `tools/scope_validator/` (`ScopeRules` frozen value object + `from_target` structural
+  adapter with **no runtime `inventory_db` edge** + `validate_target` fail-closed allowlist +
+  `is_action_banned` classifier + `ScopeViolation`) and `tools/ingest/sanitize.py` (structural
+  normalizer), each with full hermetic test suites and boundary guards, per
+  `sprints/45_scope_validator_ingestion/sprint_plan.md` (P0-D11..D16).
+- Ran the full local gate (lint → format → test) green, then `/critic-gate` with the human
+  confirming `architect` + `security-critic` + `guard-adversary`, all in parallel:
+  - **architect**: clean, no blocking findings — verified the fail-closed edges, the
+    frozen+`PrivateAttr` compiled-regex pattern, and the zero-runtime-edge claim directly.
+  - **security-critic**: found the sanitizer's original 5-codepoint zero-width strip missed
+    the Unicode **Tags block** (invisible-instruction smuggling) and **bidi
+    override/isolate** characters (Trojan-Source-class display spoofing) — fixed by
+    generalizing to a Unicode **`Cf`-category sweep** + an explicit variation-selector
+    strip (still structural, not a phrase blocklist — P0-D15 intact). Also flagged
+    `validate_target`'s unanchored `re.search` (an unanchored `in_scope_regex` matches a
+    superstring host) — this is the **locked P0-D13 semantics, not a bug**; added a
+    docstring note + a pinning test instead of re-litigating it.
+  - **guard-adversary** (BL-32, worktree): found the new no-runtime-edge boundary guard
+    (`test_boundary.py`) stayed **GREEN** under three genuine runtime-edge shapes — a
+    **relative import**, a **locally-shadowed `TYPE_CHECKING`**, and a **dynamic
+    `importlib.import_module`/`__import__`** call. Hardened the guard to resolve relative
+    imports to their absolute target, verify `TYPE_CHECKING` is actually bound from
+    `typing` (not shadowed), and flag dynamic imports; added a regression test per finding.
+  - All fixes landed in the same PR; re-ran the full local gate green (862 passed, 4
+    pre-existing skips) before pushing.
+- `/ship`: committed (`0cbd101`), pushed `sprint/45-scope-validator-ingestion`, opened
+  [PR #168](https://github.com/glunk-works/loop-orchestrator/pull/168) against `main`.
+  **Not merged** — needs the fresh-session `architect-review`.
 
-## Next — implement Task 1 (Sonnet/coder)
-**Task 1 (one `src/` PR):** build `tools/scope_validator/` (`ScopeRules` + `from_target` +
-`validate_target` + `is_action_banned` + `ScopeViolation`) and `tools/ingest/` (`sanitize`),
-each with full hermetic tests and the boundary/no-runtime-edge guards. **No new dependency**,
-no `.sql`, no `State` touch, no `sbom`/`audit` delta. Then `/handoff` → fresh session → the
-Opus fresh-session `architect-review` on the T1 PR. Task 2 is docs-only (exempt).
+## Next — the T1 architect-review (Opus/architect, FRESH session)
+**Next HITL Gate: the T1 `architect-review` on PR #168** — required before merge (the
+`architect-review` CI check). Read the diff, confirm the critic-gate fixes above are sound
+(don't just re-trust the summary — verify), then post with `gh pr review --comment` (never
+`--approve`) carrying the **verbatim** two-line header + attestation block from
+`.ai/context/workflow.md`. Watch the **BL-35 stale-red trap** (`architect-review` fires on
+both `pull_request` and `pull_request_review`; BLOCKED + rollup FAILURE ⇒ `gh run rerun`
+the OLD run).
 
-**Next HITL Gate:** none open. The next Gate is the **T1 `architect-review`** (fresh Opus
-session, after implementation) and then the sprint-45 completion Gate (merged PRs).
+After the review posts and a human merges PR #168: **Task 2** (docs-only,
+`architect-review`-exempt) — a `CLAUDE.md` "Enforced module boundaries" bullet for the two
+new leaf modules, and `docs/bounty_loop_architecture.md` §8 status + §9 `P0-D11..D16` +
+a §10 note. Then the **sprint-45 completion Gate** (`/archive-sprint`, Phase 0 → done).
 
 ## Gotchas worth remembering
 - **`schema_version` 5→6 stays DEFERRED to Phase 1** (P0-D2) — sprint 45 is pure non-`State`
-  infra; no `State` field, no `migrate_state_payload` branch.
-- **`scope_validator` must have NO runtime import edge onto `inventory_db`** (P0-D12) — the
-  `Target` reference is `TYPE_CHECKING`-only; pin it with the import-graph assertion.
-- **Fail-*open* is the bug to avoid** — empty `in_scope_regex` must DENY, and an out-of-scope
-  match must veto even when an in-scope also matches. Pin both edges with explicit tests.
-- **No new subprocess surface / no new dependency** — the five sanctioned subprocess surfaces
-  and the keyring/psycopg boundaries stay unchanged; both new modules are pure leaves.
+  infra; no `State` field, no `migrate_state_payload` branch. PR #168 confirms this holds.
+- **`scope_validator` has NO runtime import edge onto `inventory_db`** (P0-D12) — verified
+  directly by `architect`, and the boundary guard is now hardened against relative-import /
+  shadowed-`TYPE_CHECKING` / dynamic-import evasion (BL-32 findings, all fixed).
+- **The sanitizer's invisible-character strip is now a `Cf`-category sweep**, not an
+  enumerated codepoint list — still structural (P0-D15), just complete. Variation selectors
+  (Mn category) get a narrow explicit range alongside it; ordinary combining marks are
+  untouched.
+- **`validate_target` matches via unanchored `re.search`** — documented and pinned by a
+  test, not changed. A future Phase-1 consumer writing `in_scope_regex` patterns should
+  anchor them (`^host$`) for exact-host matching.
 - **`DEFERRED_VERIFICATION.md` §10 still owed** — the sprint-44 live Postgres round-trip;
   discharge in Phase 1 when the first inventory consumer + a real PG exist.
 - **`.ai/state.json` is git-ignored** — this file (`next-steps.md`) is what travels.
 - **PR title ≤72 bytes, lower-case after `type(scope): `** — `wc -c` first. **Never commit
   to `main`, merge, or force-push.** **Full local gate (lint→format→test) before push.**
-- **The T1 `src/` PR needs a FRESH-session architect-review** — watch the BL-35 stale-red trap
-  (`architect-review` fires on both `pull_request` and `pull_request_review`; BLOCKED + rollup
-  FAILURE ⇒ `gh run rerun` the OLD run).
 
 ## Pointers
-- [`sprints/45_scope_validator_ingestion/sprint_plan.md`](../sprints/45_scope_validator_ingestion/sprint_plan.md) — **the approved sprint-45 plan** (tasks, P0-D11..D16, acceptance criteria). Read first.
+- [PR #168](https://github.com/glunk-works/loop-orchestrator/pull/168) — the open sprint-45 Task 1 `src/` PR (`sprint/45-scope-validator-ingestion`, commit `0cbd101`). Needs the fresh-session `architect-review`.
+- [`sprints/45_scope_validator_ingestion/sprint_plan.md`](../sprints/45_scope_validator_ingestion/sprint_plan.md) — the approved sprint-45 plan (tasks, P0-D11..D16, acceptance criteria).
 - [`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md) — bounty loop reference-of-record (§5 scope validator, §6 escalation, §10 ingestion/threat-model, §8 roadmap, §9 decisions P0-D1..D16).
-- [`sprints/44_inventory_db/sprint_plan.md`](../sprints/44_inventory_db/sprint_plan.md) — the just-completed sprint's plan (the template/precedent) — `tools/inventory_db/models.py::Target` is what `ScopeRules.from_target` reads.
+- [`sprints/44_inventory_db/sprint_plan.md`](../sprints/44_inventory_db/sprint_plan.md) — the prior sprint's plan (the template/precedent).
 - [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — §10 = the owed sprint-44 live Postgres smoke.
-- [PR #167](https://github.com/glunk-works/loop-orchestrator/pull/167) — the open sprint-45-setup docs PR (archive sprint 44 + advance cursor + this plan).
