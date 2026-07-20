@@ -38,14 +38,32 @@ def test_bootstrap_is_idempotent(inventory: PsycopgInventory) -> None:
 
 def test_full_write_chain_round_trips(inventory: PsycopgInventory) -> None:
     target_id = inventory.upsert_target("acme-bounty-integration", in_scope_regex=[r"^acme\.com$"])
-    asset_id = inventory.upsert_asset(target_id, "10.0.0.1", asset_type="host")
-    endpoint_id = inventory.upsert_endpoint(asset_id, "/login", http_methods=["GET"])
+    asset_id = inventory.upsert_asset(
+        target_id,
+        "10.0.0.1",
+        asset_type="host",
+        raw_scan_data={"ports": [22, 443], "os": "linux"},
+    )
+    endpoint_id = inventory.upsert_endpoint(
+        asset_id,
+        "/login",
+        http_methods=["GET"],
+        tech_stack={"framework": "django", "version": "5.0"},
+    )
     finding_id = inventory.insert_finding(endpoint_id, run_id="run-1", finding_type="idor")
 
     assert target_id is not None
     assert asset_id is not None
     assert endpoint_id is not None
     assert finding_id is not None
+
+    # The JSONB dict binds (F1) round-trip through the real driver, not just
+    # the in-memory fake -- verified by reading the columns back directly.
+    with inventory._conn.cursor() as cur:
+        cur.execute("SELECT raw_scan_data FROM assets WHERE id = %s", (asset_id,))
+        assert cur.fetchone()[0] == {"ports": [22, 443], "os": "linux"}
+        cur.execute("SELECT tech_stack FROM endpoints WHERE id = %s", (endpoint_id,))
+        assert cur.fetchone()[0] == {"framework": "django", "version": "5.0"}
 
 
 def test_upsert_target_is_idempotent_by_program_name(inventory: PsycopgInventory) -> None:

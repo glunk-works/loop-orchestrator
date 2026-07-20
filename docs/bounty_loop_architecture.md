@@ -147,7 +147,7 @@ existing coder/github/issue tool sets.
 
 | Phase | Scope | Status |
 |---|---|---|
-| **0 — Enablers** | Land **BL-5** per-persona model routing (Opus deep-inspection/report, Haiku triage; needs Haiku in pricing RATES). Stand up `tools/inventory_db` + the Postgres schema (§4) + the **scope validator** (§5) + an **ingestion-sanitization seam** for scanner output first. These two seams are the concrete fixes for validated gaps in `bounty-infra`'s current scanner — no structural scope check (`bounty-infra#7`) and target-derived fields fed straight into the triage LLM (`bounty-infra#13`) — built once here and shared. **Decomposed into three sprints (P0-D1): 43 (BL-5 routing) → 44 (`inventory_db` + §4 schema) → 45 (scope validator §5 + ingestion seam §10).** The `State.schema_version` → 6 bump is **deferred to Phase 1** (P0-D2) — it ships with the first bounty `State` field, not with pure non-`State` infra. | **in progress — sprint 43 (BL-5 routing) complete (T1–T4 merged); 44/45 remain** |
+| **0 — Enablers** | Land **BL-5** per-persona model routing (Opus deep-inspection/report, Haiku triage; needs Haiku in pricing RATES). Stand up `tools/inventory_db` + the Postgres schema (§4) + the **scope validator** (§5) + an **ingestion-sanitization seam** for scanner output first. These two seams are the concrete fixes for validated gaps in `bounty-infra`'s current scanner — no structural scope check (`bounty-infra#7`) and target-derived fields fed straight into the triage LLM (`bounty-infra#13`) — built once here and shared. **Decomposed into three sprints (P0-D1): 43 (BL-5 routing) → 44 (`inventory_db` + §4 schema) → 45 (scope validator §5 + ingestion seam §10).** The `State.schema_version` → 6 bump is **deferred to Phase 1** (P0-D2) — it ships with the first bounty `State` field, not with pure non-`State` infra. | **in progress — sprint 43 (BL-5 routing) complete (T1–T4 merged); sprint 44 T1 (hermetic core, PR #159) + T2 (psycopg3 driver, PR #162) merged, remainder (F1 JSONB-adapter fix + T3 docs) in review; 45 remains** |
 | **1 — Recon + Surface-Mapping** | `workflow_dispatch` seam on `bounty-infra`; wrap recon as scope-validated MCP tools; IDP parser → typed `assets`/`endpoints`. Stages 1–2. | not started |
 | **2 — Scan + Triage** | `nuclei` MCP tool; Triage persona (Haiku) dedup/FP-filter/severity vs inventory, gated. Absorbs + upgrades `bounty-infra`'s one-pass Gemini triage. Stage 3. | not started |
 | **3 — Deep-Inspection** | Ralph-style agentic persona; secure security-tool MCP servers; passive autonomous, active gated (§6). Stage 4. | not started |
@@ -184,6 +184,15 @@ a future pass must not re-open them):
   `migrate_state_payload` branch — churn. The bump lands in Phase 1 with the field it exists
   for. (Sprints 44/45 each get their own `sprint_plan.md`; P0-D3..D6 are recorded in
   `sprints/43_bl5_model_routing/sprint_plan.md` for those passes.)
+- **Sprint 44 T2 Architect Review finding F1 (fixed in the sprint-44 remainder):**
+  `PsycopgInventory` bound the `raw_scan_data`/`tech_stack` JSONB columns as bare `dict`
+  values, but psycopg 3 has no `dict` dumper — every non-`None` write raised
+  `ProgrammingError`→`InventoryError`. Fixed by wrapping non-`None` dict binds in
+  `psycopg.types.json.Jsonb(...)` in both the INSERT and UPDATE paths of
+  `upsert_asset`/`upsert_endpoint` (`None` stays `None`, never `Jsonb(None)`, which would
+  write JSON `null` instead of SQL `NULL`). F2 (upsert TOCTOU race), F3 (held connection
+  never closed), F4 (single connection not thread-safe), and F5 (SQL-param guard narrower
+  than its docstring) remain open as Phase-1 notes.
 
 Design-authority overrides of the Gemini sketch:
 
