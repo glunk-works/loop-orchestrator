@@ -237,6 +237,51 @@ scaffold's `pyproject.toml` selects the `S` (bandit) rule set but ships no
 (The org question was already closed in sprint 35; the wheel-ships-templates check was
 already done in the Sprint 25 session — neither needed re-doing here.)
 
+## 10. `tools/inventory_db` live Postgres round-trip (validates Sprint 44) — OWED
+
+Sprint 44's `PsycopgInventory` (the real sync psycopg3 `InventoryRepository`) is covered
+in the hermetic suite only through `InMemoryInventory`, the fake. The real-driver path —
+`bootstrap()` applying `inventory.sql` against a real server, and every
+`upsert_*`/`insert_finding` transaction — runs only in
+`tests/tools/inventory_db/test_psycopg_integration.py`, which **SKIPS when
+`LOOP_ORCHESTRATOR_INVENTORY_DSN` is unset** (P0-D4: no CI/dev Postgres is provisioned).
+`hatch run test` passing says nothing about it. In particular the T2-review finding **F1**
+(JSONB `dict` binds must be wrapped in `psycopg.types.json.Jsonb(...)` — psycopg 3 has no
+dict dumper) and its round-trip assertion have **never executed against a real Postgres**:
+the F1 gate run (PR #165) reported the whole integration file skipped (819 passed /
+4 skipped).
+
+Run against a real PostgreSQL **13+** (the `gen_random_uuid()` core-builtin assumption,
+P0-D8):
+
+```bash
+LOOP_ORCHESTRATOR_INVENTORY_DSN=<dsn to a disposable PG 13+ database> \
+  hatch run test tests/tools/inventory_db/test_psycopg_integration.py
+```
+
+Expected observations:
+
+- The file **runs** (no skip) and **passes** — the DSN gate flips it on.
+- `test_bootstrap_is_idempotent` — `bootstrap()` applied twice against a real server
+  succeeds; `gen_random_uuid()` resolves with **no `pgcrypto`** extension created (P0-D8
+  confirmed live, not merely asserted in the `.sql`).
+- `test_full_write_chain_round_trips` — the **F1** columns round-trip: after an
+  `upsert_asset(raw_scan_data={...})` / `upsert_endpoint(tech_stack={...})`, reading
+  `assets.raw_scan_data` / `endpoints.tech_stack` back returns the exact dicts (the
+  `Jsonb(...)` wrap works end to end; a bare-`dict` bind would have raised
+  `ProgrammingError` → `InventoryError`).
+- The coalesce-on-`None` upsert semantics hold on the real driver as on the fake: a second
+  upsert with the same natural key **updates in place** (no duplicate row), a `None` field
+  falls back to the stored value, an explicit value (including `[]`/`{}`) overwrites, and a
+  `None` write lands SQL `NULL`, never JSON `null`.
+
+**Destination:** discharge in **Phase 1 (Recon)**, when the first in-repo consumer of
+`tools/inventory_db` lands and a real/dev Postgres is on hand anyway (the same YAGNI logic
+that deferred the read surface — P0-D2/D7). F2–F5 (upsert TOCTOU race, held connection
+never closed, single connection not thread-safe, SQL-param guard narrower than its
+docstring) are separate open Phase-1 notes in `docs/bounty_loop_architecture.md` §9, not
+part of this live-smoke obligation.
+
 
 ---
 

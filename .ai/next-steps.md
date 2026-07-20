@@ -5,76 +5,62 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Bounty loop — Phase 0, sprint 44 (`tools/inventory_db` + the §4 Postgres schema).
-`sprint_status: awaiting_architect_review`, assigned Opus/architect.** Task 1 (hermetic
-core) merged (`6bfc173`, PR [#159](https://github.com/glunk-works/loop-orchestrator/pull/159))
-and Task 2 (the real psycopg3 driver) merged (`32c000a`, PR
-[#162](https://github.com/glunk-works/loop-orchestrator/pull/162)). **The remainder (F1 fix
-+ T3 docs) is coded, gated, and open as
-[PR #165](https://github.com/glunk-works/loop-orchestrator/pull/165)** against `main`,
-awaiting the fresh-session Opus `architect-review`. The second loop (`loops/bounty/`) is
-the active initiative; the dev loop (`loops/default`) stays paused.
+**Bounty loop — Phase 0, sprint 45 (scope validator §5 + ingestion-sanitization seam §10).
+`sprint_status: implementing`, assigned Sonnet/coder.** The sprint-45 plan is **written and
+HITL-approved** ([`sprints/45_scope_validator_ingestion/sprint_plan.md`](../sprints/45_scope_validator_ingestion/sprint_plan.md)).
+Sprint 45 is Phase 0's **final** sprint — build the two security invariants as pure leaf
+primitives with **no live consumer** (the scanning MCP tools that mount them are Phase 1).
+After sprint 45, Phase 1 (Recon) begins. Second loop (`loops/bounty/`) is the active
+initiative; the dev loop (`loops/default`) stays paused.
 
-## Just done (2026-07-20) — sprint-44 remainder implementation (Sonnet/coder)
-- **Fixed F1** — `PsycopgInventory.upsert_asset`/`upsert_endpoint`
-  (`src/loop_orchestrator/tools/inventory_db/psycopg_impl.py`) now wrap the
-  `raw_scan_data`/`tech_stack` dict binds in `psycopg.types.json.Jsonb(...)` in both the
-  INSERT and UPDATE (coalesce) paths; a bare `None` stays `None` (never `Jsonb(None)`,
-  which would write JSON `null` instead of SQL `NULL`).
-- **Extended `test_full_write_chain_round_trips`** to pass non-empty
-  `raw_scan_data`/`tech_stack` dicts and read both JSONB columns back directly to assert
-  the round-trip — this test previously left both fields `None`, which is why F1 shipped
-  unnoticed.
-- **T3 docs** — added the `tools/inventory_db` sole-psycopg-importer + parameterized-SQL
-  boundary bullet to `CLAUDE.md`; advanced §8 (roadmap status) / §9 (decisions log, new F1
-  bullet) in `docs/bounty_loop_architecture.md`.
-- **Full local gate green**: lint → format → 819 passed / 4 skipped (the live-Postgres
-  integration suite skips cleanly without a DSN, by design).
-- **Ran `/critic-gate`** on the diff before handoff (security-critic + architect, both
-  read-only, in parallel): **security-critic found nothing reachable** — the `Jsonb(...)`
-  fix keeps all caller data on the bound-parameter side of the SQL sink, no unwrapped-rebind
-  path. **architect found one low-severity docs-wording issue** — the new CLAUDE.md bullet
-  claimed *every* `cur.execute()` call is a static literal, missing the documented
-  `bootstrap()` exception — fixed in commit `688b628`. Neither critic pass is a substitute
-  for the CI `architect-review` gate; that review still needs a genuinely fresh session.
-- **Opened [PR #165](https://github.com/glunk-works/loop-orchestrator/pull/165)** against
-  `main` (branch `sprint/44-inventory-remainder`, head `688b628`).
+## Just done (2026-07-20) — sprint-45 planning pass (Opus/architect)
+- **Ran the six-micro-gate planning pass** and wrote `sprints/45_scope_validator_ingestion/sprint_plan.md`.
+  Locked decisions **P0-D11..D16** (owner-confirmed; recorded in the plan, to be added to
+  `bounty_loop_architecture.md` §9 in Task 2):
+  - **D11** deliverable = the two primitives **only, no consumer** (scanning MCP tools = Phase 1).
+  - **D12** a **standalone `ScopeRules` value object** + `from_target` structural adapter — **no
+    runtime edge** onto `inventory_db` (`Target` is `TYPE_CHECKING`-only).
+  - **D13** scope = **fail-closed allowlist**: ≥1 in-scope AND 0 out-of-scope; deny wins; empty
+    in-scope denies all; raises `ScopeViolation`.
+  - **D14** `is_action_banned` = pure classifier now; reject-vs-escalate **policy deferred** to the
+    Phase-3 consumer (§6).
+  - **D15** sanitizer = **structural/mechanical** only (control/ANSI/zero-width strip, NFKC,
+    collapse, length cap); **no** phrase blocklist.
+  - **D16** PR structure = **one combined `src/` PR** (both primitives) + a docs PR → one
+    fresh-session `architect-review` cycle.
+- **Planning Gate: approved** by the owner.
 
-## Next — fresh-session Opus Architect Review on PR #165
-In a **new session** (not just `/model` + `/clear` — the fresh-session attestation is an
-integrity property, not context hygiene):
-1. `/model opus` → `/resume` → `/code-review` the diff (PR #165 / `sprint/44-inventory-remainder`
-   vs `main`).
-2. Post the review with `gh pr review --comment` (**never `--approve`**) against PR #165's
-   current head commit. The body **must open with the verbatim two-line header +
-   attestation block** from `.ai/context/workflow.md` — paste it, don't paraphrase, or the
-   `architect-review` check won't go green.
-3. If clean, the PR is ready for the owner's merge (the sprint-44 **completion** Gate). If
-   the review finds something, route it back to a Sonnet/coder session per the usual
-   resolver ladder.
+## Next — implement Task 1 (Sonnet/coder)
+**Task 1 (one `src/` PR):** build `tools/scope_validator/` (`ScopeRules` + `from_target` +
+`validate_target` + `is_action_banned` + `ScopeViolation`) and `tools/ingest/` (`sanitize`),
+each with full hermetic tests and the boundary/no-runtime-edge guards. **No new dependency**,
+no `.sql`, no `State` touch, no `sbom`/`audit` delta. Then `/handoff` → fresh session → the
+Opus fresh-session `architect-review` on the T1 PR. Task 2 is docs-only (exempt).
 
-**Next HITL Gate:** none open. The next Gate is the sprint-44 **completion** Gate (the
-owner's merge of PR #165, which needs the `architect-review` CI check green first).
+**Next HITL Gate:** none open. The next Gate is the **T1 `architect-review`** (fresh Opus
+session, after implementation) and then the sprint-45 completion Gate (merged PRs).
 
 ## Gotchas worth remembering
-- **F1 is fixed in PR #165, not yet on `main`** — see `memory/inventory-jsonb-dict-bug.md`
-  (updated). `main` still carries the live defect until #165 merges.
+- **`schema_version` 5→6 stays DEFERRED to Phase 1** (P0-D2) — sprint 45 is pure non-`State`
+  infra; no `State` field, no `migrate_state_payload` branch.
+- **`scope_validator` must have NO runtime import edge onto `inventory_db`** (P0-D12) — the
+  `Target` reference is `TYPE_CHECKING`-only; pin it with the import-graph assertion.
+- **Fail-*open* is the bug to avoid** — empty `in_scope_regex` must DENY, and an out-of-scope
+  match must veto even when an in-scope also matches. Pin both edges with explicit tests.
+- **No new subprocess surface / no new dependency** — the five sanctioned subprocess surfaces
+  and the keyring/psycopg boundaries stay unchanged; both new modules are pure leaves.
+- **`DEFERRED_VERIFICATION.md` §10 still owed** — the sprint-44 live Postgres round-trip;
+  discharge in Phase 1 when the first inventory consumer + a real PG exist.
 - **`.ai/state.json` is git-ignored** — this file (`next-steps.md`) is what travels.
-- **`tools/inventory_db` is an enforced boundary** — `psycopg_impl.py` is the sole `psycopg`
-  importer (`test_boundary.py`); every value-bearing `execute()` outside `bootstrap()` is a
-  static literal (`test_sql_parameterization.py`). Both manually guard-adversary-confirmed
-  RED under a planted violation (BL-15).
-- **`gen_random_uuid()` needs no `pgcrypto`** — PG13+ core builtin (P0-D8), live-verified.
 - **PR title ≤72 bytes, lower-case after `type(scope): `** — `wc -c` first. **Never commit
-  to `main`, merge, or force-push.** **Full local gate before push** (memory: #141).
-- **F2–F5 remain open Phase-1 notes** (upsert TOCTOU race, held conn never closed, single
-  conn not thread-safe, SQL-param guard narrower than its docstring) — not this sprint's
-  scope.
+  to `main`, merge, or force-push.** **Full local gate (lint→format→test) before push.**
+- **The T1 `src/` PR needs a FRESH-session architect-review** — watch the BL-35 stale-red trap
+  (`architect-review` fires on both `pull_request` and `pull_request_review`; BLOCKED + rollup
+  FAILURE ⇒ `gh run rerun` the OLD run).
 
 ## Pointers
-- [PR #159](https://github.com/glunk-works/loop-orchestrator/pull/159) — sprint-44 T1, **merged** (`6bfc173`).
-- [PR #162](https://github.com/glunk-works/loop-orchestrator/pull/162) — sprint-44 T2, **merged** (`32c000a`).
-- [PR #165](https://github.com/glunk-works/loop-orchestrator/pull/165) — sprint-44 remainder (F1 fix + T3 docs), **open**, awaiting architect-review.
-- [`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md) — the bounty loop's reference-of-record (§4 persistence + schema, §8 roadmap, §9 decisions P0-D1..D10). **Read first.**
-- [`sprints/44_inventory_db/sprint_plan.md`](../sprints/44_inventory_db/sprint_plan.md) — the sprint-44 plan (T1/T2 merged, T3 in PR #165, P0-D7..D10, PR structure, security invariants).
-- [`docs/backlog.md`](../docs/backlog.md) — paused dev-loop items behind the bounty pivot.
+- [`sprints/45_scope_validator_ingestion/sprint_plan.md`](../sprints/45_scope_validator_ingestion/sprint_plan.md) — **the approved sprint-45 plan** (tasks, P0-D11..D16, acceptance criteria). Read first.
+- [`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md) — bounty loop reference-of-record (§5 scope validator, §6 escalation, §10 ingestion/threat-model, §8 roadmap, §9 decisions P0-D1..D16).
+- [`sprints/44_inventory_db/sprint_plan.md`](../sprints/44_inventory_db/sprint_plan.md) — the just-completed sprint's plan (the template/precedent) — `tools/inventory_db/models.py::Target` is what `ScopeRules.from_target` reads.
+- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — §10 = the owed sprint-44 live Postgres smoke.
+- [PR #167](https://github.com/glunk-works/loop-orchestrator/pull/167) — the open sprint-45-setup docs PR (archive sprint 44 + advance cursor + this plan).
