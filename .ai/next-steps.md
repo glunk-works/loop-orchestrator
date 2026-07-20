@@ -6,61 +6,61 @@ Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
 **Bounty loop — Phase 0, sprint 45 (scope validator §5 + ingestion-sanitization seam §10).
-`sprint_status: planning`, assigned Opus/architect.** Sprint 44 (`tools/inventory_db` +
-the §4 Postgres schema) is **complete and archived** — all three PRs merged (T1
-[#159](https://github.com/glunk-works/loop-orchestrator/pull/159), T2
-[#162](https://github.com/glunk-works/loop-orchestrator/pull/162), remainder F1 + T3
-[#165](https://github.com/glunk-works/loop-orchestrator/pull/165)) at `main` `29df5dd`.
-Sprint 45 is Phase 0's **final** sprint; after it, Phase 1 (Recon) begins. The second loop
-(`loops/bounty/`) is the active initiative; the dev loop (`loops/default`) stays paused.
+`sprint_status: implementing`, assigned Sonnet/coder.** The sprint-45 plan is **written and
+HITL-approved** ([`sprints/45_scope_validator_ingestion/sprint_plan.md`](../sprints/45_scope_validator_ingestion/sprint_plan.md)).
+Sprint 45 is Phase 0's **final** sprint — build the two security invariants as pure leaf
+primitives with **no live consumer** (the scanning MCP tools that mount them are Phase 1).
+After sprint 45, Phase 1 (Recon) begins. Second loop (`loops/bounty/`) is the active
+initiative; the dev loop (`loops/default`) stays paused.
 
-## Just done (2026-07-20) — sprint-44 closed out
-- **Posted the fresh-session Opus Architect Review on PR #165** (F1 JSONB fix + T3 docs) —
-  APPROVE, no new findings; verified the `Jsonb(...)` wrap covers both JSONB columns in all
-  four INSERT/UPDATE sites, the coalesce×wrap cases, and the regression test. Cleared the
-  **BL-35 stale-red** (`gh run rerun` the old `pull_request` `architect-review` run); all 8
-  required checks green, merge state CLEAN.
-- **Owner merged PR #165** → sprint-44 **completion Gate passed**.
-- **`/archive-sprint`**: snapshotted the sprint-44 cursor to `.ai/archive/`, flipped
-  `bounty_loop_architecture.md` §8 to *sprint 44 complete — hermetically verified; live
-  Postgres smoke deferred*, and **added `DEFERRED_VERIFICATION.md` §10** (the OWED live
-  psycopg3 round-trip — never run against a real PG, per the owner). Advanced the cursor to
-  sprint 45.
+## Just done (2026-07-20) — sprint-45 planning pass (Opus/architect)
+- **Ran the six-micro-gate planning pass** and wrote `sprints/45_scope_validator_ingestion/sprint_plan.md`.
+  Locked decisions **P0-D11..D16** (owner-confirmed; recorded in the plan, to be added to
+  `bounty_loop_architecture.md` §9 in Task 2):
+  - **D11** deliverable = the two primitives **only, no consumer** (scanning MCP tools = Phase 1).
+  - **D12** a **standalone `ScopeRules` value object** + `from_target` structural adapter — **no
+    runtime edge** onto `inventory_db` (`Target` is `TYPE_CHECKING`-only).
+  - **D13** scope = **fail-closed allowlist**: ≥1 in-scope AND 0 out-of-scope; deny wins; empty
+    in-scope denies all; raises `ScopeViolation`.
+  - **D14** `is_action_banned` = pure classifier now; reject-vs-escalate **policy deferred** to the
+    Phase-3 consumer (§6).
+  - **D15** sanitizer = **structural/mechanical** only (control/ANSI/zero-width strip, NFKC,
+    collapse, length cap); **no** phrase blocklist.
+  - **D16** PR structure = **one combined `src/` PR** (both primitives) + a docs PR → one
+    fresh-session `architect-review` cycle.
+- **Planning Gate: approved** by the owner.
 
-## Next — plan sprint 45 (Opus/architect)
-There is **no `sprints/45_scope_validator_ingestion/sprint_plan.md` yet** — the planning
-pass writes it (one question at a time, HITL Gates). Scope, from
-`bounty_loop_architecture.md`:
-1. **Scope validator (§5)** — a structural in/out-of-scope + banned-action check reading
-   sprint-44's `targets` rules-of-engagement (`in_scope_regex`/`out_of_scope_regex`/
-   `banned_actions`). The concrete fix for `bounty-infra#7` (no structural scope check).
-2. **Ingestion-sanitization seam (§10; P0-D6)** — sanitize scanner/target-derived output
-   before it reaches the triage LLM. The concrete fix for `bounty-infra#13` (target-derived
-   fields fed straight into the model).
-Both built once here and shared into the bounty loop.
+## Next — implement Task 1 (Sonnet/coder)
+**Task 1 (one `src/` PR):** build `tools/scope_validator/` (`ScopeRules` + `from_target` +
+`validate_target` + `is_action_banned` + `ScopeViolation`) and `tools/ingest/` (`sanitize`),
+each with full hermetic tests and the boundary/no-runtime-edge guards. **No new dependency**,
+no `.sql`, no `State` touch, no `sbom`/`audit` delta. Then `/handoff` → fresh session → the
+Opus fresh-session `architect-review` on the T1 PR. Task 2 is docs-only (exempt).
 
-**Next HITL Gate:** none open. The next Gate is the sprint-45 **planning** Gate (HITL
-approval of the plan before any implementation).
+**Next HITL Gate:** none open. The next Gate is the **T1 `architect-review`** (fresh Opus
+session, after implementation) and then the sprint-45 completion Gate (merged PRs).
 
 ## Gotchas worth remembering
-- **`schema_version` 5→6 stays DEFERRED to Phase 1** (P0-D2) — sprint 45 is still pure
-  non-`State` infra unless the planning pass surfaces a `State` field.
-- **`DEFERRED_VERIFICATION.md` §10 is owed** — the sprint-44 live Postgres round-trip
-  (real driver: bootstrap DDL + F1 JSONB round-trip + coalesce). Discharge in Phase 1 when
-  the first inventory consumer + a real PG exist. Don't let it drift.
-- **F2–F5 remain open Phase-1 notes** (upsert TOCTOU race, held conn never closed, single
-  conn not thread-safe, SQL-param guard narrower than its docstring) — `bounty_loop_architecture.md`
-  §9, not sprint 45's scope.
+- **`schema_version` 5→6 stays DEFERRED to Phase 1** (P0-D2) — sprint 45 is pure non-`State`
+  infra; no `State` field, no `migrate_state_payload` branch.
+- **`scope_validator` must have NO runtime import edge onto `inventory_db`** (P0-D12) — the
+  `Target` reference is `TYPE_CHECKING`-only; pin it with the import-graph assertion.
+- **Fail-*open* is the bug to avoid** — empty `in_scope_regex` must DENY, and an out-of-scope
+  match must veto even when an in-scope also matches. Pin both edges with explicit tests.
+- **No new subprocess surface / no new dependency** — the five sanctioned subprocess surfaces
+  and the keyring/psycopg boundaries stay unchanged; both new modules are pure leaves.
+- **`DEFERRED_VERIFICATION.md` §10 still owed** — the sprint-44 live Postgres round-trip;
+  discharge in Phase 1 when the first inventory consumer + a real PG exist.
 - **`.ai/state.json` is git-ignored** — this file (`next-steps.md`) is what travels.
 - **PR title ≤72 bytes, lower-case after `type(scope): `** — `wc -c` first. **Never commit
-  to `main`, merge, or force-push.** **Full local gate before push** (memory: #141).
-- **`src/`-touching PRs need a FRESH-session architect-review** — watch the BL-35 stale-red
-  trap (`architect-review` fires on both `pull_request` and `pull_request_review`; BLOCKED +
-  rollup FAILURE ⇒ `gh run rerun` the OLD run).
+  to `main`, merge, or force-push.** **Full local gate (lint→format→test) before push.**
+- **The T1 `src/` PR needs a FRESH-session architect-review** — watch the BL-35 stale-red trap
+  (`architect-review` fires on both `pull_request` and `pull_request_review`; BLOCKED + rollup
+  FAILURE ⇒ `gh run rerun` the OLD run).
 
 ## Pointers
-- [`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md) — the bounty loop's reference-of-record (§5 scope validator, §10 ingestion seam, §8 roadmap, §9 decisions P0-D1..D10). **Read first for sprint-45 planning.**
-- [`sprints/44_inventory_db/sprint_plan.md`](../sprints/44_inventory_db/sprint_plan.md) — the just-completed sprint's plan (all tasks merged) — the template/precedent for the sprint-45 plan.
+- [`sprints/45_scope_validator_ingestion/sprint_plan.md`](../sprints/45_scope_validator_ingestion/sprint_plan.md) — **the approved sprint-45 plan** (tasks, P0-D11..D16, acceptance criteria). Read first.
+- [`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md) — bounty loop reference-of-record (§5 scope validator, §6 escalation, §10 ingestion/threat-model, §8 roadmap, §9 decisions P0-D1..D16).
+- [`sprints/44_inventory_db/sprint_plan.md`](../sprints/44_inventory_db/sprint_plan.md) — the just-completed sprint's plan (the template/precedent) — `tools/inventory_db/models.py::Target` is what `ScopeRules.from_target` reads.
 - [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — §10 = the owed sprint-44 live Postgres smoke.
-- [`docs/backlog.md`](../docs/backlog.md) — paused dev-loop items behind the bounty pivot.
-- [PR #165](https://github.com/glunk-works/loop-orchestrator/pull/165) — sprint-44 remainder (F1 + T3 docs), **merged** (`29df5dd`).
+- [PR #167](https://github.com/glunk-works/loop-orchestrator/pull/167) — the open sprint-45-setup docs PR (archive sprint 44 + advance cursor + this plan).
