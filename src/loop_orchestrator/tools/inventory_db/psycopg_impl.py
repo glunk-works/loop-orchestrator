@@ -24,6 +24,7 @@ from importlib import resources
 from typing import Any
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 from loop_orchestrator.tools.inventory_db.memory import InventoryError
 from loop_orchestrator.tools.inventory_db.models import (
@@ -135,19 +136,20 @@ class PsycopgInventory:
                             asset_identifier,
                             asset_type,
                             open_ports or [],
-                            raw_scan_data,
+                            Jsonb(raw_scan_data) if raw_scan_data is not None else None,
                         ),
                     )
                     asset_id = cur.fetchone()[0]
                 else:
                     existing_id, existing_type, existing_ports, existing_scan = row
+                    coalesced_scan = raw_scan_data if raw_scan_data is not None else existing_scan
                     cur.execute(
                         "UPDATE assets SET asset_type = %s, open_ports = %s, "
                         "raw_scan_data = %s WHERE id = %s",
                         (
                             asset_type if asset_type is not None else existing_type,
                             open_ports if open_ports is not None else existing_ports,
-                            raw_scan_data if raw_scan_data is not None else existing_scan,
+                            Jsonb(coalesced_scan) if coalesced_scan is not None else None,
                             existing_id,
                         ),
                     )
@@ -183,19 +185,20 @@ class PsycopgInventory:
                             asset_id,
                             url_path,
                             http_methods or [],
-                            tech_stack,
+                            Jsonb(tech_stack) if tech_stack is not None else None,
                             requires_auth,
                         ),
                     )
                     endpoint_id = cur.fetchone()[0]
                 else:
                     existing_id, existing_methods, existing_stack, existing_auth = row
+                    coalesced_stack = tech_stack if tech_stack is not None else existing_stack
                     cur.execute(
                         "UPDATE endpoints SET http_methods = %s, tech_stack = %s, "
                         "requires_auth = %s WHERE id = %s",
                         (
                             http_methods if http_methods is not None else existing_methods,
-                            tech_stack if tech_stack is not None else existing_stack,
+                            Jsonb(coalesced_stack) if coalesced_stack is not None else None,
                             requires_auth if requires_auth is not None else existing_auth,
                             existing_id,
                         ),
