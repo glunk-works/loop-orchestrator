@@ -5,16 +5,22 @@ psycopg3 impl (T2) enforces via UNIQUE constraints + a CHECK, so fake and
 real stay behaviorally aligned without a live DB. This is the default test
 double the hermetic suite runs against.
 
+Upsert semantics are **coalesce, not full-replace** (T2 architect-review
+note): a `None` argument means "not provided" and preserves the existing
+row's value; an explicit value (including `[]`) overwrites it. `T2`'s
+`PsycopgInventory` mirrors this exactly via a select-then-insert-or-update
+so a partial upsert never silently wipes a previously-set field.
+
 Row dicts (`targets`/`assets`/`endpoints`/`findings`) are public so tests can
 inspect written state directly -- there is deliberately no read/query method
 on the Protocol this sprint (P0-D7), and inspecting a fake's own state is not
 that.
 """
 
-from typing import Any
+from typing import Any, TypeVar
 from uuid import uuid4
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from loop_orchestrator.tools.inventory_db.models import (
     Asset,
@@ -33,6 +39,33 @@ class InventoryError(Exception):
     """Raised on an inventory-integrity violation: an unknown FK-shaped
     reference or a row that fails a model constraint (e.g. an invalid
     `validation_status`)."""
+
+
+_ModelT = TypeVar("_ModelT", bound=BaseModel)
+
+
+def _build(model_cls: type[_ModelT], **kwargs: Any) -> _ModelT:
+    """Construct a domain model, wrapping any `ValidationError` in
+    `InventoryError` -- every row constructor uses this so the error type a
+    caller catches doesn't depend on which write method raised it (T2
+    architect-review note: `insert_finding` did this but the upserts didn't)."""
+    try:
+        return model_cls(**kwargs)
+    except ValidationError as exc:
+        raise InventoryError(str(exc)) from exc
+
+
+def _pick(new: Any, prior: BaseModel | None, field: str, default: Any) -> Any:
+    """Coalesce a partial-upsert argument: an explicit `new` value always
+    wins; otherwise fall back to the prior row's field (update path) or
+    `default` (fresh-insert path). `new is None` is the "not provided"
+    sentinel, so an explicit `[]` still overwrites -- only omitting the
+    argument preserves the existing value."""
+    if new is not None:
+        return new
+    if prior is not None:
+        return getattr(prior, field)
+    return default
 
 
 class InMemoryInventory:
@@ -56,13 +89,15 @@ class InMemoryInventory:
         banned_actions: list[str] | None = None,
     ) -> TargetId:
         existing_id = self._target_by_name.get(program_name)
+        prior = self.targets.get(existing_id) if existing_id is not None else None
         target_id = existing_id if existing_id is not None else TargetId(uuid4())
-        target = Target(
+        target = _build(
+            Target,
             id=target_id,
             program_name=program_name,
-            in_scope_regex=in_scope_regex or [],
-            out_of_scope_regex=out_of_scope_regex or [],
-            banned_actions=banned_actions or [],
+            in_scope_regex=_pick(in_scope_regex, prior, "in_scope_regex", []),
+            out_of_scope_regex=_pick(out_of_scope_regex, prior, "out_of_scope_regex", []),
+            banned_actions=_pick(banned_actions, prior, "banned_actions", []),
         )
         self.targets[target_id] = target
         self._target_by_name[program_name] = target_id
@@ -80,14 +115,16 @@ class InMemoryInventory:
             raise InventoryError(f"unknown target_id {target_id!r}")
         key = (target_id, asset_identifier)
         existing_id = self._asset_by_natural_key.get(key)
+        prior = self.assets.get(existing_id) if existing_id is not None else None
         asset_id = existing_id if existing_id is not None else AssetId(uuid4())
-        asset = Asset(
+        asset = _build(
+            Asset,
             id=asset_id,
             target_id=target_id,
             asset_identifier=asset_identifier,
-            asset_type=asset_type,
-            open_ports=open_ports or [],
-            raw_scan_data=raw_scan_data,
+            asset_type=_pick(asset_type, prior, "asset_type", None),
+            open_ports=_pick(open_ports, prior, "open_ports", []),
+            raw_scan_data=_pick(raw_scan_data, prior, "raw_scan_data", None),
         )
         self.assets[asset_id] = asset
         self._asset_by_natural_key[key] = asset_id
@@ -105,14 +142,16 @@ class InMemoryInventory:
             raise InventoryError(f"unknown asset_id {asset_id!r}")
         key = (asset_id, url_path)
         existing_id = self._endpoint_by_natural_key.get(key)
+        prior = self.endpoints.get(existing_id) if existing_id is not None else None
         endpoint_id = existing_id if existing_id is not None else EndpointId(uuid4())
-        endpoint = Endpoint(
+        endpoint = _build(
+            Endpoint,
             id=endpoint_id,
             asset_id=asset_id,
             url_path=url_path,
-            http_methods=http_methods or [],
-            tech_stack=tech_stack,
-            requires_auth=requires_auth,
+            http_methods=_pick(http_methods, prior, "http_methods", []),
+            tech_stack=_pick(tech_stack, prior, "tech_stack", None),
+            requires_auth=_pick(requires_auth, prior, "requires_auth", None),
         )
         self.endpoints[endpoint_id] = endpoint
         self._endpoint_by_natural_key[key] = endpoint_id
@@ -129,17 +168,15 @@ class InMemoryInventory:
     ) -> FindingId:
         if endpoint_id not in self.endpoints:
             raise InventoryError(f"unknown endpoint_id {endpoint_id!r}")
-        try:
-            finding = Finding(
-                id=FindingId(uuid4()),
-                endpoint_id=endpoint_id,
-                run_id=run_id,
-                finding_type=finding_type,
-                severity=severity,
-                reproduction_steps=reproduction_steps,
-                validation_status=validation_status,
-            )
-        except ValidationError as exc:
-            raise InventoryError(str(exc)) from exc
+        finding = _build(
+            Finding,
+            id=FindingId(uuid4()),
+            endpoint_id=endpoint_id,
+            run_id=run_id,
+            finding_type=finding_type,
+            severity=severity,
+            reproduction_steps=reproduction_steps,
+            validation_status=validation_status,
+        )
         self.findings[finding.id] = finding
         return finding.id

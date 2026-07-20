@@ -43,6 +43,32 @@ def test_upsert_asset_idempotent_and_keyed_by_target(inventory: InMemoryInventor
     assert inventory.assets[first].open_ports == [80, 443]
 
 
+def test_upsert_asset_partial_update_preserves_omitted_list_field(
+    inventory: InMemoryInventory,
+) -> None:
+    # A partial upsert (omitting open_ports, i.e. passing None) must not
+    # wipe a previously-set list field -- the T2 architect-review note on
+    # coalesce-vs-full-replace upsert semantics.
+    target_id = inventory.upsert_target("acme-bounty")
+    first = inventory.upsert_asset(target_id, "10.0.0.1", open_ports=[80, 443])
+    second = inventory.upsert_asset(target_id, "10.0.0.1", asset_type="host")
+
+    assert first == second
+    assert inventory.assets[first].open_ports == [80, 443]
+    assert inventory.assets[first].asset_type == "host"
+
+
+def test_upsert_asset_explicit_empty_list_overwrites(inventory: InMemoryInventory) -> None:
+    # An explicit [] is a real value, distinct from omitting the argument --
+    # it clears the field rather than preserving the prior one.
+    target_id = inventory.upsert_target("acme-bounty")
+    first = inventory.upsert_asset(target_id, "10.0.0.1", open_ports=[80, 443])
+    second = inventory.upsert_asset(target_id, "10.0.0.1", open_ports=[])
+
+    assert first == second
+    assert inventory.assets[first].open_ports == []
+
+
 def test_upsert_asset_unknown_target_raises(inventory: InMemoryInventory) -> None:
     with pytest.raises(InventoryError):
         inventory.upsert_asset(TargetId(uuid4()), "10.0.0.1")

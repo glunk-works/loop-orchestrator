@@ -44,6 +44,13 @@ dependencies = [
   # function-scoped inside SlackNotifier only — the no-op default never pulls
   # it into the import graph.
   "slack_sdk==3.43.0",
+  # Bounty loop cross-run inventory (tools/inventory_db, sprint 44 T2,
+  # P0-D9): the sole psycopg importer is psycopg_impl.py, pinned by
+  # tests/tools/inventory_db/test_boundary.py. [binary] bundles libpq —
+  # no system libpq install needed, keeps the hermetic suite/container
+  # portable. A hard-pinned (not optional) dependency: every install ships
+  # DB-capable.
+  "psycopg[binary]==3.3.4",
 ]
 
 [project.scripts]
