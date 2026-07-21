@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from loop_orchestrator.core.state import CURRENT_SCHEMA_VERSION
 from loop_orchestrator.tools.state_io.reader import find_paused_snapshot_by_slack_thread, load_state
 
 MESSAGE_TS = "1700000000.000100"
@@ -281,7 +282,7 @@ def test_load_state_migrates_a_v4_snapshot_and_validates() -> None:
 
     state = load_state(path)
 
-    assert state.schema_version == 5
+    assert state.schema_version == CURRENT_SCHEMA_VERSION
     assert state.pending_slack is None
     assert state.run_id == "run-1"
 

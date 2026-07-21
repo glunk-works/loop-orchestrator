@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from loop_orchestrator.core.state import (
     CURRENT_SCHEMA_VERSION,
+    BountyRunState,
     RunStatus,
     SlackRef,
     State,
@@ -10,7 +11,7 @@ from loop_orchestrator.core.state import (
 )
 
 VALID_PAYLOAD = {
-    "schema_version": 5,
+    "schema_version": 6,
     "run_id": "run-001",
     "status": "running",
     "questions": [],
@@ -28,6 +29,7 @@ VALID_PAYLOAD = {
         }
     ],
     "artifacts": {"spec": "docs/project_spec.json"},
+    "bounty": None,
 }
 
 
@@ -188,6 +190,39 @@ def test_migrate_v4_payload_adds_pending_slack_default() -> None:
     assert state.schema_version == CURRENT_SCHEMA_VERSION
     assert state.pending_slack is None
     assert state.artifacts == {"spec": "docs/project_spec.json"}
+
+
+def test_migrate_v5_payload_adds_bounty_default() -> None:
+    # The v5->v6 bump (P1-D2): bounty must join the (1, 2, 3, 4) upgrade set
+    # or a v5 snapshot falls through to the "Unsupported" branch.
+    v5_payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "bounty"}
+    v5_payload["schema_version"] = 5
+    migrated = migrate_state_payload(v5_payload)
+    assert migrated["schema_version"] == CURRENT_SCHEMA_VERSION
+
+    state = State.model_validate(migrated)
+    assert state.schema_version == CURRENT_SCHEMA_VERSION
+    assert state.bounty is None
+    assert state.artifacts == {"spec": "docs/project_spec.json"}
+
+
+def test_state_validates_with_bounty_set() -> None:
+    payload = {**VALID_PAYLOAD, "bounty": {"target_id": "target-001"}}
+    state = State.model_validate(payload)
+    assert state.bounty == BountyRunState(target_id="target-001")
+
+
+def test_bounty_run_state_rejects_unrecognized_field() -> None:
+    with pytest.raises(ValidationError):
+        BountyRunState.model_validate({"target_id": "target-001", "extra": "x"})
+
+
+def test_bounty_run_state_is_mutable_not_frozen() -> None:
+    # P1-D2 fold-in: unlike ScopeRules, BountyRunState must stay mutable so
+    # later stages add asset_ids/finding_ids via model_copy.
+    bounty = BountyRunState(target_id="target-001")
+    updated = bounty.model_copy(update={"target_id": "target-002"})
+    assert updated.target_id == "target-002"
 
 
 def test_state_validates_with_pending_slack_set() -> None:
