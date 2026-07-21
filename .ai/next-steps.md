@@ -5,62 +5,73 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Bounty loop — Phase 1, sprint 46. T1 (skeleton + `State` 5→6 bump) is MERGED to `main`
-([PR #173](https://github.com/glunk-works/loop-orchestrator/pull/173), squash commit
-`91167be`). Next is T2 (docs). `sprint_status: implementing`, assigned Sonnet/coder.**
-The fresh-session Architect Review was posted on HEAD `7cdf15b` with an **APPROVE**
-verdict and all eight required checks went green; the owner merged T1 immediately after.
-Sprint 46 is **not** complete — T2 remains — so this is a handoff to T2, not an archive.
+**Bounty loop — Phase 1, sprint 47 (recon data path): PLANNING, not yet started.**
+`sprint_status: planning`, assigned Opus/architect. No `sprints/47_bounty_recon_data_path/`
+directory exists yet — this session's job is the planning pass (one question at a time,
+HITL micro-gates), producing `sprint_plan.md`, before any Sonnet/coder implementation.
 
-## Just done (2026-07-21, Opus/architect — re-review session)
-- Re-reviewed PR #173 at the review-fixed HEAD `7cdf15b` (the earlier `46ddc9e` review did
-  not carry forward). Verified the HIGH finding is closed at all three layers directly:
-  `Question.impact` (`core/state.py:47`) has no `scope`/`surface` member; `reentry_index()`
-  (`core/engine.py:199-202`) iterates only `("architecture","plan")` and falls through to
-  `stage_index`; `VALID_IMPACTS` (`personas/resolution.py:12`) filters both out — the map
-  is triple-inert exactly as the corrected docstring now states.
-- Posted the fresh-session Architect Review via `gh pr review --comment` (verbatim frozen
-  header + attestation). Verdict **APPROVE**; one sub-threshold note (SurfaceMap's
-  `state.bounty` narrowing) left for S48, not this PR.
-- Cleared the **BL-35 stale-red trap**: posting the review left the old
-  `pull_request`-triggered `architect-review` FAILURE on the same SHA (`BLOCKED` + rollup
-  FAILURE). `gh run rerun` on the OLD run cleared it → `mergeState: CLEAN`.
-- Owner merged **#173** (T1), plus cursor-syncs **#174** and **#175**. This PR (**#176**)
-  was left conflicting on `next-steps.md` by #175's merge; resolved by merging `main` in
-  and refreshing the cursor to this post-merge state.
+## Just done (2026-07-21) — sprint 46 archived
+Sprint 46 (bounty loop skeleton + `State` v5→v6 bump + Phase-1 decisions write-up) is
+**complete and archived**:
+- **T1** — [PR #173](https://github.com/glunk-works/loop-orchestrator/pull/173): the
+  skeleton (`loops/bounty/`, `personas/bounty/`, `BountyRunState`, schema v6). Fresh-session
+  Architect Review APPROVE on the review-fixed HEAD `7cdf15b`; all 8 checks green (BL-35
+  stale-red cleared via `gh run rerun`); merged.
+- **T2** — [PR #177](https://github.com/glunk-works/loop-orchestrator/pull/177): CLAUDE.md's
+  `loops/bounty/`/`personas/bounty/` boundary bullet + `docs/bounty_loop_architecture.md`
+  §9's P1-D1..D7 write-up. Docs-only, `architect-review`-exempt; merged.
+- **Fix** — [PR #178](https://github.com/glunk-works/loop-orchestrator/pull/178): flipped
+  §8's roadmap row from "in progress" to complete, with the hermetic-vs-live distinction
+  stated explicitly (no live surface yet; the sprint-44 live PG smoke stays deferred to
+  S47). Merged — this was the last `/archive-sprint` precondition.
+- Prior sprint's cursor snapshotted to `.ai/archive/46_bounty_loop_skeleton-next-steps.md`.
 
-## Next — T2 docs (Sonnet/coder)
-Bounded, docs-only, `architect-review`-exempt work on a fresh `sprint/46-...docs` branch
-cut from the now-updated `main`:
-1. **CLAUDE.md** — add the enforced-boundary bullet for `loops/bounty/` + `personas/bounty/`
-   (the walking skeleton: stub personas behind the `ArtifactProducer` seam, `State` v6
-   `bounty` namespace, the inert-until-core `impact_reentry` map).
-2. **`docs/bounty_loop_architecture.md`** — write up §8/§9 decisions **P1-D1..D7** (still
-   owed; the reference-of-record currently lacks them).
-3. Run the full green gate, push, open a docs-only PR based on `main`.
-Then `/handoff`. After T2 merges, sprint 46 is complete → `/archive-sprint`.
+## Next — plan sprint 47 (Opus/architect)
+Recon data path (P1-D1): `workflow_dispatch` seam on `bounty-infra` + a scope-validated
+recon MCP tool + IDP parser → `inventory_db` (its first consumer). This is the sprint that
+mounts `tools/scope_validator`/`tools/ingest` at a live boundary for the first time
+(P0-D11) and discharges the OWED sprint-44 live Postgres smoke
+(`sprints/DEFERRED_VERIFICATION.md` §10) via one authorized `live-verify` V-run (P1-D4).
 
-**HITL Gate: NONE OPEN.** T1 shipped. No gate is expected on T2 (docs-only, exempt);
-the next real gate is whenever a `src/`-touching sprint (S47) next opens a PR.
+**Three decisions are already pre-recorded** in `docs/bounty_loop_architecture.md` §9 —
+confirm/refine them in the planning pass, don't re-derive from zero:
+- **P1-D4** — S47 built fully hermetic (a `ReconDispatcher` protocol + `InMemoryInventory`
+  fake); live `workflow_dispatch`→S3→real-Postgres discharges together in **one** authorized
+  V-run (also clears §10).
+- **P1-D5** — S3 fetch is a new pinned `boto3` **egress**, not a subprocess surface;
+  `workflow_dispatch` rides `gh` as a **third** consumer of the already-sanctioned surface
+  (not a sixth). `sbom`/`dependency-audit` deltas expected (like sprint 44's `psycopg`).
+- **P1-D6** — scope enforcement mounts at **both** boundaries with distinct semantics:
+  input `validate_target` **raises** `ScopeViolation` (caller-asserted target); output
+  discovered-asset filtering **drops silently** (bulk recon naturally surfaces out-of-scope
+  hosts — raising per host would halt a normal run).
+
+Use `sprints/46_bounty_loop_skeleton/sprint_plan.md` as the structural template (Sprint
+Goal, Out of scope, inherited-decisions context, sprint-specifics, Security Considerations,
+Risks & Blockers). Write `sprints/47_bounty_recon_data_path/sprint_plan.md`, get owner
+sign-off via HITL micro-gates, then hand off to Sonnet/coder for T1.
+
+**HITL Gate: OPEN (implicitly) — this planning pass IS the gate.** The dialogue with the
+owner, one question at a time, is the work; do not proceed to implementation or write code
+in this session. `/resume` on this cursor always waits (never auto-starts) while
+`sprint_status: planning`.
 
 ## Gotchas worth remembering
-- **T1 kept the `impact_reentry` map and corrected the claim — it is NOT the core re-entry
-  wiring.** Making it live is three core edits (`Question.impact` Literal,
-  `reentry_index()`'s tuple, `VALID_IMPACTS`), deferred to S47/S48 by P1-D3. Don't
-  conflate "map planted" with "re-entry live"; resolvers/escalation for this loop are also
-  not yet live.
-- **P1-D3's producer-swap seam (`ArtifactProducer`) holds.** S47/S48 swap only the injected
-  producer; the persona shells, loop wiring, and gates do not churn.
-- **The sprint-44 live Postgres smoke is still OWED** (`DEFERRED_VERIFICATION.md` §10) —
-  discharges in S47, not here.
-- **Docs-sync PRs stack and collide on `next-steps.md`** — #174/#175/#176 all rewrote the
-  same sections; #176 conflicted the moment #175 merged. Merge cursor-syncs promptly, or
-  resolve by merging `main` in and refreshing (never force-push).
+- **Don't re-litigate P1-D1..D7** — locked by the sprint-46 planning pass
+  (2026-07-21, owner-confirmed via HITL micro-gates 1–7). P1-D4/D5/D6 above are the
+  S47-scoped ones; this pass refines their *execution* detail, not whether they hold.
+- **`impact_reentry={"scope":0,"surface":1}` is still inert.** Making it live needs three
+  core edits (`Question.impact` Literal, `reentry_index()`'s tuple, `VALID_IMPACTS`) —
+  S47/S48 own this, not the recon-data-path work itself unless the plan says otherwise.
+- **The sprint-44 live Postgres smoke discharges in S47's V-run, not before.** Do not stamp
+  `DEFERRED_VERIFICATION.md` §10 verified until that V-run actually runs.
+- **This is the first `src/`-touching sprint since 46** — its T1 PR will need a fresh-session
+  Architect Review (the CI gate). Plan for it, don't skip it.
 - **`.ai/state.json` is git-ignored** — this file (`next-steps.md`) is what travels.
 - **PR title ≤72 bytes.** **Never commit to `main`, merge, or force-push.**
 
 ## Pointers
-- [PR #173](https://github.com/glunk-works/loop-orchestrator/pull/173) — S46 T1 (MERGED, `91167be`): `State` v6 + `loops/bounty/` + `personas/bounty/`.
-- [`sprints/46_bounty_loop_skeleton/sprint_plan.md`](../sprints/46_bounty_loop_skeleton/sprint_plan.md) — active plan (T1 done, T2 = docs).
-- [`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md) — bounty loop reference-of-record; §8/§9 P1-D1..D7 write-up owed (T2).
-- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — §10 = OWED sprint-44 live Postgres smoke; discharge in S47.
+- [`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md) — reference-of-record; §8 (roadmap), §9 (decisions log, P1-D1..D7).
+- [`sprints/46_bounty_loop_skeleton/sprint_plan.md`](../sprints/46_bounty_loop_skeleton/sprint_plan.md) — structural template for the S47 plan.
+- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — §10 = OWED sprint-44 live Postgres smoke; discharge in S47's V-run.
+- `.ai/archive/46_bounty_loop_skeleton-next-steps.md` — sprint 46's final cursor (archived).
