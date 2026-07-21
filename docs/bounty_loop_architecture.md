@@ -147,7 +147,7 @@ existing coder/github/issue tool sets.
 
 | Phase | Scope | Status |
 |---|---|---|
-| **0 — Enablers** | Land **BL-5** per-persona model routing (Opus deep-inspection/report, Haiku triage; needs Haiku in pricing RATES). Stand up `tools/inventory_db` + the Postgres schema (§4) + the **scope validator** (§5) + an **ingestion-sanitization seam** for scanner output first. These two seams are the concrete fixes for validated gaps in `bounty-infra`'s current scanner — no structural scope check (`bounty-infra#7`) and target-derived fields fed straight into the triage LLM (`bounty-infra#13`) — built once here and shared. **Decomposed into three sprints (P0-D1): 43 (BL-5 routing) → 44 (`inventory_db` + §4 schema) → 45 (scope validator §5 + ingestion seam §10).** The `State.schema_version` → 6 bump is **deferred to Phase 1** (P0-D2) — it ships with the first bounty `State` field, not with pure non-`State` infra. | **in progress — sprint 43 (BL-5 routing) complete (T1–T4 merged); sprint 44 (`inventory_db` + §4 schema) complete (T1 PR #159, T2 PR #162, remainder F1 JSONB-adapter fix + T3 docs PR #165 all merged) — hermetically verified; live Postgres smoke deferred (`sprints/DEFERRED_VERIFICATION.md` §10); 45 remains** |
+| **0 — Enablers** | Land **BL-5** per-persona model routing (Opus deep-inspection/report, Haiku triage; needs Haiku in pricing RATES). Stand up `tools/inventory_db` + the Postgres schema (§4) + the **scope validator** (§5) + an **ingestion-sanitization seam** for scanner output first. These two seams are the concrete fixes for validated gaps in `bounty-infra`'s current scanner — no structural scope check (`bounty-infra#7`) and target-derived fields fed straight into the triage LLM (`bounty-infra#13`) — built once here and shared. **Decomposed into three sprints (P0-D1): 43 (BL-5 routing) → 44 (`inventory_db` + §4 schema) → 45 (scope validator §5 + ingestion seam §10).** The `State.schema_version` → 6 bump is **deferred to Phase 1** (P0-D2) — it ships with the first bounty `State` field, not with pure non-`State` infra. | **in progress — sprint 43 (BL-5 routing) complete (T1–T4 merged); sprint 44 (`inventory_db` + §4 schema) complete (T1 PR #159, T2 PR #162, remainder F1 JSONB-adapter fix + T3 docs PR #165 all merged) — hermetically verified; live Postgres smoke deferred (`sprints/DEFERRED_VERIFICATION.md` §10); sprint 45 (scope validator §5 + ingestion seam §10) T1 merged (PR #168) — both invariants built as pure leaf primitives (`tools/scope_validator` + `tools/ingest`), no live consumer per P0-D11; T2 docs in progress. Phase 0 closes at sprint-45 archive** |
 | **1 — Recon + Surface-Mapping** | `workflow_dispatch` seam on `bounty-infra`; wrap recon as scope-validated MCP tools; IDP parser → typed `assets`/`endpoints`. Stages 1–2. | not started |
 | **2 — Scan + Triage** | `nuclei` MCP tool; Triage persona (Haiku) dedup/FP-filter/severity vs inventory, gated. Absorbs + upgrades `bounty-infra`'s one-pass Gemini triage. Stage 3. | not started |
 | **3 — Deep-Inspection** | Ralph-style agentic persona; secure security-tool MCP servers; passive autonomous, active gated (§6). Stage 4. | not started |
@@ -194,6 +194,48 @@ a future pass must not re-open them):
   never closed), F4 (single connection not thread-safe), and F5 (SQL-param guard narrower
   than its docstring) remain open as Phase-1 notes.
 
+Phase-0 sprint-45 planning-pass decisions (2026-07-20, owner-confirmed via HITL micro-gates
+1–6; **locked** — a future pass must not re-open them):
+
+- **P0-D11 — Deliverable = the primitives only, no consumer.** Ship the scope validator and
+  the ingestion sanitizer as pure library primitives with **no scanning-tool caller**; the
+  Pydantic-boundary wiring into real scanning MCP tools lands in Phase 1 with the tools it
+  guards (same no-consumer YAGNI posture as sprint 44's P0-D7). **Rejected:** also building
+  one reference scanning MCP tool now — pulls the MCP-provider/server surface into a sprint
+  with no recon stage to feed it.
+- **P0-D12 — A dedicated, standalone `ScopeRules` value object.** `tools/scope_validator`
+  owns a frozen `extra="forbid"` `ScopeRules` (`in_scope_regex`/`out_of_scope_regex`/
+  `banned_actions`) with a `ScopeRules.from_target(...)` adapter that reads the three rules
+  attributes via a **structural protocol** (`Target` under `TYPE_CHECKING` only) — **zero
+  runtime import edge** onto `inventory_db`, pinned by a hardened import-graph guard.
+  **Rejected:** consuming `inventory_db.models.Target` directly — couples the leaf validator
+  to the DB module's schema shape.
+- **P0-D13 — Fail-closed allowlist; deny wins.** A candidate is ALLOWED iff it matches **≥ 1**
+  `in_scope_regex` **AND 0** `out_of_scope_regex`; an out-of-scope match always vetoes, and an
+  **empty `in_scope_regex` denies everything**. A violation **raises `ScopeViolation`**, never
+  silently no-ops. Matching is unanchored `re.search` (an operator wanting exact-host scope
+  anchors their pattern `^…$`) — documented and pinned. **Rejected:** denylist-primary /
+  in_scope-optional — an empty `Target` would fail *open* to the whole internet, the exact
+  posture §5 exists to prevent.
+- **P0-D14 — `is_action_banned(...)` is a pure predicate; policy deferred.** The validator
+  ships `is_action_banned(rules, action) -> bool` as **mechanism**; the reject-vs-**escalate**
+  policy (§6) stays with the Phase-3 deep-inspection consumer that issues actions. The
+  primitive classifies; the consumer decides. **Rejected:** baking escalate-vs-reject policy
+  into a leaf with no caller.
+- **P0-D15 — The sanitizer is structural/mechanical.** `sanitize(text, *, max_len)` strips
+  C0/C1 control chars + ANSI CSI escapes + invisible format code points (a Unicode `Cf`-
+  category sweep covering zero-width/BOM, bidi override/isolate, and the Tags block, plus a
+  narrow variation-selector strip), NFKC-normalizes, collapses whitespace, and hard-truncates
+  — **no** injection-phrase blocklist; untrusted text stays structurally fenced by the
+  (Phase-1) prompt template, mirroring §5's structural-not-heuristic ethos. **Rejected:**
+  injection-phrase scrubbing — brittle, false confidence, heuristic creep in a safety
+  primitive.
+- **P0-D16 — One combined `src/` PR + a docs PR.** Both primitives are small, cohesive
+  pure-Python leaves with no dependency surface, so they ship in **one** `src/` PR (T1, one
+  fresh-session `architect-review` cycle — PR #168) with docs landing last (T2, exempt).
+  **Rejected:** two separate `src/` PRs — an extra full review handoff for a small, cohesive
+  diff.
+
 Design-authority overrides of the Gemini sketch:
 
 - Scope enforcement is structural code, not an LLM responsibility (§5).
@@ -223,6 +265,13 @@ Phase 0's scope validator (§5) and ingestion-sanitization seam are precisely th
 lifted into the loop rather than reinvented; the review's other findings (GitHub Actions
 script injection, over-broad task-role IAM, unpinned tool/template supply chain,
 CI/plan-gate gaps) track as `bounty-infra#6`–`#16`.
+
+**Built (sprint 45, PR #168).** The ingestion-sanitization seam now exists as
+`tools/ingest.sanitize` (structural normalizer — P0-D15) and the scope validator as
+`tools/scope_validator` (fail-closed allowlist + banned-action classifier — §5/P0-D13/D14),
+both as pure leaf primitives with **no live consumer yet** (P0-D11). Phase 1 mounts them at
+the scanning MCP tools' Pydantic boundary, where the untrusted scanner/target text they defend
+against actually begins to flow.
 
 ## 11. Pointers
 
