@@ -148,7 +148,7 @@ existing coder/github/issue tool sets.
 | Phase | Scope | Status |
 |---|---|---|
 | **0 — Enablers** | Land **BL-5** per-persona model routing (Opus deep-inspection/report, Haiku triage; needs Haiku in pricing RATES). Stand up `tools/inventory_db` + the Postgres schema (§4) + the **scope validator** (§5) + an **ingestion-sanitization seam** for scanner output first. These two seams are the concrete fixes for validated gaps in `bounty-infra`'s current scanner — no structural scope check (`bounty-infra#7`) and target-derived fields fed straight into the triage LLM (`bounty-infra#13`) — built once here and shared. **Decomposed into three sprints (P0-D1): 43 (BL-5 routing) → 44 (`inventory_db` + §4 schema) → 45 (scope validator §5 + ingestion seam §10).** The `State.schema_version` → 6 bump is **deferred to Phase 1** (P0-D2) — it ships with the first bounty `State` field, not with pure non-`State` infra. | **✅ complete (all three sprints merged + archived) — sprint 43 (BL-5 routing) T1–T4 merged; sprint 44 (`inventory_db` + §4 schema) complete (T1 PR #159, T2 PR #162, remainder F1 JSONB-adapter fix + T3 docs PR #165 all merged) — hermetically verified, live Postgres round-trip smoke deferred → `sprints/DEFERRED_VERIFICATION.md` §10 (destination Phase 1); sprint 45 (scope validator §5 + ingestion seam §10) T1 PR #168 + T2 docs PR #170 merged — both invariants built as pure leaf primitives (`tools/scope_validator` + `tools/ingest`), no live consumer per P0-D11, fully hermetic (no live surface of their own). Phase 1 (Recon) is next.** |
-| **1 — Recon + Surface-Mapping** | `workflow_dispatch` seam on `bounty-infra`; wrap recon as scope-validated MCP tools; IDP parser → typed `assets`/`endpoints`. Stages 1–2. | not started |
+| **1 — Recon + Surface-Mapping** | `workflow_dispatch` seam on `bounty-infra`; wrap recon as scope-validated MCP tools; IDP parser → typed `assets`/`endpoints`. Stages 1–2. **Decomposed into three sprints (P1-D1): 46 (loop skeleton + `State` 5→6 bump) → 47 (recon data path) → 48 (Surface-Mapping stage).** | **sprint 46 (skeleton + `State` bump) complete — T1 PR #173 merged (fresh-session `architect-review` APPROVE on the review-fixed HEAD); T2 docs (this write-up) in progress.** Sprints 47–48 not started. |
 | **2 — Scan + Triage** | `nuclei` MCP tool; Triage persona (Haiku) dedup/FP-filter/severity vs inventory, gated. Absorbs + upgrades `bounty-infra`'s one-pass Gemini triage. Stage 3. | not started |
 | **3 — Deep-Inspection** | Ralph-style agentic persona; secure security-tool MCP servers; passive autonomous, active gated (§6). Stage 4. | not started |
 | **4 — Validate + Report (MVP terminus)** | Validate chain, scope-recheck vs program rules, CVSS + Markdown repro → `findings` (pending human-verify) + S3 report; human review gate. **Stop here.** Stage 5. | not started |
@@ -235,6 +235,93 @@ Phase-0 sprint-45 planning-pass decisions (2026-07-20, owner-confirmed via HITL 
   fresh-session `architect-review` cycle — PR #168) with docs landing last (T2, exempt).
   **Rejected:** two separate `src/` PRs — an extra full review handoff for a small, cohesive
   diff.
+
+Phase-1 planning-pass decisions (2026-07-21, owner-confirmed via HITL micro-gates 1–7;
+**locked** — a future pass must not re-open them):
+
+- **P1-D1 (micro-gate 1) — Phase 1 is three sprints**, smallest reviewable PRs, one concern
+  each: **46** (bounty loop skeleton + the `State` 5→6 bump) → **47** (recon data path:
+  `workflow_dispatch` seam on `bounty-infra` + scope-validated recon MCP tool + IDP parser →
+  `inventory_db`, its first consumer) → **48** (Surface-Mapping stage). Sequencing is
+  load-bearing: the irreversible schema change is isolated in 46 and reviewed before any
+  external surface exists; 47 needs 46's `State.bounty`; 48 needs 47's inventory.
+  **Rejected:** a 4-sprint split isolating the bump into its own micro-PR — an extra review
+  handoff for a change cohesive with the skeleton it exists for; and a 2-sprint split
+  bundling the bump with external integration surface — a large PR mixing the one
+  irreversible change with live-infra code.
+- **P1-D2 (micro-gate 2) — a nested `BountyRunState` sub-model, not flat fields.** The 5→6
+  bump adds one optional namespaced sub-model `bounty: BountyRunState | None = None` to the
+  shared `State`; the default loop never sets it. Future bounty ID references (`asset_ids`,
+  `endpoint_ids`, `finding_ids`, a surface-map ref) go **inside** `BountyRunState`
+  **additively — with no further `schema_version` bump** (the same additive-with-default
+  posture as `Question.origin_detail` and `StageRecord`'s cache fields). First field:
+  `target_id: str` (the `targets` RoE root, §4). **Rejected:** a flat `target_id` on `State`
+  — pollutes the shared state the default loop carries and forces a new flat field per
+  future ref; and a pre-populated nested model seeding empty asset/finding ref lists now —
+  fields with no writer until later stages, the YAGNI tension P0-D7 rejected.
+- **P1-D3 (micro-gate 3) — walking skeleton, both stages, stub bodies behind a stable
+  seam.** Sprint 46 wires **both** stages with placeholder personas that emit **fixture**
+  stub artifacts, so the full loop runs green end-to-end hermetically. S47 replaces the
+  Recon persona's **body** (its injected producer collaborator) with the real data path;
+  S48 replaces Mapping's. The persona **shell** (reads `State.bounty`, calls the
+  collaborator, writes the artifact, returns `State`), the gates, the re-entry map's target
+  indices, and the schema shape do **not** churn again. **Rejected:** a Recon-only skeleton
+  adding Mapping whole in S48 — leaves the loop incomplete and the `surface:1` re-entry edge
+  untested until late; and wiring the *real* persona classes with stubbed tools now —
+  front-loads S47's dispatch/parse design into the skeleton sprint.
+  > **Fold-in correction (S46 T1 Architect Review, HIGH):** the sprint plan's original text
+  > claimed `impact_reentry` is "exercised from day one." It is not — `Question.impact` has
+  > no `"scope"`/`"surface"` member, `reentry_index()` only checks `("architecture",
+  > "plan")`, and `VALID_IMPACTS` filters both out, so a `"scope"`/`"surface"` resolution can
+  > never reach the map today. The map's **target indices** are locked now (so S47/S48 don't
+  > re-derive them); making it **live** is three core edits (the three named above),
+  > deferred to S47/S48. PR #173's review-fix (commit `7cdf15b`) corrected `loop.py`'s
+  > docstring/comment and renamed the shape-only test accordingly — see CLAUDE.md's
+  > `loops/bounty/` boundary bullet for the corrected claim.
+- **P1-D4 (micro-gate 4) — S47 builds hermetic behind injected seams; live verification is
+  one authorized V-run.** S47 is built fully hermetic (a `ReconDispatcher` protocol + a
+  fake, `InMemoryInventory`) and stays green in hermetic CI with no creds/spend on the merge
+  path. The live `workflow_dispatch` → S3 → **real-Postgres round-trip** discharge together
+  in **one** authorized `live-verify` V-run, which **also discharges the OWED sprint-44 §10
+  live PG smoke** (the first `inventory_db` consumer + a real/dev PG exist by then — §10's
+  own stated destination). **Rejected:** wiring live infra inline as S47 acceptance —
+  couples the merge gate to live AWS/GitHub/PG + real Fargate spend; and splitting the PG
+  smoke into S47 while deferring the Fargate seam — leaves the recon data path incomplete
+  with faked S3 input. (An S47-scoped decision, recorded here for phase completeness; S47
+  gets its own planning pass at its boundary.)
+- **P1-D5 (micro-gate 5) — S3 fetch is a `boto3` egress, not a subprocess surface.** S47's
+  recon dispatch fires `workflow_dispatch` via **`gh`** — a *third* consumer of the
+  already-sanctioned `gh` subprocess surface (alongside `issue_io`/`repo_io`), **not** a
+  sixth surface — and fetches results from S3 via a **new pinned `boto3` dependency**: a new
+  network **egress** under the already-declared AWS/Infisical-OIDC credential class, **not**
+  a subprocess surface. The **five** sanctioned subprocess surfaces stay five; S47 carries a
+  `boto3` pin + `sbom` regen + `dependency-audit` delta (like sprint 44's `psycopg`).
+  **Rejected:** the `aws` CLI as a sixth subprocess surface — a real change to a boundary
+  the repo has deliberately held at five, for no dependency saving worth that; and deferring
+  the real S3 client past S47 — the V-run then can't discharge, weakening P1-D4. (S47-scoped;
+  recorded for phase completeness.)
+- **P1-D6 (micro-gate 6) — scope enforcement mounts at BOTH boundaries with distinct
+  semantics.** In S47, `tools/scope_validator` goes live two ways: **(input)**
+  `validate_target` at the recon MCP tool's Pydantic boundary **raises `ScopeViolation`** on
+  any caller/model-supplied target or seed (the canonical §5 guard, satisfying P0-D11's
+  "Pydantic boundary"); **(output)** each **discovered** asset from the IDP parser is
+  scope-checked and out-of-scope ones are **FILTERED** — dropped + counted, **never
+  raised** — because bulk recon naturally surfaces out-of-scope hosts and raising per host
+  would halt a normal run. Only in-scope assets reach `inventory_db`; the sanitizer
+  (`ingest.sanitize`) scrubs scanner/target-derived text on the same output path before any
+  model sees it. This is the fail-closed reading of §5's "never silently no-ops": a *caller
+  asserting* an out-of-scope target is an error (raise); a *scanner discovering*
+  out-of-scope hosts is expected (filter). **Rejected:** output-filter only — defers the
+  canonical input guard P0-D11 named; input-raise only — persists whatever recon returns, so
+  an out-of-scope host in scan output slips into inventory unchecked. (S47-scoped; recorded
+  for phase completeness.)
+- **P1-D7 (micro-gate 7) — sprint 46 is a library loop, engine-test-driven; no CLI
+  surface.** Sprint 46 defines `build_bounty_loop()` + `BountyRunState` + the schema bump +
+  stub personas, verified by driving the engine over the loop in tests (both fixture
+  artifacts produced, both gates pass, the re-entry map's shape asserted). The CLI/runner
+  loop-selector is **deferred to S47**, when a real recon path makes hand-invocation
+  meaningful. **Rejected:** a `--loop {default,bounty}` selector or a `bounty-run`
+  subcommand now — CLI surface + arg handling for a loop that emits only stubs until S47.
 
 Design-authority overrides of the Gemini sketch:
 
