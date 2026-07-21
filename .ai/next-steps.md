@@ -1,89 +1,77 @@
 # Next steps — dev-workflow cursor
 
 Thin, live cursor for whoever picks up this repo next. Points into the deep record
-(`docs/bounty_loop_architecture.md`, the sprint plan, the PR) — it does not copy them.
+(`docs/bounty_loop_architecture.md`, the sprint plan, the PRs) — it does not copy them.
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Bounty loop — Phase 1, sprint 46 T1 (skeleton + `State` 5→6 bump) is IMPLEMENTED.
-`sprint_status: awaiting_architect_review`, assigned Opus/architect.**
-[PR #173](https://github.com/glunk-works/loop-orchestrator/pull/173) is open against
-`main` (branch `sprint/46-bounty-loop-skeleton`), `/critic-gate` has run, and its
-findings are posted as a PR comment. The next unit is the **fresh-session Architect
-Review** — it must explicitly rule on one HIGH finding the critic pass surfaced (below),
-not just wave the happy-path acceptance criteria through.
+**Bounty loop — Phase 1, sprint 46 T1 (skeleton + `State` 5→6 bump). The S46 T1
+review-fix is pushed to PR #173 as `7cdf15b`. `sprint_status: awaiting_architect_review`,
+assigned Opus/architect.**
+[PR #173](https://github.com/glunk-works/loop-orchestrator/pull/173) (branch
+`sprint/46-bounty-loop-skeleton`, HEAD `7cdf15b`) is open against `main`. A prior Opus
+session posted a fresh-session Architect Review on `46ddc9e` (changes requested,
+docs+test honesty only, owner approved the fix list) — see
+[PR #175](https://github.com/glunk-works/loop-orchestrator/pull/175) (still open,
+unmerged) for that cursor sync. That review does **not** carry forward to the new commit
+`7cdf15b` — a fresh review is needed before merge.
 
-## Just done (2026-07-21, Sonnet/coder)
-- Implemented S46 T1 per the plan: `BountyRunState` + `bounty: BountyRunState | None`
-  on `State`, `CURRENT_SCHEMA_VERSION` 5→6 + the matching `migrate_state_payload`
-  branch (`core/state.py`); `build_bounty_loop()` + `BOUNTY_LOOP` wiring Recon →
-  Surface-Mapping (`loops/bounty/loop.py`); the `ArtifactProducer` seam + two stub
-  personas (`personas/bounty/`). Full hermetic suite added/extended; also fixed a
-  pre-existing hardcoded `schema_version == 5` assertion in
-  `tests/tools/test_state_io_reader.py` this bump would otherwise have broken silently.
-- Full local gate green throughout: `hatch run lint && format && test-parallel` —
-  879 passed, 4 skipped, no lint/format deltas.
-- Pushed and opened **PR #173** (commits `2999196`, `46ddc9e`).
-- Ran `/critic-gate`: spawned `architect` + `security-critic` (owner-confirmed) against
-  the diff.
-  - **security-critic: clean.** No reachable trust-boundary issue; two forward-looking
-    notes for S47/S48 (SurfaceMapPersona's missing `bounty is None` guard vs. Recon's;
-    the producer→`artifacts` seam validates only JSON shape, not content).
-  - **architect: one HIGH finding, verified directly against the code.**
-    `loops/bounty/loop.py`'s `impact_reentry={"scope": 0, "surface": 1}` **cannot fire**
-    — `core/engine.py::reentry_index()` is hardwired to
-    `for impact in ("architecture", "plan")`; `Question.impact` (`core/state.py`) is
-    `Literal["task","plan","architecture"] | None` (a Question can never even *hold*
-    `"scope"`/`"surface"`); `personas/resolution.py`'s `VALID_IMPACTS` matches the same
-    3-value set. Making this real needs `core/state.py` + `core/engine.py` +
-    `personas/resolution.py` changes in S47/S48 — the exact core churn P1-D3 states the
-    skeleton avoids. **Also flagged, lower severity:** the bounty loop's
-    escalation/resume path is inert (`ReconPersona` has no `resolve_questions` override
-    or `fold_answers`) — not reachable today (the loop isn't in `runner.NAMED_LOOPS`
-    yet, per P1-D7), but a forward gap.
-  - Fixed the one mechanical NIT (a mutability test that would've passed even on a
-    frozen model) — commit `46ddc9e`. **Owner explicitly deferred the HIGH finding's
-    fix-vs-document call to the Architect Review** rather than expanding this PR into
-    `core/` mid-implementation.
-  - Findings posted in full on the PR:
-    https://github.com/glunk-works/loop-orchestrator/pull/173#issuecomment-5029833958
+## Just done (2026-07-21, Sonnet/coder — unattended per pre-approval)
+- Landed the S46 T1 review-fix on `sprint/46-bounty-loop-skeleton` (commit `7cdf15b`),
+  exactly as scoped by the prior Architect Review's own change list — docs+test honesty
+  only, **no `core/` churn**.
+- `loops/bounty/loop.py`: corrected the docstring's false "`impact_reentry` is exercised
+  from day one" claim and the inline comment describing re-entry as if it fires. Now
+  states honestly that the map is planted ahead of core support, that `"scope"`/`"surface"`
+  re-entry does not fire today, and names the three core edits S47/S48 owe
+  (`Question.impact` Literal, `reentry_index()`'s `("architecture","plan")` tuple,
+  `personas/resolution.py`'s `VALID_IMPACTS`). Added one honest sentence that the
+  resolvers/escalation path is likewise not yet live.
+- `tests/loops/test_bounty.py`: renamed `test_bounty_loop_blast_radius_reentry_targets` →
+  `test_bounty_loop_blast_radius_reentry_targets_are_forward_declared` with a docstring
+  making clear it's a shape assertion, not behavioral re-entry coverage.
+- Verified via diff that `core/state.py`, `core/engine.py`, `personas/resolution.py` are
+  untouched. Full local gate green: lint clean, format clean, 879 passed / 4 skipped.
+- **No `/critic-gate` pass ran** on this diff — skipped deliberately, not silently: the
+  change is docs/comment/test-rename only, fully pre-specified and pre-approved by the
+  prior review's own fix list. Noted so the next session can request one before posting
+  review if it disagrees with that call.
 
-## Next — post the fresh-session Architect Review (Opus/architect)
-`/code-review` the PR #173 diff, then post with the **verbatim** two-line header +
-attestation (`**Opus/Architect HITL review (automated)**` /
-`*Fresh-session review: this session did not author the diff.*`) via
-`gh pr review --comment` (never `--approve`). The review must **explicitly address the
-impact_reentry HIGH finding** — decide whether to request a `core/` fix before merge, or
-approve with an explicit, documented note that scope/surface re-entry is deferred to
-S47/S48 (and what will need to change there). Don't just re-derive the finding from
-scratch — the critic-gate comment already has file:line detail; spend the review's
-judgment on the fix-vs-defer call, not re-discovery.
+## Next — fresh-session Architect Review (Opus)
+This is a **review-gate crossing — needs a genuinely new session**, not `/clear` in place:
+1. New session → `/model opus` → `/resume`.
+2. `/code-review` PR #173 at HEAD `7cdf15b` — verify the two fix changes actually close
+   the prior HIGH finding (the docstring/comment now read honestly; the renamed test
+   reads as shape-only, not behavioral).
+3. If satisfied, post the Architect Review via `gh pr review --comment` with the verbatim
+   frozen header + fresh-session attestation from `.ai/context/workflow.md` (**never
+   `--approve`**).
+4. If approved: T1 done pending the owner's merge (also merge the pending docs syncs,
+   [#175](https://github.com/glunk-works/loop-orchestrator/pull/175) and this PR, in any
+   order — both docs-only). **T2** (docs: CLAUDE.md boundary bullet +
+   `docs/bounty_loop_architecture.md` §8/§9 P1-D1..D7) is next, Sonnet-suitable.
 
-If the review requests changes: that's a Sonnet/coder task, new session,
-`/handoff` → `/model sonnet` → `/resume`. If it approves: T1 is done pending the human's
-merge; **T2** (docs: `CLAUDE.md` boundary bullet + `docs/bounty_loop_architecture.md`
-§8/§9 — P1-D1..D7 write-up, still owed) is next, and is itself Sonnet-suitable
-(mechanical, `architect-review`-exempt).
-
-**HITL Gate: NONE OPEN.** S46 T1 implementation + `/critic-gate` complete. Next gate: the
-S46 T1 fresh-session `architect-review` on PR #173.
+**HITL Gate: NONE OPEN.** The fix itself was pre-approved via the prior review's change
+list. Next gate (if any) is only if the fresh Architect Review finds the fix incomplete.
 
 ## Gotchas worth remembering
-- **The impact_reentry HIGH finding is the review's main job** — don't let a
-  fresh-session review just confirm the green suite and the schema-migrate correctness
-  (both of which are genuinely solid) without also ruling on the dead re-entry
-  vocabulary. The happy-path S46 acceptance criteria doesn't exercise re-entry at all,
-  so it can't catch this on its own.
-- **P1-D3's seam bet (the producer swap) DOES hold** — don't conflate it with the
-  re-entry map, which does not. They're separate claims in the same sprint.
+- **The fix keeps the map and corrects the claim — it is NOT the core re-entry wiring.**
+  `core/state.py`/`core/engine.py`/`personas/resolution.py` are still untouched by design
+  (S47/S48; the exact churn P1-D3 avoids).
+- **P1-D3's producer-swap seam holds.** The `impact_reentry` map is now honestly
+  documented as inert-until-core, not claimed live — don't conflate the two when judging
+  P1-D3.
+- **Docs-sync PRs stack up unmerged** — [#175](https://github.com/glunk-works/loop-orchestrator/pull/175)
+  (prior review sync) and this PR are both open against `main`; harmless (docs-only,
+  `architect-review`-exempt) but merge them when convenient so `.ai/next-steps.md` on
+  `main` stays current.
 - **The sprint-44 live Postgres smoke is still OWED** (`DEFERRED_VERIFICATION.md` §10) —
   discharges in S47, not here.
 - **`.ai/state.json` is git-ignored** — this file (`next-steps.md`) is what travels.
 - **PR title ≤72 bytes.** **Never commit to `main`, merge, or force-push.**
 
 ## Pointers
-- [PR #173](https://github.com/glunk-works/loop-orchestrator/pull/173) — S46 T1, branch `sprint/46-bounty-loop-skeleton`, HEAD `46ddc9e`.
-- [critic-gate findings](https://github.com/glunk-works/loop-orchestrator/pull/173#issuecomment-5029833958) — full architect + security-critic detail.
-- [`sprints/46_bounty_loop_skeleton/sprint_plan.md`](../sprints/46_bounty_loop_skeleton/sprint_plan.md) — the active plan (T1 = this PR, T2 = docs, next after merge).
-- [`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md) — bounty loop reference-of-record; §9 P1-D1..D7 write-up still owed (T2).
-- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — §10 = the OWED sprint-44 live Postgres smoke; discharge in S47.
+- [PR #173](https://github.com/glunk-works/loop-orchestrator/pull/173) — S46 T1, branch `sprint/46-bounty-loop-skeleton`, HEAD `7cdf15b`.
+- [`sprints/46_bounty_loop_skeleton/sprint_plan.md`](../sprints/46_bounty_loop_skeleton/sprint_plan.md) — active plan (T1 = this PR, T2 = docs).
+- [`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md) — bounty loop reference-of-record; §9 P1-D1..D7 write-up owed (T2).
+- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — §10 = OWED sprint-44 live Postgres smoke; discharge in S47.
