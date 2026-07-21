@@ -60,7 +60,15 @@ def test_bounty_loop_mapping_resolves_up_to_recon() -> None:
     assert loop.stages[0].resolvers == []
 
 
-def test_bounty_loop_blast_radius_reentry_targets() -> None:
+def test_bounty_loop_blast_radius_reentry_targets_are_forward_declared() -> None:
+    """Shape-only: asserts the planted map, not live re-entry behavior.
+
+    `"scope"`/`"surface"` cannot reach `reentry_index()` today (no
+    `Question.impact` member, not in `VALID_IMPACTS`, not checked by
+    `reentry_index()`'s `("architecture", "plan")` tuple) — see the
+    `impact_reentry` docstring in `loops/bounty/loop.py`. This only proves
+    the map's target indices are correct for when S47/S48 wire it live.
+    """
     assert BOUNTY_LOOP.impact_reentry == {"scope": 0, "surface": 1}
 
 

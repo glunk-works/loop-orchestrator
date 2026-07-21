@@ -9,10 +9,19 @@ def build_bounty_loop() -> Loop:
 
     The walking skeleton (P1-D3): both stages are wired now, behind stub
     personas emitting fixture artifacts, so the full loop runs green
-    end-to-end hermetically and `impact_reentry` is exercised from day one.
-    S47 replaces the Recon persona's injected producer with the real
-    dispatch→S3→IDP data path; S48 replaces Mapping's. The loop wiring, the
-    gates, and the re-entry map do not churn again.
+    end-to-end hermetically. S47 replaces the Recon persona's injected
+    producer with the real dispatch→S3→IDP data path; S48 replaces
+    Mapping's. The loop wiring and the gates do not churn again.
+
+    `impact_reentry` below is planted ahead of core support, not exercised
+    from day one: `Question.impact` (`core/state.py`) has no `"scope"` or
+    `"surface"` member, `reentry_index()` (`core/engine.py`) only ever
+    checks `("architecture", "plan")`, and `VALID_IMPACTS`
+    (`personas/resolution.py`) filters both out — so a `"scope"` or
+    `"surface"` resolution can never reach this map today. Making it live is
+    three core edits, deferred to S47/S48 by P1-D3 to avoid churning
+    `core/` in this skeleton PR. The resolvers/escalation path for this loop
+    is likewise not yet live.
 
     Rebuilt per run (mirroring `build_default_loop()`'s posture) rather than
     reused from `BOUNTY_LOOP`.
@@ -31,8 +40,9 @@ def build_bounty_loop() -> Loop:
                 resolvers=[recon],
             ),
         ],
-        # Blast-radius re-entry: a "scope" question re-enters Recon (index 0);
-        # a "surface" question re-enters Surface-Mapping (index 1).
+        # Forward-declared blast-radius targets for when scope/surface impact
+        # re-entry lands (S47/S48): "scope" -> Recon (index 0), "surface" ->
+        # Surface-Mapping (index 1). Inert until then -- see the docstring above.
         impact_reentry={"scope": 0, "surface": 1},
     )
 
