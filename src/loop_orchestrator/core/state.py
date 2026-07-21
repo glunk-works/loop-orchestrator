@@ -3,7 +3,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CURRENT_SCHEMA_VERSION = 5
+CURRENT_SCHEMA_VERSION = 6
 
 
 def default_artifact_path(run_id: str, key: str) -> str:
@@ -65,6 +65,17 @@ class SlackRef(BaseModel):
     message_ts: str
 
 
+class BountyRunState(BaseModel):
+    """Namespace for the bounty loop's own ID references (§4: `State` refers
+    to inventory rows by ID, never embeds them). `extra="forbid"` only — NOT
+    frozen: later stages add fields like `asset_ids`/`finding_ids` via
+    `state.model_copy`, so this sub-model must stay mutable."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target_id: str
+
+
 class State(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -85,6 +96,10 @@ class State(BaseModel):
     # publishes it to `docs/artifacts/<run_id>/` as a side effect, not a
     # migration.
     artifacts: dict[str, str]
+    # The bounty loop's own namespaced state; the default loop never sets
+    # this. Additive with a None default — future bounty ID references go
+    # inside BountyRunState, not as new top-level State fields.
+    bounty: BountyRunState | None = None
 
 
 _RETIRED_V3_KEY = "artifact_refs"
@@ -97,15 +112,17 @@ def migrate_state_payload(payload: dict[str, Any]) -> dict[str, Any]:
     since-retired disk-ref field carried by v3 only; under `extra="forbid"`
     that field must be popped, not merely versioned past, or a v3 payload
     fails validation. v4 predates `pending_slack`, added purely additively
-    (defaults to None) in v5. Raises ValueError for versions this build
+    (defaults to None) in v5. v5 predates `bounty`, added purely additively
+    (defaults to None) in v6. Raises ValueError for versions this build
     can't read.
     """
     version = payload.get("schema_version")
     if version == CURRENT_SCHEMA_VERSION:
         return payload
-    if version in (1, 2, 3, 4):
-        # An unconditional pop covers all four prior versions (v1/v2/v4 never
-        # had the key) — the inline `artifacts` bodies carry forward untouched.
+    if version in (1, 2, 3, 4, 5):
+        # An unconditional pop covers all five prior versions (v1/v2/v4/v5
+        # never had the key) — the inline `artifacts` bodies carry forward
+        # untouched.
         upgraded = {**payload, "schema_version": CURRENT_SCHEMA_VERSION}
         upgraded.pop(_RETIRED_V3_KEY, None)
         return upgraded
