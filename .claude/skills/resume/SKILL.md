@@ -8,6 +8,25 @@ description: Rehydrate a fresh dev session from .ai/ externalized state — read
 Goal: start a new (lean) session already knowing exactly where the last one left off,
 without re-reading the whole repo. This is the counterpart to `/handoff`.
 
+## Same-conversation shortcut
+
+If this `/resume` is invoked **within the same live conversation** as an earlier one in
+this repo (no `/clear` in between — e.g. a `/model` switch mid-session, not a fresh
+session), steps 3 (branch prune) and 4 (ruleset check) may cite their **already-known
+result** instead of re-running — but only when you can positively rule out an invalidating
+event since the last check: for step 3, no PR has merged since the last prune scan; for
+step 4, no permissions/ruleset-touching action has occurred since. Say which you're
+reusing and why (`Ruleset check: still healthy, confirmed earlier this conversation — no
+ruleset-touching action since.`). Step 2 (`git log`/`git status`) should still run — git
+state changes routinely mid-session (commits, pushes, merges) — but skip a redundant
+`.ai/state.json` **Read** if you already hold its current content in context and have not
+edited it since.
+
+**Default to the full checklist whenever unsure.** This shortcut exists to cut *provably*
+idempotent re-checks (both steps 3 and 4 are read-only, external, and rarely change), not
+to weaken the fail-closed posture below — if you cannot positively rule out an invalidating
+event, run the check.
+
 ## Steps
 
 1. **Read the cursor** (in this order, stop reading once you have enough):
