@@ -5,64 +5,70 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-**Bounty loop — Phase 1 (Recon + Surface-Mapping). `sprint_status: planning`, assigned
-Opus/architect.** Phase 0 (Enablers) is **complete and archived** — all three sprints (43
-BL-5 routing, 44 `inventory_db` + §4 schema, 45 scope validator §5 + ingestion seam §10)
-merged. The next unit is the **Phase 1 planning pass**: decompose Recon into sprints and
-write the first `sprints/NN_*/sprint_plan.md`. No sprint plan exists yet — writing it is the
-first deliverable. **Planning is one question at a time (HITL micro-gates); wait for the
-owner, don't auto-start.**
+**Bounty loop — Phase 1 (Recon + Surface-Mapping), sprint 46 (skeleton + `State` 5→6 bump).
+`sprint_status: implementing`, assigned Sonnet/coder.** The Phase-1 planning pass is
+**done and owner-approved**: Phase 1 decomposes into **3 sprints** (P1-D1) — **46** (this
+one: bounty loop skeleton + the schema bump) → 47 (recon data path) → 48 (Surface-Mapping).
+The S46 `sprint_plan.md` is written, critically reviewed, and its ambiguities folded in. The
+next unit is **implementing S46 T1** (the `src/` PR).
 
-## Just done (2026-07-21) — sprint 45 closed, Phase 0 complete
-- **T1** (Sonnet/coder, prior session): built `tools/scope_validator` (fail-closed `ScopeRules`
-  allowlist + `from_target` structural adapter with no runtime `inventory_db` edge +
-  `validate_target` + `is_action_banned` + `ScopeViolation`) and `tools/ingest.sanitize`
-  (structural `Cf`-sweep normalizer), full hermetic suites + a hardened no-runtime-edge
-  boundary guard. `/critic-gate` clean (architect + security-critic + guard-adversary).
-  Merged as **PR #168**.
-- **T1 architect-review** (Opus/architect, this session, fresh): re-derived all three
-  critic-gate fix areas from the code, ran the full gate green (862 passed), posted the
-  verbatim-header review with `gh pr review --comment`, cleared the **BL-35 stale-red** trap
-  (`gh run rerun` the old `pull_request` run). Human merged #168.
-- **T2** (Opus/architect, this session, docs-only): `CLAUDE.md` boundary bullet for the two
-  new leaf modules + `docs/bounty_loop_architecture.md` §8 status / §9 **P0-D11..D16** / §10
-  built-seam note. Merged as **PR #170**.
-- **`/archive-sprint`**: flipped §8 to **Phase 0 ✅ complete**, snapshotted the sprint-45
-  cursor to `.ai/archive/`, advanced `.ai/state.json` to Phase 1 planning.
+## Just done (2026-07-21) — Phase 1 planning pass (Opus/architect)
+- **Decomposed Phase 1 into 3 sprints** and wrote the first plan,
+  [`sprints/46_bounty_loop_skeleton/sprint_plan.md`](../sprints/46_bounty_loop_skeleton/sprint_plan.md),
+  via 7 owner-confirmed HITL micro-gates → **P1-D1..D7** (recorded in the plan; to land in
+  `docs/bounty_loop_architecture.md` §9 in S46 T2).
+- **Locked decisions:** nested `bounty: BountyRunState | None` for the 5→6 bump (P1-D2);
+  walking-skeleton both stages behind an injected-producer seam (P1-D3); S47 hermetic + one
+  V-run discharging the owed §10 PG smoke (P1-D4); `boto3` egress + `gh` `workflow_dispatch`,
+  5 subprocess surfaces stay 5 (P1-D5); scope_validator at both boundaries — input raises,
+  discovered-asset output filters (P1-D6); S46 library-only, no CLI selector (P1-D7).
+- **Critic review of the plan** (this session): found + folded in 9 coder-facing ambiguities
+  — gate `parse_json` shapes locked (`asset_inventory`="list", `surface_map`="object"), the
+  `ArtifactProducer` seam signature (`__call__(bounty) -> str`), stub-body pass-first-try
+  constraints, the `run_graph_loop` test harness pointer, `BountyRunState` mutable-not-frozen,
+  and more. Owner approved.
 
-## Next — plan Phase 1 (Recon), Opus/architect, one question at a time
-Decompose **Phase 1 (Recon + Surface-Mapping)** into sprints and write the first
-`sprint_plan.md`. Fold in, from the roadmap:
-- **Mount the Phase-0 primitives at their first live consumer** — the scanning MCP tools'
-  Pydantic boundary gets `scope_validator.validate_target` (reject out-of-scope before any
-  subprocess, §5) and `ingest.sanitize` (scrub scanner/target text before the triage LLM,
-  §10). This is exactly the P0-D11 deferral coming due.
-- **The `schema_version` 5→6 bump lands here** (P0-D2) — with the first bounty `State` field
-  (the Recon stage's typed output). Keep `migrate_state_payload` + `extra="forbid"` correct.
-- **Discharge the OWED sprint-44 live Postgres round-trip smoke** (`DEFERRED_VERIFICATION.md`
-  §10) — when the first `inventory_db` consumer + a real/dev PG land. Do not lose it.
-- **The `workflow_dispatch` integration seam on `bounty-infra`** (coarse batch recon on
-  Fargate; results → S3 → Postgres), per §7's compute topology.
+## Next — implement S46 T1 (Sonnet/coder)
+Build **S46 Task 1** (one `src/` PR) exactly per the plan:
+- `core/state.py`: `BountyRunState` (`extra="forbid"`, **mutable**; `target_id: str`) +
+  `bounty: BountyRunState | None = None`, bump `CURRENT_SCHEMA_VERSION` 5→6, extend
+  `migrate_state_payload` (`version in (1,2,3,4,5)` → 6).
+- `loops/bounty/loop.py`: `build_bounty_loop()` + `BOUNTY_LOOP`, two stages with
+  `ArtifactGate("asset_inventory", parse_json="list")` / `("surface_map", parse_json="object")`,
+  `resolvers=[recon]` on Mapping, `impact_reentry={"scope":0,"surface":1}`.
+- `personas/bounty/`: `ArtifactProducer` protocol + 2 fixture stubs in `producers.py`;
+  `ReconPersona`/`SurfaceMapPersona` shells (own the None-raise + `model_copy` write).
+- Full hermetic suite (migrate round-trip, loop structure + re-entry, `run_graph_loop`
+  end-to-end **COMPLETED**, boundary asserts). No new dep, no `.sql`, no new subprocess surface.
+- **First `State`-touching PR of the bounty initiative ⇒ fresh-session `architect-review`.**
+  Run `/critic-gate` (architect + security-critic indicated) before `/handoff`.
+- Then **T2** (docs, exempt): CLAUDE.md boundary bullet + schema-v6 note; roadmap §8 status +
+  §9 P1-D1..D7.
+
+**HITL Gate: NONE OPEN.** Phase-1 planning Gate passed (plan approved 2026-07-21). Next gate:
+the S46 T1 fresh-session `architect-review` on its PR.
 
 ## Gotchas worth remembering
-- **Phase 1 is where `State` finally changes** — after all of Phase 0 was pure non-`State`
-  infra. First `State`-touching PR ⇒ `schema_version` bump + migrate branch + fresh-session
-  `architect-review`.
-- **`scope_validator` matches via unanchored `re.search`** (locked P0-D13) — a Phase-1
-  consumer writing `in_scope_regex` rules-of-engagement that must match a whole host exactly
-  should anchor them (`^host$`).
-- **The sprint-44 live Postgres smoke is genuinely OWED** — the `Jsonb(...)` adapter fix and
-  the round-trip assertion have never run against a real Postgres (`LOOP_ORCHESTRATOR_INVENTORY_DSN`
-  is unset per P0-D4). Discharge it in Phase 1, don't stamp it "verified."
+- **First `State` change of the whole bounty initiative** — schema bump + migrate branch +
+  `extra="forbid"` intact ⇒ fresh-session `architect-review` on the T1 PR (`/handoff` → new
+  session → `/resume` → `/code-review` → post the verbatim header). Watch the **BL-35
+  stale-red** trap (BLOCKED + rollup FAILURE ⇒ `gh run rerun` the OLD run).
+- **The stub artifact bodies must pass their gate on the first attempt** — valid JSON of the
+  gate `parse_json` type (`[]` / `{}`); a REVISE re-runs the identical stub → exhaustion
+  escalation → the "green" run silently pauses. See the plan's stub-body constraints.
+- **The injected-producer seam is the load-bearing bet (P1-D3)** — S47 must land the real
+  recon body by swapping *one* `ArtifactProducer`, changing neither loop wiring nor persona
+  shell. If S47 has to touch either, the skeleton failed.
+- **`BountyRunState` is mutable, NOT frozen** (unlike `ScopeRules`) — later stages add
+  `asset_ids`/`finding_ids` via `model_copy`.
+- **The sprint-44 live Postgres smoke is still OWED** (`DEFERRED_VERIFICATION.md` §10) —
+  discharges in **S47** (first `inventory_db` consumer + real PG), not S46. Don't stamp it.
 - **`.ai/state.json` is git-ignored** — this file (`next-steps.md`) is what travels.
-- **GPG signing** may time out in a Cursor session — answer the host pinentry and retry (hit
-  this on the T2 commit this session; retry cleared it). Never run `gpg-forward.sh` in Cursor.
 - **PR title ≤72 bytes, lower-case after `type(scope): `** — `wc -c` first. **Never commit
   to `main`, merge, or force-push.** **Full local gate (lint→format→test) before push.**
 
 ## Pointers
-- [`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md) — bounty loop reference-of-record (§3 stages, §5 scope validator [built], §6 escalation, §7 MCP servers + compute topology, §8 roadmap [Phase 0 complete], §9 decisions P0-D1..D16, §10 ingestion seam [built]).
-- [`sprints/45_scope_validator_ingestion/sprint_plan.md`](../sprints/45_scope_validator_ingestion/sprint_plan.md) — the just-closed sprint's plan (template/precedent for the Phase-1 plan).
-- [`sprints/44_inventory_db/sprint_plan.md`](../sprints/44_inventory_db/sprint_plan.md) — the `inventory_db` sprint's plan (the persistence layer recon writes into).
-- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — §10 = the OWED sprint-44 live Postgres smoke; discharge in Phase 1.
-- `.ai/archive/45_scope_validator_ingestion-next-steps.md` — the archived sprint-45 final cursor.
+- [`sprints/46_bounty_loop_skeleton/sprint_plan.md`](../sprints/46_bounty_loop_skeleton/sprint_plan.md) — the active plan (T1 = the `src/` PR, T2 = docs).
+- [`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md) — bounty loop reference-of-record (§3 stages, §4 persistence, §5 scope, §7 compute topology, §8 roadmap [Phase 0 complete], §9 decisions [P1-D1..D7 land in S46 T2], §10 ingestion seam).
+- [`sprints/45_scope_validator_ingestion/sprint_plan.md`](../sprints/45_scope_validator_ingestion/sprint_plan.md) / [`sprints/44_inventory_db/sprint_plan.md`](../sprints/44_inventory_db/sprint_plan.md) — precedent plans + the Phase-0 primitives S47 consumes.
+- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — §10 = the OWED sprint-44 live Postgres smoke; discharge in S47.
