@@ -219,10 +219,12 @@ def test_bounty_run_state_rejects_unrecognized_field() -> None:
 
 def test_bounty_run_state_is_mutable_not_frozen() -> None:
     # P1-D2 fold-in: unlike ScopeRules, BountyRunState must stay mutable so
-    # later stages add asset_ids/finding_ids via model_copy.
+    # later stages add asset_ids/finding_ids via model_copy. model_copy alone
+    # doesn't prove this (it succeeds on a frozen model too) -- direct
+    # attribute assignment is what frozen=True would actually reject.
     bounty = BountyRunState(target_id="target-001")
-    updated = bounty.model_copy(update={"target_id": "target-002"})
-    assert updated.target_id == "target-002"
+    bounty.target_id = "target-002"
+    assert bounty.target_id == "target-002"
 
 
 def test_state_validates_with_pending_slack_set() -> None:
