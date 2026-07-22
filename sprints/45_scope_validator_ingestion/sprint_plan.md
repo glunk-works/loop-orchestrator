@@ -1,5 +1,14 @@
 ### FILEPATH: /sprints/45_scope_validator_ingestion/sprint_plan.md
 
+> **Superseded by the SC pass (BI-D6, 2026-07-22).** `tools/scope_validator` and `tools/ingest`
+> as described below were built here in sprint 45 (PR #168) and then **relocated** to the shared
+> `glunk-works/scope-core` package repo — this repo now depends on `scope-core` instead of
+> implementing these primitives locally. This plan is left as-written below as the historical
+> record of what was built and why (the design decisions P0-D11–D16 still hold; they describe
+> `scope-core`'s code now, not a local module here). See
+> `docs/bounty_loop_architecture.md` §9/§10 and `bounty-infra`'s
+> `sprints/SC_scope_core_extraction/sprint_plan.md`.
+
 **Sprint Goal:** Land Phase 0's **two security invariants** as pure, hermetically-testable library primitives, built once here and shared into the bounty loop: (1) the **structural scope validator** (`docs/bounty_loop_architecture.md` §5) — a fail-closed in/out-of-scope + banned-action check reading sprint-44's `targets` rules-of-engagement — the concrete fix for `bounty-infra#7` (no structural scope check); and (2) the **ingestion-sanitization seam** (§10; P0-D6) — a structural/mechanical normalizer that scrubs attacker-influenceable scanner/target-derived text before it can reach the triage LLM — the concrete fix for `bounty-infra#13` (target-derived fields fed straight into the model). This is Phase 0 **sprint 3 of 3** (§8): 43 (BL-5 routing, done) → 44 (`inventory_db` + §4 schema, done) → **45 (this plan)**. After sprint 45, Phase 0 is complete and Phase 1 (Recon) begins. Per **micro-gate 1 (P0-D11)** the deliverable is the **primitives only, with no live consumer**: the scanning MCP tools that mount these at their Pydantic boundary are Phase 1, built with the tools themselves — exactly sprint 44's no-consumer YAGNI posture (P0-D7). This sprint touches **no `State` shape** and does **not** bump `schema_version` (P0-D2).
 
 **Out of scope:**
