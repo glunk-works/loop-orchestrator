@@ -2,6 +2,15 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.metadata]
+# Required for the scope-core dependency below: hatchling refuses to build
+# metadata for a PEP 508 direct-reference dependency (a `pkg @ url` entry)
+# unless this is explicitly set. A project carrying one of these can't
+# itself be published to PyPI -- accepted, per
+# bounty-infra's sprints/SC_scope_core_extraction/sprint_plan.md; neither
+# repo publishes to PyPI today.
+allow-direct-references = true
+
 [project]
 name = "loop-orchestrator"
 version = "0.1.0"
@@ -51,6 +60,14 @@ dependencies = [
   # portable. A hard-pinned (not optional) dependency: every install ships
   # DB-capable.
   "psycopg[binary]==3.3.4",
+  # Scope-enforcement + ingestion-sanitization primitives (formerly
+  # tools/scope_validator + tools/ingest here, sprint 45) -- extracted to a
+  # shared package repo so this repo and bounty-infra depend on one
+  # definition of "in scope" instead of two (BI-D6, the SC pass). Pinned by
+  # commit SHA via a PEP 508 direct reference, not published to PyPI --
+  # smoke-tested against pip-audit/cyclonedx-py before this dependency shape
+  # was adopted (bounty-infra sprints/SC_scope_core_extraction/sprint_plan.md).
+  "scope-core @ https://github.com/glunk-works/scope-core/archive/7345de5578a43fb5badabe5cb6166a64d74c4f88.tar.gz",
 ]
 
 [project.scripts]

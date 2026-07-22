@@ -236,6 +236,13 @@ Phase-0 sprint-45 planning-pass decisions (2026-07-20, owner-confirmed via HITL 
   **Rejected:** two separate `src/` PRs — an extra full review handoff for a small, cohesive
   diff.
 
+> **P0-D12/D13/D14/D15 still describe the real semantics — they just describe `scope-core`'s
+> code now, not `tools/scope_validator`/`tools/ingest` in this repo.** The SC pass (BI-D6,
+> 2026-07-22) relocated both primitives to `glunk-works/scope-core`, a shared package this repo
+> now depends on instead of implementing locally; see §10 below. Not re-opened, only relocated —
+> the fail-closed/deny-wins/unanchored-`re.search`/structural-mechanical-sanitizer decisions
+> hold exactly as written.
+
 Phase-1 planning-pass decisions (2026-07-21, owner-confirmed via HITL micro-gates 1–7;
 **locked** — a future pass must not re-open them):
 
@@ -353,12 +360,21 @@ lifted into the loop rather than reinvented; the review's other findings (GitHub
 script injection, over-broad task-role IAM, unpinned tool/template supply chain,
 CI/plan-gate gaps) track as `bounty-infra#6`–`#16`.
 
-**Built (sprint 45, PR #168).** The ingestion-sanitization seam now exists as
-`tools/ingest.sanitize` (structural normalizer — P0-D15) and the scope validator as
-`tools/scope_validator` (fail-closed allowlist + banned-action classifier — §5/P0-D13/D14),
-both as pure leaf primitives with **no live consumer yet** (P0-D11). Phase 1 mounts them at
-the scanning MCP tools' Pydantic boundary, where the untrusted scanner/target text they defend
-against actually begins to flow.
+**Built (sprint 45, PR #168).** The ingestion-sanitization seam and the scope validator shipped
+as pure leaf primitives with **no live consumer yet** (P0-D11): `sanitize` (structural
+normalizer — §10/P0-D15) and `ScopeRules`/`validate_target` (fail-closed allowlist +
+banned-action classifier — §5/P0-D13/D14). Phase 1 mounts them at the scanning MCP tools'
+Pydantic boundary, where the untrusted scanner/target text they defend against actually begins
+to flow.
+
+**Moved (SC pass, 2026-07-22 — BI-D6).** Both primitives now live in
+[`glunk-works/scope-core`](https://github.com/glunk-works/scope-core), a dedicated shared
+package repo, not `tools/scope_validator`/`tools/ingest` in this repo. This corrects an
+overclaim: the paragraph above originally read these as "lifted into the loop" as bounty-infra's
+`#7`/`#13` fix; they are instead a **shared** definition both repos depend on, so bounty-infra's
+scanner and this loop's Phase-1 recon tools can never disagree about what "in scope" means.
+`scope-core` is pinned by commit SHA via a PEP 508 direct reference in `pyproject.toml` (not
+published to PyPI). See `bounty-infra`'s `sprints/SC_scope_core_extraction/sprint_plan.md`.
 
 ## 11. Pointers
 
