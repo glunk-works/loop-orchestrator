@@ -439,6 +439,68 @@
       "version": "5.0"
     },
     {
+      "bom-ref": "boto3==1.43.56",
+      "description": "The AWS SDK for Python",
+      "externalReferences": [
+        {
+          "comment": "from packaging metadata Project-URL: Documentation",
+          "type": "documentation",
+          "url": "https://docs.aws.amazon.com/boto3/latest/"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: Source",
+          "type": "other",
+          "url": "https://github.com/boto/boto3"
+        },
+        {
+          "comment": "from packaging metadata: Home-page",
+          "type": "website",
+          "url": "https://github.com/boto/boto3"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "acknowledgement": "declared",
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "boto3",
+      "purl": "pkg:pypi/boto3@1.43.56",
+      "type": "library",
+      "version": "1.43.56"
+    },
+    {
+      "bom-ref": "botocore==1.43.56",
+      "description": "Low-level, data-driven core of boto 3.",
+      "externalReferences": [
+        {
+          "comment": "from packaging metadata: Home-page",
+          "type": "website",
+          "url": "https://github.com/boto/botocore"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "acknowledgement": "declared",
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "botocore",
+      "properties": [
+        {
+          "name": "cdx:python:package:required-extra",
+          "value": "crt"
+        }
+      ],
+      "purl": "pkg:pypi/botocore@1.43.56",
+      "type": "library",
+      "version": "1.43.56"
+    },
+    {
       "bom-ref": "certifi==2026.6.17",
       "description": "Python package for providing Mozilla's CA Bundle.",
       "externalReferences": [
@@ -956,7 +1018,7 @@
       "version": "2.1.2"
     },
     {
-      "bom-ref": "fastapi==0.139.0",
+      "bom-ref": "fastapi==0.139.2",
       "description": "FastAPI framework, high performance, easy to learn, fast to code, ready for production",
       "externalReferences": [
         {
@@ -994,9 +1056,9 @@
         }
       ],
       "name": "fastapi",
-      "purl": "pkg:pypi/fastapi@0.139.0",
+      "purl": "pkg:pypi/fastapi@0.139.2",
       "type": "library",
-      "version": "0.139.0"
+      "version": "0.139.2"
     },
     {
       "bom-ref": "filelock==3.31.0",
@@ -1395,6 +1457,29 @@
       "purl": "pkg:pypi/jiter@0.16.0",
       "type": "library",
       "version": "0.16.0"
+    },
+    {
+      "bom-ref": "jmespath==1.1.0",
+      "description": "JSON Matching Expressions",
+      "externalReferences": [
+        {
+          "comment": "from packaging metadata: Home-page",
+          "type": "website",
+          "url": "https://github.com/jmespath/jmespath.py"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "acknowledgement": "declared",
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "jmespath",
+      "purl": "pkg:pypi/jmespath@1.1.0",
+      "type": "library",
+      "version": "1.1.0"
     },
     {
       "bom-ref": "jsonpatch==1.33",
@@ -3425,6 +3510,60 @@
       "version": "0.15.20"
     },
     {
+      "bom-ref": "s3transfer==0.19.2",
+      "description": "An Amazon S3 Transfer Manager",
+      "externalReferences": [
+        {
+          "comment": "from packaging metadata: Home-page",
+          "type": "website",
+          "url": "https://github.com/boto/s3transfer"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "acknowledgement": "declared",
+            "name": "License :: OSI Approved :: Apache Software License"
+          }
+        }
+      ],
+      "name": "s3transfer",
+      "purl": "pkg:pypi/s3transfer@0.19.2",
+      "type": "library",
+      "version": "0.19.2"
+    },
+    {
+      "bom-ref": "scope-core==0.1.0",
+      "description": "Shared scope-enforcement and ingestion-sanitization primitives for glunk-works bounty tooling",
+      "externalReferences": [
+        {
+          "comment": "PackageSource: Archive",
+          "hashes": [
+            {
+              "alg": "SHA-256",
+              "content": "042fdf5e83b70485a242adc7799a8efbbb5c5542508e16266e28d0e8be12c569"
+            }
+          ],
+          "type": "distribution",
+          "url": "https://github.com/glunk-works/scope-core/archive/7345de5578a43fb5badabe5cb6166a64d74c4f88.tar.gz"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: Issues",
+          "type": "issue-tracker",
+          "url": "https://github.com/glunk-works/scope-core/issues"
+        },
+        {
+          "comment": "from packaging metadata Project-URL: Source",
+          "type": "other",
+          "url": "https://github.com/glunk-works/scope-core"
+        }
+      ],
+      "name": "scope-core",
+      "purl": "pkg:pypi/scope-core@0.1.0?download_url=https://github.com/glunk-works/scope-core/archive/7345de5578a43fb5badabe5cb6166a64d74c4f88.tar.gz",
+      "type": "library",
+      "version": "0.1.0"
+    },
+    {
       "bom-ref": "setproctitle==1.3.7",
       "description": "A Python module to customize the process title",
       "externalReferences": [
@@ -3806,7 +3945,7 @@
       "version": "1.2.0"
     },
     {
-      "bom-ref": "typer==0.26.8",
+      "bom-ref": "typer==0.27.0",
       "description": "Typer, build great CLIs. Easy to code. Based on Python type hints.",
       "externalReferences": [
         {
@@ -3844,9 +3983,9 @@
         }
       ],
       "name": "typer",
-      "purl": "pkg:pypi/typer@0.26.8",
+      "purl": "pkg:pypi/typer@0.27.0",
       "type": "library",
-      "version": "0.26.8"
+      "version": "0.27.0"
     },
     {
       "bom-ref": "typing-inspection==0.4.2",
@@ -4311,6 +4450,8 @@
     {
       "dependsOn": [
         "anyio==4.14.2",
+        "boto3==1.43.56",
+        "botocore==1.43.56",
         "distro==1.9.0",
         "docstring_parser==0.18.0",
         "httpx==0.28.1",
@@ -4346,6 +4487,22 @@
         "pytest==9.1.1"
       ],
       "ref": "boolean.py==5.0"
+    },
+    {
+      "dependsOn": [
+        "botocore==1.43.56",
+        "jmespath==1.1.0",
+        "s3transfer==0.19.2"
+      ],
+      "ref": "boto3==1.43.56"
+    },
+    {
+      "dependsOn": [
+        "jmespath==1.1.0",
+        "python-dateutil==2.9.0.post0",
+        "urllib3==2.7.0"
+      ],
+      "ref": "botocore==1.43.56"
     },
     {
       "ref": "certifi==2026.6.17"
@@ -4433,7 +4590,7 @@
         "typing_extensions==4.16.0",
         "uvicorn==0.51.0"
       ],
-      "ref": "fastapi==0.139.0"
+      "ref": "fastapi==0.139.2"
     },
     {
       "ref": "filelock==3.31.0"
@@ -4513,6 +4670,9 @@
     },
     {
       "ref": "jiter==0.16.0"
+    },
+    {
+      "ref": "jmespath==1.1.0"
     },
     {
       "dependsOn": [
@@ -4665,15 +4825,17 @@
       "dependsOn": [
         "PyYAML==6.0.3",
         "anthropic==0.116.0",
-        "fastapi==0.139.0",
+        "boto3==1.43.56",
+        "fastapi==0.139.2",
         "keyring==25.7.0",
         "langgraph==1.2.9",
         "mcp==1.28.1",
         "psycopg==3.3.4",
         "pydantic==2.13.4",
         "pytest==9.1.1",
+        "scope-core==0.1.0",
         "slack_sdk==3.43.0",
-        "typer==0.26.8"
+        "typer==0.27.0"
       ],
       "ref": "loop-orchestrator==0.1.0"
     },
@@ -4706,7 +4868,7 @@
         "rich==15.0.0",
         "sse-starlette==3.4.5",
         "starlette==1.3.1",
-        "typer==0.26.8",
+        "typer==0.27.0",
         "typing-inspection==0.4.2",
         "typing_extensions==4.16.0",
         "uvicorn==0.51.0",
@@ -4828,6 +4990,7 @@
     {
       "dependsOn": [
         "PyYAML==6.0.3",
+        "boto3==1.43.56",
         "pydantic==2.13.4",
         "python-dotenv==1.2.2",
         "tomli==2.4.1",
@@ -4945,6 +5108,18 @@
     },
     {
       "dependsOn": [
+        "botocore==1.43.56"
+      ],
+      "ref": "s3transfer==0.19.2"
+    },
+    {
+      "dependsOn": [
+        "pydantic==2.13.4"
+      ],
+      "ref": "scope-core==0.1.0"
+    },
+    {
+      "dependsOn": [
         "pytest==9.1.1"
       ],
       "ref": "setproctitle==1.3.7"
@@ -4957,6 +5132,7 @@
     },
     {
       "dependsOn": [
+        "boto3==1.43.56",
         "websockets==15.0.1"
       ],
       "ref": "slack_sdk==3.43.0"
@@ -4970,7 +5146,7 @@
     {
       "dependsOn": [
         "anyio==4.14.2",
-        "fastapi==0.139.0",
+        "fastapi==0.139.2",
         "pydantic==2.13.4",
         "starlette==1.3.1",
         "uvicorn==0.51.0"
@@ -5016,7 +5192,7 @@
         "rich==15.0.0",
         "shellingham==1.5.4"
       ],
-      "ref": "typer==0.26.8"
+      "ref": "typer==0.27.0"
     },
     {
       "dependsOn": [
@@ -5074,7 +5250,7 @@
     }
   ],
   "metadata": {
-    "timestamp": "2026-07-19T22:24:45.839851+00:00",
+    "timestamp": "2026-07-25T19:04:36.325898+00:00",
     "tools": {
       "components": [
         {
@@ -5178,7 +5354,7 @@
       ]
     }
   },
-  "serialNumber": "urn:uuid:5d80a079-d80f-4a86-9966-bc706f43684c",
+  "serialNumber": "urn:uuid:3bea15cf-15de-4bce-93f4-c7bc0f38454c",
   "version": 1,
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",
