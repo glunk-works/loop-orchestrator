@@ -112,6 +112,12 @@ class GhReconDispatcher:
         return DispatchHandle(correlation_token=request.correlation_token)
 
     def await_completion(self, handle: DispatchHandle) -> S3Key:
+        """Blocks until the run carrying `handle`'s token completes, fails,
+        or the bounded poll times out. Deliberately fail-closed on a
+        transient `gh run list` error too: `_run_gh`'s `check=True` lets a
+        `CalledProcessError` from any single poll propagate out of the loop
+        rather than being swallowed and retried -- one flaky API call ends
+        the wait rather than risking an unbounded silent retry."""
         deadline = time.monotonic() + self._max_wait_seconds
         while True:
             match = _find_run_for_token(self._list_runs(), handle.correlation_token)

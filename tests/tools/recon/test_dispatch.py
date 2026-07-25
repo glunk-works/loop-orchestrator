@@ -75,6 +75,65 @@ def test_await_completion_polls_until_the_token_run_completes(
     assert responses == []
 
 
+def test_list_runs_argv_is_fixed_and_scoped_to_the_repo_and_workflow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        payload = [
+            {"displayTitle": "recon tok-xyz", "status": "completed", "conclusion": "success"}
+        ]
+        return _completed_process(argv, json.dumps(payload))
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    dispatcher = GhReconDispatcher(repo="glunk-works/bounty-infra", workflow="recon.yml")
+
+    dispatcher.await_completion(DispatchHandle(correlation_token="tok-xyz"))
+
+    assert len(calls) == 1
+    assert calls[0] == [
+        "gh",
+        "run",
+        "list",
+        "--repo",
+        "glunk-works/bounty-infra",
+        "--workflow",
+        "recon.yml",
+        "--json",
+        "displayTitle,status,conclusion",
+    ]
+
+
+def test_await_completion_skips_a_run_carrying_a_different_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A completed, successful run for an unrelated token must not be
+    # mistaken for the target token's run (S47-D8 correlation).
+    responses = [
+        [{"displayTitle": "recon tok-other", "status": "completed", "conclusion": "success"}],
+        [
+            {"displayTitle": "recon tok-other", "status": "completed", "conclusion": "success"},
+            {"displayTitle": "recon tok-xyz", "status": "completed", "conclusion": "success"},
+        ],
+    ]
+
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return _completed_process(argv, json.dumps(responses.pop(0)))
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+
+    dispatcher = GhReconDispatcher(
+        repo="glunk-works/bounty-infra", poll_interval_seconds=0, max_wait_seconds=60
+    )
+    key = dispatcher.await_completion(DispatchHandle(correlation_token="tok-xyz"))
+
+    assert key == "recon/tok-xyz.jsonl"
+    assert responses == []
+
+
 def test_await_completion_raises_recon_timeout_when_nothing_completes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
