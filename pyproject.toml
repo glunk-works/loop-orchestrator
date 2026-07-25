@@ -76,7 +76,7 @@ dependencies = [
   # commit SHA via a PEP 508 direct reference, not published to PyPI --
   # smoke-tested against pip-audit/cyclonedx-py before this dependency shape
   # was adopted (bounty-infra sprints/SC_scope_core_extraction/sprint_plan.md).
-  "scope-core @ https://github.com/glunk-works/scope-core/archive/7345de5578a43fb5badabe5cb6166a64d74c4f88.tar.gz",
+  "scope-core @ https://github.com/glunk-works/scope-core/archive/3d251f1e93b3476487bec88208c445e0250d2df4.tar.gz",
 ]
 
 [project.scripts]
