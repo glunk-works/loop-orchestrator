@@ -30,7 +30,7 @@ classifiers = [
 ]
 dependencies = [
   "pydantic==2.13.4",
-  "anthropic==0.116.0",
+  "anthropic==0.120.0",
   "keyring==25.7.0",
   "typer==0.27.0",
   # Orchestration substrate: the engine runs as a LangGraph StateGraph (behind
