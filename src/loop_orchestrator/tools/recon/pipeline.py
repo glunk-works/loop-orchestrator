@@ -50,6 +50,17 @@ def _sanitized_tech(records: list[ReconRecord]) -> list[str]:
     return sorted(seen)
 
 
+def _sanitized_http_methods(record: ReconRecord) -> list[str] | None:
+    # http_methods is scanner-observed text like every other free-text
+    # field on the record -- attacker-influenceable, so it gets the same
+    # sanitize pass as title/webserver/tech/matched_at before it reaches
+    # inventory_db (and, downstream, a triage LLM). An empty/all-stripped
+    # list is "not provided" (None), matching upsert_endpoint's coalesce
+    # semantics -- never an empty-list overwrite of a prior value.
+    cleaned = [m for item in record.http_methods if (m := _sanitize_or_none(item))]
+    return cleaned or None
+
+
 def _raw_scan_data(records: list[ReconRecord], tech: list[str]) -> dict[str, Any] | None:
     titles = sorted({t for r in records if (t := _sanitize_or_none(r.title))})
     webservers = sorted({w for r in records if (w := _sanitize_or_none(r.webserver))})
@@ -115,7 +126,7 @@ def ingest_batch(
             inventory.upsert_endpoint(
                 asset_id,
                 sanitized_path,
-                http_methods=record.http_methods or None,
+                http_methods=_sanitized_http_methods(record),
                 tech_stack={"tech": tech} if tech else None,
             )
 

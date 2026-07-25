@@ -85,6 +85,14 @@ def _parse_line(line: str) -> ReconRecord | None:
         raw: Any = json.loads(line)
     except json.JSONDecodeError:
         return None
+    except (RecursionError, ValueError):
+        # A crafted line -- pathologically deep nesting (`RecursionError`)
+        # or an oversized integer literal past `sys.int_info`'s string-to-int
+        # digit limit (a bare `ValueError`, not a `JSONDecodeError`) -- must
+        # drop+count like any other malformed line, never escape and sink
+        # the whole batch (S47-D5's fail-closed contract is per-line, not
+        # per-payload, for anything short of an undecodable payload).
+        return None
     if not isinstance(raw, dict):
         return None
     try:
