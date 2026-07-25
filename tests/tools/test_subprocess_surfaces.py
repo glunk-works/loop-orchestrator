@@ -1,24 +1,28 @@
-"""Repo-wide static assertion (Phase 5 sprint 24, extended sprint 29):
+"""Repo-wide static assertion (Phase 5 sprint 24, extended sprint 29 and 47):
 subprocess/Popen/os.exec* usage is confined to exactly the sanctioned
 surfaces named in `CLAUDE.md`'s enforced-module-boundaries section. This
 moved from three surfaces to four in sprint 24 with the addition of
 `tools/git_io`'s local `git`, and from four to five in sprint 29 with the
 addition of `tools/coder_tools/run_lint.py`'s `ruff` — nothing else in
-`src/loop_orchestrator` may shell out."""
+`src/loop_orchestrator` may shell out. Sprint 47 (S47-D3) adds
+`tools/recon/dispatch.py` as a *third* `gh` consumer, alongside `issue_io`
+and `repo_io` — the surface count stays five."""
 
 import ast
 from pathlib import Path
 
 SRC_ROOT = Path(__file__).resolve().parent.parent.parent / "src" / "loop_orchestrator"
 
-# path -> the sanctioned surface it belongs to. issue_io and repo_io are two
-# consumers of the *same* `gh` surface (repo_io adds no sixth); each other
-# module is its own distinct surface. Five distinct surface names total.
+# path -> the sanctioned surface it belongs to. issue_io, repo_io, and (since
+# sprint 47) recon are three consumers of the *same* `gh` surface (neither
+# adds a sixth); each other module is its own distinct surface. Five
+# distinct surface names total.
 _SANCTIONED_SUBPROCESS_MODULES: dict[Path, str] = {
     SRC_ROOT / "tools" / "coder_tools" / "run_tests.py": "pytest",
     SRC_ROOT / "tools" / "coder_tools" / "run_lint.py": "ruff",
     SRC_ROOT / "tools" / "issue_io" / "github.py": "gh",
     SRC_ROOT / "tools" / "repo_io" / "github.py": "gh",
+    SRC_ROOT / "tools" / "recon" / "dispatch.py": "gh",
     SRC_ROOT / "tools" / "worktree" / "manager.py": "git worktree",
     SRC_ROOT / "tools" / "git_io" / "local.py": "git",
 }
@@ -75,6 +79,21 @@ def test_exactly_five_sanctioned_subprocess_surfaces() -> None:
     assert (
         _SANCTIONED_SUBPROCESS_MODULES[SRC_ROOT / "tools" / "coder_tools" / "run_lint.py"] == "ruff"
     )
+
+
+def test_recon_is_a_third_gh_consumer_not_a_sixth_surface() -> None:
+    recon_dispatch = SRC_ROOT / "tools" / "recon" / "dispatch.py"
+    assert recon_dispatch in _SANCTIONED_SUBPROCESS_MODULES
+    assert _SANCTIONED_SUBPROCESS_MODULES[recon_dispatch] == "gh"
+    gh_consumers = {
+        path for path, surface in _SANCTIONED_SUBPROCESS_MODULES.items() if surface == "gh"
+    }
+    assert gh_consumers == {
+        SRC_ROOT / "tools" / "issue_io" / "github.py",
+        SRC_ROOT / "tools" / "repo_io" / "github.py",
+        recon_dispatch,
+    }
+    assert len(set(_SANCTIONED_SUBPROCESS_MODULES.values())) == 5
 
 
 def test_scaffold_is_a_file_write_surface_not_a_fifth_subprocess_surface() -> None:
