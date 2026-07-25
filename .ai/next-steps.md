@@ -25,7 +25,27 @@ Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 `tools/recon` dispatch/ingest → inventory) is substrate-independent & forward-compatible;
 only its linear-persona *wiring* is transitional (superseded by the RD-1 dispatcher in Phase R).
 
-## Just done (2026-07-21) — sprint 47 planning pass (Opus/architect)
+> **⚠️ Plan drift — read before T1.** `main` advanced since the 2026-07-21 plan was written:
+> **#182 extracted scope enforcement + sanitization to an external `scope-core` package and
+> DELETED the local `tools/scope_validator` + `tools/ingest`** (pinned in `pyproject.toml`).
+> The plan still names those local modules. **Source `validate_target` / `ScopeRules` /
+> `sanitize` from `scope_core` (`from scope_core import …`), not the deleted local paths** —
+> this touches T1's `tools/recon` `validate_target`-raise boundary and all of T2. Treat it as
+> a same-API re-point (BI-D6, "one definition of in-scope"); **verify the `scope_core` surface
+> against the plan's assumptions before wiring, and if it diverges materially, stop and
+> escalate to Opus** rather than improvising. (#188 redirection + #185/#125/#111 dep bumps also
+> merged; `main` is now `3d03d30`.)
+
+## Just done (2026-07-25) — resume→handoff (Opus/architect)
+- **Resumed, found a model + branch mismatch, handed off to Sonnet/coder.** This session
+  ran on Opus; T1 is Coder/Sonnet implementation work, so it did **not** start T1.
+- **Synced the cursor to fresh `main` (`3d03d30`).** Confirmed the sprint-47 planning PR
+  (**#181**) and the redirection PR (**#188**) both merged; pruned their dead local branches.
+- **Flagged the `scope-core` drift above** — #182 (`scope-core` extraction) landed after the
+  plan and re-homes `validate_target`/`ScopeRules`/`sanitize`; T1/T2 must adapt.
+- Ruleset check healthy (4 rule types, 8 required checks).
+
+## Earlier (2026-07-21) — sprint 47 planning pass (Opus/architect)
 - **Wrote `sprints/47_bounty_recon_data_path/sprint_plan.md`** — the recon data path
   (`gh workflow_dispatch` → S3 → parse → scope-filter/sanitize → `inventory_db`, its first
   consumer), fully hermetic behind three injected seams, one authorized V-run vs
@@ -64,6 +84,9 @@ verbatim header).
 - **`bounty-infra#18` (dispatch contract) is a V-run precondition, blocked on #6.** T1–T3
   merge hermetically without it; the V-run + §10 discharge re-defer if it's not ready. Do
   **not** stamp `DEFERRED_VERIFICATION.md` §10 until the V-run runs.
+- **Scope/sanitization now live in `scope-core`, not this repo** (#182) — `from scope_core
+  import ScopeRules, …`; the local `tools/scope_validator`/`tools/ingest` are gone. See the
+  ⚠️ drift note under **Now**.
 - **New dep `boto3`** ⇒ `hatch run sbom` regen + `audit` green (T1). **PR title ≤72 bytes.**
   **Never commit to `main`, merge, or force-push.** Full local gate (lint→format→test) before push.
 - **`.ai/state.json` is git-ignored** — this file (`next-steps.md`) is what travels.
