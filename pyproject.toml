@@ -60,6 +60,15 @@ dependencies = [
   # portable. A hard-pinned (not optional) dependency: every install ships
   # DB-capable.
   "psycopg[binary]==3.3.4",
+  # S3 egress for the bounty loop's recon data path (tools/s3_io, sprint 47
+  # T1, S47-D3/P1-D5): fetches the JSONL results bounty-infra's Fargate
+  # recon workflow writes to a deterministic key (recon/<token>.jsonl).
+  # tools/s3_io/fetcher.py is the sole boto3 importer, pinned by
+  # tests/tools/s3_io/test_boundary.py. Credentials ride boto3's default
+  # provider chain under the already-declared AWS/Infisical-OIDC class --
+  # no keyring import, no new credential path. A network egress, not a
+  # subprocess surface (the five sanctioned surfaces are unchanged).
+  "boto3==1.43.56",
   # Scope-enforcement + ingestion-sanitization primitives (formerly
   # tools/scope_validator + tools/ingest here, sprint 45) -- extracted to a
   # shared package repo so this repo and bounty-infra depend on one
@@ -167,6 +176,9 @@ select = ["E", "F", "I", "B", "S"]
 # fixed argv and no shell — the same posture the runtime code documents inline.
 # S105: the trigger tests' webhook secret is an obviously-fake literal
 # ("test-webhook-secret-not-a-real-credential"), not a real credential.
-"tests/**" = ["S101", "S603", "S607", "S105"]
+# S106: the recon dispatch tests' `correlation_token=` literals (S47-D8) are
+# fixture correlation tokens, not credentials -- bandit's heuristic keys off
+# the substring "token" in the argument name.
+"tests/**" = ["S101", "S603", "S607", "S105", "S106"]
 # S106/S107: fixture passphrases in tests, not real secrets.
 "containers/keyring_backend/test_cryptfile_backend.py" = ["S101", "S106", "S107"]
