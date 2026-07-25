@@ -5,94 +5,64 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
-> **⚠️ Workflow re-direction landed (2026-07-25, owner-authorized) — read `docs/bounty_loop_architecture.md` §11 first.**
-> Nine decisions (RD-1..RD-9) reshape the bounty loop: reactive surface-driven orchestration
-> inside gated phases (deterministic-rule routing, LLM as worker not router); **Postgres as the
-> run-snapshot backend** (RD-2, amends §9-D3 — schema stays single-source, `AsyncPostgresSaver`
-> still rejected); per-phase durable artifact tables; **granular MCP services** replacing
-> monolithic chains; **Redis deterministic tool-output cache**; **async fan-out deferred**
-> (build the sync drainer first); HackerOne scope ingestion; React+FastAPI operator UI.
-> **Re-sequenced roadmap in §11:** S47 kept as-is → **Phase R** (S48 PG-snapshot-backend ·
-> S49 per-phase tables · S50 Redis cache · S51 reactive dispatcher+sync-drainer+first granular
-> service · S52 HackerOne) → pipeline phases rebuilt reactive. This session was Opus/architect
-> (planning), **not** the assigned Sonnet/coder — the redirection is docs-only, no `src/` touched.
+**Bounty loop — Phase 1, sprint 47 (recon data path): `sprint_status: blocked`.**
+T1 (dispatch half) is merged (`cad4db1`, PR #190). T2 (the untrusted-input ingest half)
+is **blocked** on a plan-vs-reality gap in `scope-core` — needs an Opus/architect decision,
+not a Sonnet coding call.
 
-**Bounty loop — Phase 1, sprint 47 (recon data path): PLANNING COMPLETE, ready to implement.**
-`sprint_status: implementing`, next model **Sonnet/coder**. The plan
-(`sprints/47_bounty_recon_data_path/sprint_plan.md`) is written and owner-approved across
-11 HITL micro-gates + the cross-repo wrap+harden posture. Start with **Task 1**.
-**S47 is KEPT unchanged** under the redirection — its recon plumbing (`tools/s3_io`,
-`tools/recon` dispatch/ingest → inventory) is substrate-independent & forward-compatible;
-only its linear-persona *wiring* is transitional (superseded by the RD-1 dispatcher in Phase R).
+## Just done (2026-07-25) — resume→blocked (Sonnet/coder)
+- Resumed with cursor clean (T1 merged, gate NONE OPEN) and auto-started T2 per the
+  previous session's instruction.
+- Read the sprint plan's Task 2 spec, then verified `scope-core`'s actual installed
+  surface before wiring anything (as the prior cursor's drift note required) — found the
+  gap below and **stopped before writing any code**. `git diff main...HEAD` is empty this
+  session; no `/critic-gate` pass needed.
+- Ruleset check: healthy (4 rule types, 8 required checks). Branch prune: none stale.
 
-> **⚠️ Plan drift — read before T1.** `main` advanced since the 2026-07-21 plan was written:
-> **#182 extracted scope enforcement + sanitization to an external `scope-core` package and
-> DELETED the local `tools/scope_validator` + `tools/ingest`** (pinned in `pyproject.toml`).
-> The plan still names those local modules. **Source `validate_target` / `ScopeRules` /
-> `sanitize` from `scope_core` (`from scope_core import …`), not the deleted local paths** —
-> this touches T1's `tools/recon` `validate_target`-raise boundary and all of T2. Treat it as
-> a same-API re-point (BI-D6, "one definition of in-scope"); **verify the `scope_core` surface
-> against the plan's assumptions before wiring, and if it diverges materially, stop and
-> escalate to Opus** rather than improvising. (#188 redirection + #185/#125/#111 dep bumps also
-> merged; `main` is now `3d03d30`.)
+## The blocking finding — scope-core is missing `is_in_scope` / `normalize`
+`sprints/47_bounty_recon_data_path/sprint_plan.md` Task 2 (written 2026-07-21, before
+`#182` extracted scope enforcement to the external `scope-core` package) tells T2 to add:
+- `is_in_scope(rules, candidate) -> bool` to `tools/scope_validator` (a pure, non-raising
+  predicate the output filter needs), and
+- `normalize(text) -> str` to `tools/ingest` (structural-only: NFKC + invisible-char strip,
+  **no** truncate).
 
-## Just done (2026-07-25) — resume→handoff (Opus/architect)
-- **Resumed, found a model + branch mismatch, handed off to Sonnet/coder.** This session
-  ran on Opus; T1 is Coder/Sonnet implementation work, so it did **not** start T1.
-- **Synced the cursor to fresh `main` (`3d03d30`).** Confirmed the sprint-47 planning PR
-  (**#181**) and the redirection PR (**#188**) both merged; pruned their dead local branches.
-- **Flagged the `scope-core` drift above** — #182 (`scope-core` extraction) landed after the
-  plan and re-homes `validate_target`/`ScopeRules`/`sanitize`; T1/T2 must adapt.
-- Ruleset check healthy (4 rule types, 8 required checks).
+Both target directories are now **empty** (only stale `__pycache__` — `#182` extracted
+their contents to `scope-core`). Confirmed live today: `scope-core`
+(`glunk-works/scope-core`, pinned in `pyproject.toml` at `7345de5`, confirmed still its
+HEAD via `gh api repos/glunk-works/scope-core/commits`) exports only `validate_target`
+(raises `ScopeViolation`, no boolean form), `sanitize` (truncates + collapses whitespace;
+its NFKC/invisible-strip logic is a **private** internal, not exported), and
+`is_action_banned`. **Neither `is_in_scope` nor a bare structural `normalize` exists
+anywhere reachable.**
 
-## Earlier (2026-07-21) — sprint 47 planning pass (Opus/architect)
-- **Wrote `sprints/47_bounty_recon_data_path/sprint_plan.md`** — the recon data path
-  (`gh workflow_dispatch` → S3 → parse → scope-filter/sanitize → `inventory_db`, its first
-  consumer), fully hermetic behind three injected seams, one authorized V-run vs
-  `scanme.nmap.org` that also discharges the OWED §10 PG smoke. **12 decisions (S47-D1..D12).**
-- **Ruthless self-review folded in** — 5 blocking fixes (producer lives in `tools/recon` not
-  `personas/bounty` or a live boundary test fails; UUID→str artifact; anchored scanme RoE;
-  import-safe `build_bounty_loop(recon_producer=…)`; `get_target` → T3) + quality fixes
-  (`is_in_scope` predicate, `ingest.normalize`, boto3 `Stubber` test, behavioral assertions).
-- **4 execution-contract gates resolved (S47-D8..D11)** — correlation-token dispatch,
-  bounded-poll block, scope-validated `--seed`, artifact=asset-id-strings + endpoints-under-
-  in-scope-assets.
-- **Cross-repo hardening filed against `bounty-infra`** (wrap+**harden**, not wrap-only):
-  **#18** (the S47-D8 dispatch contract, built on #6's injection fix), wrap+harden comments
-  on **#7**/**#13**, and **#19** (adopt the loop-orchestrator working method + branch
-  protection; closes #8/#9). Recorded as **S47-D12**.
+**Options weighed, not yet decided (owner said: stop and escalate, don't improvise):**
+1. Add both to `scope-core`, bump the pin — consistent with BI-D6 ("one definition of
+   in-scope" shared with `bounty-infra`); needs a cross-repo PR against `scope-core` first,
+   blocking T2 until it lands.
+2. Implement both locally in `loop-orchestrator`'s `tools/recon` instead — `is_in_scope` as
+   a thin try/except wrapper over `validate_target`; `normalize` as a local reimplementation
+   of the NFKC+invisible-strip logic. Unblocks T2 immediately but duplicates `scope-core`'s
+   private internals across two repos, diverging from the "one definition" intent.
+3. Some other resolution the architect prefers.
 
-## Next — implement Task 1 (Sonnet/coder)
-**T1 (dispatch half, one `src/` PR):** `tools/s3_io` (sole `boto3` importer + pin + `sbom`/
-`audit` + `Stubber` test), `tools/recon` input model + `validate_target`-raise boundary +
-`ReconDispatcher` (real `gh` impl owning the S47-D8 token correlation + S47-D9 bounded poll,
-+ fake), and the subprocess-surface test learning the **3rd `gh` consumer** (count stays
-five). Then T2 (ingest/untrusted path) → T3 (producer swap + CLI) → T4 (docs). See the plan's
-Tasks + PR-structure notes.
-
-**HITL Gate: NONE OPEN.** Planning is signed off; `/resume` may auto-start T1. The next gate
-is the **fresh-session `architect-review`** on T1's PR (it touches `src/` — do **not** review
-in the authoring session; `/handoff` → new window → `/resume` → `/code-review` → post the
-verbatim header).
+## Next — Opus/architect decides, then hand back to Sonnet/coder
+**HITL Gate: OPEN.** Decide the `is_in_scope`/`normalize` gap above, record the decision
+(a new S47-Dxx or a plan amendment), then the Sonnet coder implements Task 2 against the
+resolved design. A `/resume` must **not** auto-start T2 until this gate closes.
 
 ## Gotchas worth remembering
-- **The producer lives in `tools/recon`, injected via `loops/bounty` — never in
-  `personas/bounty`** (`test_bounty_personas_import_nothing_from_tools` is live). `personas/
-  bounty` stays tools-free; the shell is byte-identical to S46 (swap only the collaborator).
-- **`build_bounty_loop(recon_producer=fixture_asset_inventory)` default keeps `BOUNTY_LOOP`
-  import-safe** — no `boto3`/`psycopg` client at import.
-- **`bounty-infra#18` (dispatch contract) is a V-run precondition, blocked on #6.** T1–T3
-  merge hermetically without it; the V-run + §10 discharge re-defer if it's not ready. Do
-  **not** stamp `DEFERRED_VERIFICATION.md` §10 until the V-run runs.
-- **Scope/sanitization now live in `scope-core`, not this repo** (#182) — `from scope_core
-  import ScopeRules, …`; the local `tools/scope_validator`/`tools/ingest` are gone. See the
-  ⚠️ drift note under **Now**.
-- **New dep `boto3`** ⇒ `hatch run sbom` regen + `audit` green (T1). **PR title ≤72 bytes.**
-  **Never commit to `main`, merge, or force-push.** Full local gate (lint→format→test) before push.
+- **`tools/scope_validator`/`tools/ingest` are gone** — everything routes through
+  `scope_core` now (`from scope_core import ScopeRules, validate_target, sanitize, ...`).
+  Don't recreate the old modules without an explicit decision to do so.
+- **`scope-core` is commit-pinned, not a local package** — adding a function there means a
+  PR against `glunk-works/scope-core`, a new commit SHA, and re-pinning
+  `pyproject.toml`'s `scope-core @ https://.../<sha>.tar.gz` line (plus `sbom`/`audit`).
+- **`bounty-infra#18` (dispatch contract) is still a V-run precondition, blocked on #6** —
+  unrelated to this gate; T1–T3 merge hermetically without it.
 - **`.ai/state.json` is git-ignored** — this file (`next-steps.md`) is what travels.
 
 ## Pointers
-- [`sprints/47_bounty_recon_data_path/sprint_plan.md`](../sprints/47_bounty_recon_data_path/sprint_plan.md) — the S47 plan (12 decisions, 4 tasks, PR structure).
-- [`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md) — reference-of-record; §9 (decisions log — T4 folds in S47-D1..D12), §10 (threat delta — T4 corrects to wrap+harden).
-- [`sprints/DEFERRED_VERIFICATION.md`](../sprints/DEFERRED_VERIFICATION.md) — §10 OWED sprint-44 PG smoke; discharges in S47's V-run.
-- `bounty-infra` #18 (dispatch contract), #7/#13 (harden), #19 (working method) — cross-repo, tracked there, not S47 code.
+- [`sprints/47_bounty_recon_data_path/sprint_plan.md`](../sprints/47_bounty_recon_data_path/sprint_plan.md) — the S47 plan (Task 2 is the one blocked).
+- [`docs/bounty_loop_architecture.md`](../docs/bounty_loop_architecture.md) — reference-of-record; §9 decisions log.
+- `glunk-works/scope-core` (pinned `7345de5`) — the external package this gap lives in.
