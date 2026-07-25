@@ -40,6 +40,9 @@ sketch and why. The most load-bearing override: **execution state stays on our J
 snapshots, not LangGraph-native Postgres checkpointing** — the sketch built its loop from
 zero; we already have resume/escalation/budget on snapshots, and a second checkpoint engine
 is two sources of truth for "where is this run."
+> **Amended by RD-2 (§11, 2026-07-25):** the *schema* stays our single-source `State`; the
+> *store* moves from a JSON file tree to Postgres. LangGraph's native checkpointer stays
+> rejected — this preserves this override's rationale while killing the file-read friction.
 
 ## 3. The pipeline as `Stage`s over `State`
 
@@ -145,6 +148,11 @@ existing coder/github/issue tool sets.
 
 ## 8. Roadmap & status
 
+> **Superseded from Phase 1 onward by the RD-1..RD-9 re-direction — see the re-sequenced
+> roadmap in §11 (2026-07-25).** Phase 0 and sprint 46 stand as recorded below; sprint 47
+> continues (kept, forward-compatible), then **Phase R** (reactive substrate) precedes the
+> remaining pipeline phases. The table below is retained for the Phase-0/46 build history.
+
 | Phase | Scope | Status |
 |---|---|---|
 | **0 — Enablers** | Land **BL-5** per-persona model routing (Opus deep-inspection/report, Haiku triage; needs Haiku in pricing RATES). Stand up `tools/inventory_db` + the Postgres schema (§4) + the **scope validator** (§5) + an **ingestion-sanitization seam** for scanner output first. These two seams are the concrete fixes for validated gaps in `bounty-infra`'s current scanner — no structural scope check (`bounty-infra#7`) and target-derived fields fed straight into the triage LLM (`bounty-infra#13`) — built once here and shared. **Decomposed into three sprints (P0-D1): 43 (BL-5 routing) → 44 (`inventory_db` + §4 schema) → 45 (scope validator §5 + ingestion seam §10).** The `State.schema_version` → 6 bump is **deferred to Phase 1** (P0-D2) — it ships with the first bounty `State` field, not with pure non-`State` infra. | **✅ complete (all three sprints merged + archived) — sprint 43 (BL-5 routing) T1–T4 merged; sprint 44 (`inventory_db` + §4 schema) complete (T1 PR #159, T2 PR #162, remainder F1 JSONB-adapter fix + T3 docs PR #165 all merged) — hermetically verified, live Postgres round-trip smoke deferred → `sprints/DEFERRED_VERIFICATION.md` §10 (destination Phase 1); sprint 45 (scope validator §5 + ingestion seam §10) T1 PR #168 + T2 docs PR #170 merged — both invariants built as pure leaf primitives (`tools/scope_validator` + `tools/ingest`), no live consumer per P0-D11, fully hermetic (no live surface of their own). Phase 1 (Recon) is next.** |
@@ -165,6 +173,9 @@ Owner-confirmed forks (2026-07-19):
   (`tools/inventory_db`). **Rejected** LangGraph-native `AsyncPostgresSaver` checkpointing
   (**D1-rationale:** two sources of truth for run execution) and snapshots-only-no-DB
   (database-in-files anti-pattern for a mutating, queryable, multi-writer inventory).
+  > **Amended by RD-2 (§11, 2026-07-25):** the snapshot **store** moves JSON-file → Postgres
+  > (our `State` schema unchanged, still single-source); `AsyncPostgresSaver` stays rejected.
+  > The "JSON snapshots for run state" phrasing above now means *Postgres-backed* snapshots.
 - **D4 — Models:** Claude-only — Opus (deep-inspection/report), Haiku (bulk triage) — which
   lands **BL-5** per-persona routing. Not multi-provider; `bounty-infra`'s in-substrate Gemini
   triage is superseded by the Haiku Triage stage.
@@ -360,7 +371,114 @@ both as pure leaf primitives with **no live consumer yet** (P0-D11). Phase 1 mou
 the scanning MCP tools' Pydantic boundary, where the untrusted scanner/target text they defend
 against actually begins to flow.
 
-## 11. Pointers
+## 11. Redirection — owner-authorized workflow re-direction (2026-07-25)
+
+On 2026-07-25 the owner re-directed the bounty loop's workflow after hitting real friction
+(brittle run-state **file** reads) and sharpening the token/dollar-minimization goal. These
+decisions (**RD-1..RD-9**) **amend** parts of §2–§9; each names what it supersedes. Prior
+locked decisions are **not deleted** — they keep a supersede-pointer here so the record stays
+traceable. The forks were confirmed interactively this session; per-sprint planning passes
+(with the usual HITL micro-gates + fresh-session `architect-review` on any `src/` PR) still
+happen at each sprint boundary. **This section is the current authority where it and §2–§9
+disagree.**
+
+### Decisions
+
+- **RD-1 — Reactive, surface-driven orchestration *inside* phases; phases stay gated
+  checkpoints.** Refines §3's fixed-conveyor reading. The five phases remain human-legible
+  **gate points**; *within* a phase, an inventory write is an **event** that triggers a
+  saturating fan-out of discovery/analysis actions (results land back in the inventory, which
+  may trigger more, until the surface **saturates** — no new discoveries), and only then does
+  the accumulated surface determine the next phase. Routing is **deterministic-rule-first**
+  (declared rules over inventory state, zero-token, auditable); an LLM is a **worker node**,
+  **never** the router. The accept/revise/escalate gate on every phase and the §6
+  active-action human-escalation are **unchanged**. *Deferred (seam left, not built): an
+  LLM planner/supervisor as router (YAGNI; revived only where a rule genuinely can't decide).*
+- **RD-2 — Persistence: Postgres becomes the run-**snapshot** backend (the "fourth door"),
+  NOT LangGraph `AsyncPostgresSaver`.** Amends **§9-D3** and **§2**. Our `State` schema stays
+  the **single source of truth** for run execution; it is persisted **in Postgres** (a
+  `tools/state_io` backend swap / sibling DB-owning module) instead of a JSON **file** tree —
+  killing the file-scan friction (`find_paused_snapshot_by_slack_thread`,
+  latest-per-run-dir-by-mtime). LangGraph's native checkpointer stays **rejected** — the §9-D3
+  two-sources-of-truth rationale is *preserved*, since this moves the store, not the schema.
+  D3 framed the choice as JSON-snapshots vs `AsyncPostgresSaver` vs no-DB; **Postgres-backed
+  *our*-snapshots** is the door it didn't consider.
+- **RD-3 — Per-phase durable artifact storage (the ③=(a) call).** Each phase's output
+  artifact gets its **own durable Postgres table** (e.g. `surface_maps`, `triage_reports`),
+  queryable and reusable across invocations, instead of living only inside one run snapshot.
+  Still **one run / one snapshot cursor** per invocation. The inventory (§4) remains the
+  cross-run system-of-record for assets/findings; this extends §4 with per-phase artifact
+  tables. **The inventory is the integration bus between phases** — a phase reads its inputs
+  from it and writes outputs back, so an expensive upstream phase is never re-run to redo a
+  cheap downstream one.
+- **RD-4 — Granular MCP services replace monolithic tool chains.** The coarse
+  `subfinder→httpx→nuclei` batch is decomposed into **individually-callable, scope-validated
+  MCP services** invoked "when appropriate" by the RD-1 dispatcher — **some deterministic
+  Python, some LLM-driven**. MCP granularity (composition/interface) is **orthogonal** to
+  compute topology (§7, where a service *executes*): a heavy service is a thin dispatch-then-
+  poll wrapper onto `bounty-infra` Fargate (the S47 `ReconDispatcher` shape); a light service
+  runs local. This reconciles §7's "coarse batch → Fargate" as an **execution-placement**
+  call, not an interface-granularity mandate. The RD-5 cache is what makes fine-grained
+  invocation affordable.
+- **RD-5 — Redis deterministic tool-output cache (token lever at the tool-call grain).**
+  Normalize → hash → cache MCP-tool output in **Redis**, behind a `Protocol`/ABC-seamed cache
+  interface (our existing structural-seam posture); the tool/LLM is invoked **only on a cache
+  miss** for a mathematically exact signature. **Deterministic, hash-keyed — NOT semantic
+  caching** (explicitly rejected as unsafe for infosec). A **third store** (config/credential
+  class declared); RD-3's inventory-as-bus is the same principle at the *phase* grain.
+- **RD-6 — Async fan-out is the *target* execution model, DEFERRED; build the synchronous
+  drainer first.** The RD-1 within-phase fan-out targets an **async work-queue** (broker =
+  Redis or Postgres `SELECT … FOR UPDATE SKIP LOCKED` — **no new infra class**; the only new
+  runtime piece is a worker process). **First cut is synchronous:** build the
+  coordinator/gate/inventory/reactive model with an **in-process synchronous drainer behind a
+  queue seam**, then swap in the async worker pool **without touching gate or scope logic**.
+  The three async-only hard problems are scoped to the async phase, not now: **(a)**
+  saturation/quiescence detection across concurrent workers, **(b)** a **shared atomic budget
+  counter** + per-host **rate-limiting/politeness** (bounty best-practice) for N concurrent
+  spenders, **(c)** idempotent, independently-scope-revalidating workers (the inventory's
+  upsert-coalesce + RD-5 cache keys already cover most of this).
+- **RD-7 — HackerOne API is the scope-*ingestion* source.** Program scopes are pulled from
+  the **HackerOne API** to populate the `targets` rules-of-engagement
+  (`in_scope_regex[]`/`out_of_scope_regex[]`/`banned_actions[]`), the §5 root of scope
+  enforcement. This is scope **input** — distinct from the **deferred** post-MVP "Submit"
+  stage (§8), which is finding **output** to a bounty platform; do not conflate them. New
+  credential (HackerOne API token) under the existing **transport/env-var** class, no new
+  credential *class*.
+- **RD-8 — Frontend/backend-decoupled operator UI (React + FastAPI streaming).** A new
+  operator surface: the **FastAPI** backend (extending the existing minimal webhook ASGI app,
+  `trigger/app.py`) exposes run/phase control and **streams progress via SSE/WebSockets**; the
+  **React** frontend is presentation + local UI state **only** — **agents never run in the
+  browser, API keys never leave the backend** (keyring posture intact). The UI observes the
+  RD-1 queue and is the HITL-approval surface for phase gates and §6 active-action escalations.
+  Its own track; depends on the reactive core (RD-1..RD-3, RD-6-sync).
+- **RD-9 — Deferred, seams left open:** **Jira** as an escalation/reporter transport
+  (escalation stays on the GitHub/Slack `EscalationFiler` seam; Jira slots *behind* that seam
+  if revived, never a replacement); **LLM-supervisor routing** (RD-1 seam); the **async worker
+  pool** (RD-6). No work, no dependency, no credential for these now.
+
+### Re-sequenced roadmap (supersedes the §8 table from Phase 1 onward)
+
+Phase 0 and sprint 46 stand as built (§8). Sprint numbers below are **recommendations**,
+fixed firmly at each sprint's own planning boundary; every `src/` sprint carries its
+fresh-session `architect-review`.
+
+| Sprint / Phase | Scope | Status / disposition |
+|---|---|---|
+| **S47 — recon data path plumbing** | `tools/s3_io` (`boto3`), `tools/recon` dispatch/ingest → `inventory_db`. | **KEEP as-is — substrate-independent & forward-compatible.** Its linear-persona wiring is *transitional* (superseded by the RD-1 dispatcher), but the dispatch/parse/scope-filter/ingest **plumbing stays**; it writes the inventory, which does not change. In-flight (Task 1). |
+| **Phase R — reactive substrate redirection** | The new foundation, smallest reviewable PRs, one concern each. | not started |
+| ├ **S48 — Postgres snapshot backend (RD-2)** | Swap `state_io` file backend → Postgres; retire directory-scan snapshot lookups; preserve single-DB-connection-owner discipline. | planned |
+| ├ **S49 — per-phase durable artifact tables (RD-3)** | Schema + write path for durable per-phase outputs (`surface_maps`, …). | planned |
+| ├ **S50 — Redis deterministic cache seam (RD-5)** | `Protocol`-seamed normalize/hash/lookup cache in front of tool output; miss ⇒ invoke. | planned |
+| ├ **S51 — reactive dispatcher + sync drainer + first granular MCP service (RD-1/-4/-6-sync)** | Inventory-event → deterministic rule → queued task → **sync** drainer → scope-validated **granular** MCP service → inventory write → saturation → gate. Decompose one chain as the reference service. | planned |
+| └ **S52 — HackerOne scope ingestion (RD-7)** | Pull program scopes → `targets` RoE. | planned |
+| **Phase 1′ — Surface-Mapping (reactive)** | Former §8 Phase-1 stage 2 / P1-D1 S48, **rebuilt** on the reactive substrate. | replan at boundary (amends P1-D1/P1-D3) |
+| **Phase 2 — Scan + Triage** | Reactive granular `nuclei` service + Haiku Triage, gated (§3 stage 3). | not started |
+| **Phase 3 — Deep-Inspection** | Ralph agentic persona; passive auto / active **escalates** (§6). | not started |
+| **Phase 4 — Validate + Report (MVP terminus)** | Validate chain, scope-recheck, CVSS + Markdown repro → `findings` + report; **human gate. Stop here.** | not started |
+| **UI track — operator console (RD-8)** | FastAPI streaming API (SSE/WS) + React console; HITL-approval surface. Depends on Phase R; FastAPI/SSE scaffolding may parallel once the reactive core lands. | not started |
+| **Deferred (post-MVP)** | Async worker pool (RD-6), LLM-supervisor routing (RD-1), Jira transport (RD-9), the **Submit** stage, graph-DB attack-path modeling, continuous-recon. | out of MVP scope |
+
+## 12. Pointers
 
 - [`docs/architecture_definition.md`](architecture_definition.md) — the framework's
   architecture + threat model this extends.

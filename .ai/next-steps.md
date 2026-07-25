@@ -5,10 +5,25 @@ Thin, live cursor for whoever picks up this repo next. Points into the deep reco
 Regenerated on every `/handoff`. (Run `/resume` to rehydrate a fresh session.)
 
 ## Now
+> **⚠️ Workflow re-direction landed (2026-07-25, owner-authorized) — read `docs/bounty_loop_architecture.md` §11 first.**
+> Nine decisions (RD-1..RD-9) reshape the bounty loop: reactive surface-driven orchestration
+> inside gated phases (deterministic-rule routing, LLM as worker not router); **Postgres as the
+> run-snapshot backend** (RD-2, amends §9-D3 — schema stays single-source, `AsyncPostgresSaver`
+> still rejected); per-phase durable artifact tables; **granular MCP services** replacing
+> monolithic chains; **Redis deterministic tool-output cache**; **async fan-out deferred**
+> (build the sync drainer first); HackerOne scope ingestion; React+FastAPI operator UI.
+> **Re-sequenced roadmap in §11:** S47 kept as-is → **Phase R** (S48 PG-snapshot-backend ·
+> S49 per-phase tables · S50 Redis cache · S51 reactive dispatcher+sync-drainer+first granular
+> service · S52 HackerOne) → pipeline phases rebuilt reactive. This session was Opus/architect
+> (planning), **not** the assigned Sonnet/coder — the redirection is docs-only, no `src/` touched.
+
 **Bounty loop — Phase 1, sprint 47 (recon data path): PLANNING COMPLETE, ready to implement.**
 `sprint_status: implementing`, next model **Sonnet/coder**. The plan
 (`sprints/47_bounty_recon_data_path/sprint_plan.md`) is written and owner-approved across
 11 HITL micro-gates + the cross-repo wrap+harden posture. Start with **Task 1**.
+**S47 is KEPT unchanged** under the redirection — its recon plumbing (`tools/s3_io`,
+`tools/recon` dispatch/ingest → inventory) is substrate-independent & forward-compatible;
+only its linear-persona *wiring* is transitional (superseded by the RD-1 dispatcher in Phase R).
 
 ## Just done (2026-07-21) — sprint 47 planning pass (Opus/architect)
 - **Wrote `sprints/47_bounty_recon_data_path/sprint_plan.md`** — the recon data path
