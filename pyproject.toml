@@ -68,7 +68,7 @@ dependencies = [
   # provider chain under the already-declared AWS/Infisical-OIDC class --
   # no keyring import, no new credential path. A network egress, not a
   # subprocess surface (the five sanctioned surfaces are unchanged).
-  "boto3==1.43.56",
+  "boto3==1.43.58",
   # Scope-enforcement + ingestion-sanitization primitives (formerly
   # tools/scope_validator + tools/ingest here, sprint 45) -- extracted to a
   # shared package repo so this repo and bounty-infra depend on one
