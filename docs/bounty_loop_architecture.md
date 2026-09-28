@@ -1,6 +1,10 @@
 # Bounty Loop — architecture & roadmap (reference of record)
 
-> **Status: PROPOSED. Nothing under `loops/bounty/` is built yet.** This is the design
+> **Status: IN BUILD.** Phase 0 is complete (sprints 43–45). The sprint-46 walking skeleton
+> is merged (`loops/bounty/`, `personas/bounty/`, `State` v6). Sprint 47 (the recon data
+> path) is in flight: T1, the dispatch half, is merged (PR #190), and T2, the ingest half,
+> is in review (PR #193). The live cursor is [`.ai/next-steps.md`](../.ai/next-steps.md).
+> This is the design
 > authority's reference-of-record for the second loop, the analog of
 > [`migration_roadmap.md`](migration_roadmap.md) for the migration. Read it before
 > extending the bounty pipeline. Decisions and their rationale are logged here (§9);
@@ -18,13 +22,16 @@ pausing to a human, and a snapshot persisted on every accepted stage and every e
 
 It does **not** re-implement scanning. The org already has the muscle:
 
-- **`bounty-infra`** (separate repo, built) — an AWS Fargate, zero-ingress, Infisical-OIDC
-  scanner: `subfinder`/`httpx`/`nuclei` → one-pass triage → KMS-encrypted S3. This is the
-  **batch scan substrate**.
+- **`bounty-infra`** (separate repo, built) is a zero-ingress scanner: one ephemeral Vultr VM
+  per scan, launched by its `run-scan.yml` `workflow_dispatch` under a per-scan, scoped STS
+  session (GitHub OIDC; no standing role). It runs `subfinder`/`httpx`/`nuclei`, then a
+  one-pass triage, and writes to KMS-encrypted S3. The VM is destroyed after each run. This
+  is the **batch scan substrate**. (Its own decision BI-D5, 2026-07-21, replaced the original
+  ECS/Fargate compute; the dispatch → S3 contract this loop depends on did not change.)
 - **`global-bootstrap`** — the shared OpenTofu state backend + OIDC/IAM foundation both
   loops' AWS surfaces sit on.
-- **`appsec-triage-agent`** — an empty stub today; superseded by this loop's Triage stage,
-  not a foundation.
+- **`appsec-triage-agent`**: superseded by this loop's Triage stage, not a foundation.
+  It was archived on 2026-09-28, and its README now points here.
 
 The division of labor: **loop-orchestrator is the brain; `bounty-infra` is the hands.** The
 loop drives the substrate, ingests its findings into a durable inventory, and runs the
@@ -52,7 +59,7 @@ validate+report) maps 1:1 onto a `Loop`:
 ```
 Recon/Inventory → Surface-Mapping → Scan+Triage → Deep-Inspection → Validate+Report
    [batch]           [batch]          [gated]        [Ralph, gated]     [gated, HITL]
-        \_________ bounty-infra Fargate → S3 _________/   \__ local scope-validated MCP __/
+        \______ bounty-infra per-scan VM → S3 ______/   \__ local scope-validated MCP __/
 ```
 
 | # | Stage (persona) | Gate | Resolvers | Autonomy |
@@ -138,13 +145,18 @@ context). These are **orchestrator-invoked**, scope-guarded, and pairwise-disjoi
 existing coder/github/issue tool sets.
 
 **Compute topology (design call):**
-- **Coarse batch recon/scan → `bounty-infra` Fargate.** Heavy, parallel, zero-ingress,
+- **Coarse batch recon/scan → `bounty-infra`'s per-scan VM.** Heavy, parallel, zero-ingress,
   long-running. Dispatched at the Recon (§3-1) and Scan (§3-3) phase boundaries via a
   programmatic `workflow_dispatch` trigger (a Phase-1 integration seam on `bounty-infra`),
   results landing in S3 and ingested into Postgres. Not per-tool-call in a tight loop.
 - **Fine-grained deep-inspection → local scope-validated MCP tools** under our
   `LOOP_ORCHESTRATOR_ISOLATION=container` posture. Targeted requests inside the interactive
-  agent loop, where a Fargate round-trip per call would be intolerable.
+  agent loop, where a VM boot per call would be intolerable.
+
+> **Substrate note (2026-09-28):** this section was written when `bounty-infra` ran on
+> ECS/Fargate. Its BI-D5 (2026-07-21) replaced that with one ephemeral Vultr VM per scan.
+> The placement call above is unchanged, because it rests on the `workflow_dispatch` → S3
+> seam (S47's `ReconDispatcher`), not on the compute behind it.
 
 ## 8. Roadmap & status
 
@@ -156,7 +168,7 @@ existing coder/github/issue tool sets.
 | Phase | Scope | Status |
 |---|---|---|
 | **0 — Enablers** | Land **BL-5** per-persona model routing (Opus deep-inspection/report, Haiku triage; needs Haiku in pricing RATES). Stand up `tools/inventory_db` + the Postgres schema (§4) + the **scope validator** (§5) + an **ingestion-sanitization seam** for scanner output first. These two seams are the concrete fixes for validated gaps in `bounty-infra`'s current scanner — no structural scope check (`bounty-infra#7`) and target-derived fields fed straight into the triage LLM (`bounty-infra#13`) — built once here and shared. **Decomposed into three sprints (P0-D1): 43 (BL-5 routing) → 44 (`inventory_db` + §4 schema) → 45 (scope validator §5 + ingestion seam §10).** The `State.schema_version` → 6 bump is **deferred to Phase 1** (P0-D2) — it ships with the first bounty `State` field, not with pure non-`State` infra. | **✅ complete (all three sprints merged + archived) — sprint 43 (BL-5 routing) T1–T4 merged; sprint 44 (`inventory_db` + §4 schema) complete (T1 PR #159, T2 PR #162, remainder F1 JSONB-adapter fix + T3 docs PR #165 all merged) — hermetically verified, live Postgres round-trip smoke deferred → `sprints/DEFERRED_VERIFICATION.md` §10 (destination Phase 1); sprint 45 (scope validator §5 + ingestion seam §10) T1 PR #168 + T2 docs PR #170 merged — both invariants built as pure leaf primitives (`tools/scope_validator` + `tools/ingest`), no live consumer per P0-D11, fully hermetic (no live surface of their own). Phase 1 (Recon) is next.** |
-| **1 — Recon + Surface-Mapping** | `workflow_dispatch` seam on `bounty-infra`; wrap recon as scope-validated MCP tools; IDP parser → typed `assets`/`endpoints`. Stages 1–2. **Decomposed into three sprints (P1-D1): 46 (loop skeleton + `State` 5→6 bump) → 47 (recon data path) → 48 (Surface-Mapping stage).** | **✅ sprint 46 complete (skeleton + `State` v6 bump + this decisions write-up) — T1 PR #173 merged (fresh-session `architect-review` APPROVE on the review-fixed HEAD), T2 docs PR #177 merged. Hermetic only — no live surface exists yet; the OWED sprint-44 live Postgres smoke stays deferred to S47 (`DEFERRED_VERIFICATION.md` §10).** Sprints 47–48 not started. |
+| **1 — Recon + Surface-Mapping** | `workflow_dispatch` seam on `bounty-infra`; wrap recon as scope-validated MCP tools; IDP parser → typed `assets`/`endpoints`. Stages 1–2. **Decomposed into three sprints (P1-D1): 46 (loop skeleton + `State` 5→6 bump) → 47 (recon data path) → 48 (Surface-Mapping stage).** | **✅ sprint 46 complete (skeleton + `State` v6 bump + this decisions write-up) — T1 PR #173 merged (fresh-session `architect-review` APPROVE on the review-fixed HEAD), T2 docs PR #177 merged. Hermetic only — no live surface exists yet; the OWED sprint-44 live Postgres smoke stays deferred to S47 (`DEFERRED_VERIFICATION.md` §10).** Sprint 47 is in flight (see the §11 table). Sprint 48 was re-planned by §11 as Phase R. |
 | **2 — Scan + Triage** | `nuclei` MCP tool; Triage persona (Haiku) dedup/FP-filter/severity vs inventory, gated. Absorbs + upgrades `bounty-infra`'s one-pass Gemini triage. Stage 3. | not started |
 | **3 — Deep-Inspection** | Ralph-style agentic persona; secure security-tool MCP servers; passive autonomous, active gated (§6). Stage 4. | not started |
 | **4 — Validate + Report (MVP terminus)** | Validate chain, scope-recheck vs program rules, CVSS + Markdown repro → `findings` (pending human-verify) + S3 report; human review gate. **Stop here.** Stage 5. | not started |
@@ -341,6 +353,11 @@ Phase-1 planning-pass decisions (2026-07-21, owner-confirmed via HITL micro-gate
   meaningful. **Rejected:** a `--loop {default,bounty}` selector or a `bounty-run`
   subcommand now — CLI surface + arg handling for a loop that emits only stubs until S47.
 
+> **Substrate note (2026-09-28):** the "Fargate" references in P1-D4 above predate
+> `bounty-infra`'s BI-D5, which replaced Fargate with a per-scan Vultr VM on 2026-07-21. The
+> decision is not re-opened. Read "Fargate" as "the scan VM"; the hermetic-merge-path and
+> single-V-run reasoning holds as written.
+
 Design-authority overrides of the Gemini sketch:
 
 - Scope enforcement is structural code, not an LLM responsibility (§5).
@@ -432,8 +449,8 @@ disagree.**
   MCP services** invoked "when appropriate" by the RD-1 dispatcher — **some deterministic
   Python, some LLM-driven**. MCP granularity (composition/interface) is **orthogonal** to
   compute topology (§7, where a service *executes*): a heavy service is a thin dispatch-then-
-  poll wrapper onto `bounty-infra` Fargate (the S47 `ReconDispatcher` shape); a light service
-  runs local. This reconciles §7's "coarse batch → Fargate" as an **execution-placement**
+  poll wrapper onto `bounty-infra`'s per-scan VM (the S47 `ReconDispatcher` shape); a light service
+  runs local. This reconciles §7's "coarse batch → `bounty-infra`" as an **execution-placement**
   call, not an interface-granularity mandate. The RD-5 cache is what makes fine-grained
   invocation affordable.
 - **RD-5 — Redis deterministic tool-output cache (token lever at the tool-call grain).**
@@ -480,7 +497,7 @@ fresh-session `architect-review`.
 
 | Sprint / Phase | Scope | Status / disposition |
 |---|---|---|
-| **S47 — recon data path plumbing** | `tools/s3_io` (`boto3`), `tools/recon` dispatch/ingest → `inventory_db`. | **KEEP as-is — substrate-independent & forward-compatible.** Its linear-persona wiring is *transitional* (superseded by the RD-1 dispatcher), but the dispatch/parse/scope-filter/ingest **plumbing stays**; it writes the inventory, which does not change. In-flight (Task 1). |
+| **S47 — recon data path plumbing** | `tools/s3_io` (`boto3`), `tools/recon` dispatch/ingest → `inventory_db`. | **KEEP as-is — substrate-independent & forward-compatible.** Its linear-persona wiring is *transitional* (superseded by the RD-1 dispatcher), but the dispatch/parse/scope-filter/ingest **plumbing stays**; it writes the inventory, which does not change. In flight: T1 (dispatch half) merged, PR #190. T2 (ingest half) in review, PR #193. T3 (producer + CLI) and T4 (docs) are next, followed by the V-run. |
 | **Phase R — reactive substrate redirection** | The new foundation, smallest reviewable PRs, one concern each. | not started |
 | ├ **S48 — Postgres snapshot backend (RD-2)** | Swap `state_io` file backend → Postgres; retire directory-scan snapshot lookups; preserve single-DB-connection-owner discipline. | planned |
 | ├ **S49 — per-phase durable artifact tables (RD-3)** | Schema + write path for durable per-phase outputs (`surface_maps`, …). | planned |
@@ -501,5 +518,6 @@ fresh-session `architect-review`.
 - [`docs/migration_roadmap.md`](migration_roadmap.md) — the MCP+LangGraph migration that
   produced the machinery this loop reuses.
 - [`docs/backlog.md`](backlog.md) — **BL-5** (per-persona routing) is Phase 0's enabler.
-- `bounty-infra` (separate repo) — the Fargate scan substrate.
+- `bounty-infra` (separate repo) is the scan substrate: one ephemeral Vultr VM per scan
+  (BI-D5). Its `docs/hardening_roadmap.md` records the compute decision.
 - `loops/default/loop.py` — the reference `Loop`/`Stage` wiring this loop mirrors.
