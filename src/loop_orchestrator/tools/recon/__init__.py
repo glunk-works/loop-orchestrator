@@ -18,15 +18,22 @@ from loop_orchestrator.tools.recon.dispatch import (
     S3Key,
 )
 from loop_orchestrator.tools.recon.models import ReconRequest, build_recon_request
+from loop_orchestrator.tools.recon.parse import ReconPayloadError, ReconRecord, parse_jsonl
+from loop_orchestrator.tools.recon.pipeline import IngestStats, ingest_batch
 
 __all__ = [
     "DispatchHandle",
     "FakeReconDispatcher",
     "GhReconDispatcher",
+    "IngestStats",
     "ReconDispatchFailedError",
     "ReconDispatcher",
+    "ReconPayloadError",
+    "ReconRecord",
     "ReconRequest",
     "ReconTimeout",
     "S3Key",
     "build_recon_request",
+    "ingest_batch",
+    "parse_jsonl",
 ]
